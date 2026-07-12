@@ -8,6 +8,7 @@ const initialState: GuestState = {
   bodyGender: "female",
   zones: {},
   zoneNotes: {},
+  generalNote: "",
   preferences: {
     pressure: "Średni",
     oilId: "lawenda-rumianek",
@@ -38,6 +39,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         ...state,
         zoneNotes: { ...state.zoneNotes, [action.zoneId]: action.note },
       };
+    case "SET_GENERAL_NOTE":
+      return { ...state, generalNote: action.note };
     case "SET_PREFERENCE":
       return {
         ...state,

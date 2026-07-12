@@ -48,6 +48,12 @@ export const ui: Record<string, Dict> = {
     uk: "Зосередитись на цій зоні",
   },
   guestNotes: { pl: "Uwagi gościa", en: "Guest notes", id: "Catatan tamu", uk: "Нотатки гостя" },
+  additionalNotes: {
+    pl: "Dodatkowe uwagi",
+    en: "Additional notes",
+    id: "Catatan tambahan",
+    uk: "Додаткові нотатки",
+  },
   guestPreferences: {
     pl: "Preferencje gościa",
     en: "Guest preferences",

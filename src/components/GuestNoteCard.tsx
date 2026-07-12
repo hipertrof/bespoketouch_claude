@@ -3,12 +3,22 @@ import { Languages, LoaderCircle, TriangleAlert } from "lucide-react";
 import { t, tZone, type LangCode } from "../i18n/translations";
 import { isTranslatable, translateNote } from "../i18n/translateNote";
 
-export function GuestNoteCard({ zoneId, note, lang }: { zoneId: string; note: string; lang: LangCode }) {
+export function GuestNoteCard({
+  zoneId,
+  title,
+  note,
+  lang,
+}: {
+  zoneId?: string;
+  title?: string;
+  note: string;
+  lang: LangCode;
+}) {
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cacheKey = `${zoneId}:${lang}`;
+  const cacheKey = `${zoneId ?? "general"}:${lang}`;
   const translated = translations[cacheKey];
   const canTranslate = isTranslatable(lang);
 
@@ -29,7 +39,7 @@ export function GuestNoteCard({ zoneId, note, lang }: { zoneId: string; note: st
     <div className="rounded-xl border border-sand bg-oatmeal/50 px-3.5 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-clay-dark">
-          {tZone(zoneId, lang)}
+          {title ?? (zoneId ? tZone(zoneId, lang) : "")}
         </div>
         {canTranslate && !translated && (
           <button

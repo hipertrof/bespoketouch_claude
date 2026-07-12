@@ -73,6 +73,7 @@ export interface GuestState {
   bodyGender: BodyGender;
   zones: Partial<Record<ZoneId, ZoneMark>>;
   zoneNotes: Partial<Record<ZoneId, string>>;
+  generalNote: string;
   preferences: Preferences;
 }
 
@@ -83,5 +84,6 @@ export type GuestAction =
   | { type: "SET_BODY_GENDER"; bodyGender: BodyGender }
   | { type: "SET_ZONE_MARK"; zoneId: ZoneId; mark: ZoneMark }
   | { type: "SET_ZONE_NOTE"; zoneId: ZoneId; note: string }
+  | { type: "SET_GENERAL_NOTE"; note: string }
   | { type: "SET_PREFERENCE"; key: keyof Preferences; value: Preferences[keyof Preferences] }
   | { type: "RESET_SESSION" };

@@ -28,3 +28,26 @@ export const zoneDefinitions: ZoneDefinition[] = [
 
 export const zoneLabel = (id: string): string =>
   zoneDefinitions.find((z) => z.id === id)?.label ?? id;
+
+// Base name of a label, ignoring any existing parenthetical (e.g. both
+// "Ramiona" and "Ramiona (tył)" reduce to "Ramiona").
+const baseName = (label: string): string => label.replace(/\s*\(.*\)$/, "");
+
+// Base names shared by more than one zone (Ramiona, Uda, Przedramiona, Stopy…)
+// — these need a przód/tył suffix to be unambiguous in a flat list.
+const ambiguousBases = new Set(
+  zoneDefinitions
+    .map((z) => baseName(z.label))
+    .filter((name, _, all) => all.filter((n) => n === name).length > 1),
+);
+
+// Label for a zone shown out of context (summary chips, masseur notes): adds a
+// przód/tył suffix only when the plain label would be ambiguous and doesn't
+// already carry its own parenthetical.
+export const zoneSummaryLabel = (id: string): string => {
+  const def = zoneDefinitions.find((z) => z.id === id);
+  if (!def) return id;
+  if (!ambiguousBases.has(baseName(def.label))) return def.label;
+  if (/\(.*\)$/.test(def.label)) return def.label;
+  return `${def.label} (${def.view === "front" ? "przód" : "tył"})`;
+};

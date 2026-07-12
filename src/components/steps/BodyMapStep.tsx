@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, MessageSquareText, Star } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
 import { BodySilhouette, figureAspectRatio } from "../BodyMap/BodySilhouette";
 import { ZoneMarker } from "../BodyMap/ZoneMarker";
 import { ZonePopover } from "../BodyMap/ZonePopover";
 import { markersForView } from "../BodyMap/markerPositions";
-import { zoneLabel } from "../../data/zones";
-import type { BodyView, ZoneMark } from "../../types";
+import { zoneLabel, zoneSummaryLabel } from "../../data/zones";
+import type { BodyView, ZoneId, ZoneMark } from "../../types";
 
 export function BodyMapStep() {
   const { state, dispatch } = useGuest();
@@ -15,6 +15,15 @@ export function BodyMapStep() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const markers = markersForView(view);
+
+  const zonesByMark = (mark: ZoneMark): ZoneId[] =>
+    (Object.entries(state.zones) as [ZoneId, ZoneMark][])
+      .filter(([, m]) => m === mark)
+      .map(([id]) => id);
+
+  const priorityZones = zonesByMark("priority");
+  const blockedZones = zonesByMark("blocked");
+  const hasSelection = priorityZones.length > 0 || blockedZones.length > 0;
 
   const handleToggle = (index: number) => {
     setActiveIndex((prev) => (prev === index ? null : index));
@@ -42,7 +51,7 @@ export function BodyMapStep() {
         masażu.
       </p>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
         <div>
           <div className="mb-5 inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
             {(["front", "back"] as BodyView[]).map((v) => (
@@ -96,31 +105,78 @@ export function BodyMapStep() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 lg:w-56 lg:pt-16">
-          <div className="rounded-2xl border border-sand bg-white p-4 shadow-soft">
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-light">
-              Legenda
-            </h3>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2.5">
-                <span className="h-5 w-5 shrink-0 rounded-full border-2 border-clay-dark bg-clay" />
-                <div className="text-sm">
-                  <div className="font-medium text-charcoal">Obszar priorytetowy</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <span className="h-5 w-5 shrink-0 rounded-full border-2 border-rose-dark bg-rose" />
-                <div className="text-sm">
-                  <div className="font-medium text-charcoal">Nie masować</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <span className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-light/50 bg-white/70" />
-                <div className="text-sm">
-                  <div className="font-medium text-charcoal">Standardowy</div>
-                </div>
+        <div className="flex flex-col gap-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-light">
+            Zestawienie wybranych stref
+          </h2>
+
+          {!hasSelection && (
+            <div className="rounded-2xl border border-dashed border-sand bg-white/50 px-4 py-6 text-center text-sm leading-relaxed text-slate-light">
+              Nie zaznaczono jeszcze żadnych stref. Dotknij punktu na
+              sylwetce, aby oznaczyć obszar jako priorytetowy lub wykluczony.
+            </div>
+          )}
+
+          {priorityZones.length > 0 && (
+            <div className="rounded-2xl border border-clay/40 bg-clay-tint/50 p-4">
+              <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-clay-dark">
+                <Star size={13} className="fill-clay-dark" />
+                Intensywna praca (priorytet)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {priorityZones.map((id) => (
+                  <span
+                    key={id}
+                    className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-charcoal shadow-soft"
+                  >
+                    {zoneSummaryLabel(id)}
+                  </span>
+                ))}
               </div>
             </div>
+          )}
+
+          {blockedZones.length > 0 && (
+            <div className="rounded-2xl border border-rose/40 bg-rose-tint/50 p-4">
+              <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-rose-dark">
+                <Ban size={13} />
+                Nie masować (strefa wykluczona)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {blockedZones.map((id) => (
+                  <span
+                    key={id}
+                    className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-charcoal shadow-soft"
+                  >
+                    {zoneSummaryLabel(id)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-sand bg-white p-4 shadow-soft">
+            <label
+              htmlFor="generalNote"
+              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate"
+            >
+              <MessageSquareText size={14} className="text-slate-light" />
+              Dodatkowe uwagi / zalecenia dla masażysty
+            </label>
+            <p className="mt-1 mb-2.5 text-xs leading-relaxed text-slate-light">
+              Wpisz zalecenia, bolesne punkty, alergie lub inne szczególne
+              wymagania.
+            </p>
+            <textarea
+              id="generalNote"
+              value={state.generalNote}
+              onChange={(e) =>
+                dispatch({ type: "SET_GENERAL_NOTE", note: e.target.value })
+              }
+              placeholder="Np. proszę o mocniejszy masaż karku, mam alergię na olejki cytrusowe…"
+              rows={4}
+              className="w-full resize-none rounded-xl border border-sand bg-cream/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
+            />
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { GuestProvider, useGuest } from "./context/GuestContext";
 import { Header } from "./components/Header";
 import { WelcomeStep } from "./components/steps/WelcomeStep";
@@ -9,6 +10,12 @@ import { MasseurDashboard } from "./components/steps/MasseurDashboard";
 
 function Screen() {
   const { state } = useGuest();
+
+  // Each step is a distinct screen; start every one from the top rather than
+  // inheriting the previous step's scroll position.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [state.step]);
 
   return (
     <div className="flex min-h-screen flex-col bg-cream">

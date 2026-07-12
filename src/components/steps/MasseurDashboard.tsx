@@ -148,13 +148,20 @@ export function MasseurDashboard() {
             </div>
           </div>
 
-          {zoneNoteEntries.length > 0 && (
+          {(zoneNoteEntries.length > 0 || state.generalNote.trim().length > 0) && (
             <div className="mt-5 border-t border-sand pt-5">
               <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-light">
                 <MessageSquareText size={14} />
                 {t("guestNotes", lang)}
               </h3>
               <div className="flex flex-col gap-2.5">
+                {state.generalNote.trim().length > 0 && (
+                  <GuestNoteCard
+                    title={t("additionalNotes", lang)}
+                    note={state.generalNote}
+                    lang={lang}
+                  />
+                )}
                 {zoneNoteEntries.map(([zoneId, note]) => (
                   <GuestNoteCard key={zoneId} zoneId={zoneId} note={note} lang={lang} />
                 ))}
