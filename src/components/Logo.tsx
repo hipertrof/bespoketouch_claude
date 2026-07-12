@@ -23,7 +23,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
             BespokeTouch
           </div>
           <div className="hidden text-[11px] font-medium uppercase tracking-[0.16em] text-slate-light min-[360px]:block sm:text-xs">
-            Luksusowe Doświadczenia Spa
+            Masaż skrojony na miarę
           </div>
         </div>
       )}
