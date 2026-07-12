@@ -70,8 +70,8 @@ export function BodyMapStep() {
         Obszary pracy
       </h1>
       <p className="mb-8 max-w-xl text-base leading-relaxed text-slate">
-        Zaznacz obszary ciała, na których chcieliby Państwo się skupić podczas
-        masażu.
+        Wskaż miejsca wymagające szczególnej uwagi — lub te, które powinniśmy
+        pominąć.
       </p>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
