@@ -9,6 +9,18 @@ import { markersForView } from "../BodyMap/markerPositions";
 import { zoneLabel, zoneSummaryLabel } from "../../data/zones";
 import type { BodyView, ZoneId, ZoneMark } from "../../types";
 
+function ZoneChipWithNote({ label, note }: { label: string; note?: string }) {
+  const trimmed = note?.trim();
+  return (
+    <div className="rounded-lg bg-white px-3 py-2 shadow-soft">
+      <div className="text-sm font-medium text-charcoal">{label}</div>
+      {trimmed && (
+        <div className="mt-0.5 text-xs leading-relaxed text-slate-light">{trimmed}</div>
+      )}
+    </div>
+  );
+}
+
 export function BodyMapStep() {
   const { state, dispatch } = useGuest();
   const [view, setView] = useState<BodyView>("front");
@@ -23,7 +35,18 @@ export function BodyMapStep() {
 
   const priorityZones = zonesByMark("priority");
   const blockedZones = zonesByMark("blocked");
-  const hasSelection = priorityZones.length > 0 || blockedZones.length > 0;
+
+  // Zones that only have a note attached (mark left at "standard") — without
+  // this, a comment-only zone never shows up anywhere in the summary.
+  const notedStandardZones = (Object.keys(state.zoneNotes) as ZoneId[]).filter((id) => {
+    const note = state.zoneNotes[id]?.trim();
+    if (!note) return false;
+    const mark = state.zones[id] ?? "standard";
+    return mark !== "priority" && mark !== "blocked";
+  });
+
+  const hasSelection =
+    priorityZones.length > 0 || blockedZones.length > 0 || notedStandardZones.length > 0;
 
   const handleToggle = (index: number) => {
     setActiveIndex((prev) => (prev === index ? null : index));
@@ -123,14 +146,9 @@ export function BodyMapStep() {
                 <Star size={13} className="fill-clay-dark" />
                 Intensywna praca (priorytet)
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {priorityZones.map((id) => (
-                  <span
-                    key={id}
-                    className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-charcoal shadow-soft"
-                  >
-                    {zoneSummaryLabel(id)}
-                  </span>
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -142,14 +160,23 @@ export function BodyMapStep() {
                 <Ban size={13} />
                 Nie masować (strefa wykluczona)
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {blockedZones.map((id) => (
-                  <span
-                    key={id}
-                    className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-charcoal shadow-soft"
-                  >
-                    {zoneSummaryLabel(id)}
-                  </span>
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {notedStandardZones.length > 0 && (
+            <div className="rounded-2xl border border-sage/40 bg-sage-tint/50 p-4">
+              <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage-dark">
+                <MessageSquareText size={13} />
+                Uwagi do pozostałych stref
+              </h3>
+              <div className="flex flex-col gap-2">
+                {notedStandardZones.map((id) => (
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
                 ))}
               </div>
             </div>
