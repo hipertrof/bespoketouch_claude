@@ -16,9 +16,10 @@ export function StaffHandoffStep() {
         Wszystko gotowe, {state.guestName || "Gościu"}.
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
-        Proszę przekazać tablet gościowi
-        {treatment ? ` — wybrany zabieg to ${treatment.name.toLowerCase()}.` : "."}{" "}
-        Teraz może zaznaczyć obszary pracy na mapie ciała i dopasować swoje
+        {treatment
+          ? `Wybrany zabieg to ${treatment.name.toLowerCase()}.`
+          : "Twój zabieg jest już wybrany."}{" "}
+        Zaznacz teraz obszary pracy na mapie ciała i dopasuj swoje
         preferencje.
       </p>
 

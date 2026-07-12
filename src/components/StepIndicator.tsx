@@ -36,7 +36,7 @@ export function StepIndicator({ current }: { current: AppStep }) {
               {isDone ? <Check size={13} strokeWidth={2.5} /> : i + 1}
             </div>
             <span
-              className={`hidden text-sm font-medium lg:inline ${
+              className={`hidden text-sm font-medium sm:inline ${
                 isCurrent ? "text-charcoal" : "text-slate-light"
               }`}
             >

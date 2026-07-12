@@ -18,11 +18,11 @@ export function Logo({ compact = false }: { compact?: boolean }) {
     <div className="flex items-center gap-3 sm:gap-3.5">
       <LogoMark className={compact ? "h-11 w-11 sm:h-12 sm:w-12" : "h-14 w-14 sm:h-16 sm:w-16"} />
       {!compact && (
-        <div className="hidden leading-tight min-[420px]:block">
+        <div className="leading-tight">
           <div className="font-serif text-xl font-semibold tracking-tight text-charcoal sm:text-2xl">
             BespokeTouch
           </div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-light sm:text-xs">
+          <div className="hidden text-[11px] font-medium uppercase tracking-[0.16em] text-slate-light min-[360px]:block sm:text-xs">
             Luksusowe Doświadczenia Spa
           </div>
         </div>
