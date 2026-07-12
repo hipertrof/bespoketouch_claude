@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  --font-serif: "Lora", "Georgia", serif;
+
+  /* Neutrals: cream / oatmeal / sand */
+  --color-cream: #f9f6ef;
+  --color-cream-dark: #f2ede2;
+  --color-oatmeal: #ede6d7;
+  --color-oatmeal-dark: #e3dac6;
+  --color-sand: #d9cdb4;
+  --color-sand-dark: #c7b899;
+
+  /* Typography */
+  --color-charcoal: #33312c;
+  --color-slate: #57544c;
+  --color-slate-light: #858175;
+
+  /* Accents */
+  --color-clay: #c99a6a;
+  --color-clay-light: #e3c9a0;
+  --color-clay-dark: #a97c4f;
+  --color-clay-tint: #f3e6d3;
+
+  --color-rose: #b6544f;
+  --color-rose-light: #d99490;
+  --color-rose-dark: #8f3f3b;
+  --color-rose-tint: #f3ddda;
+
+  --color-sage: #5f6b52;
+  --color-sage-light: #7c8a6c;
+  --color-sage-dark: #454e3c;
+  --color-sage-tint: #e3e8da;
+
+  --shadow-soft: 0 2px 8px rgba(51, 49, 44, 0.06), 0 8px 24px rgba(51, 49, 44, 0.06);
+  --shadow-lift: 0 6px 16px rgba(51, 49, 44, 0.1), 0 16px 40px rgba(51, 49, 44, 0.1);
+}
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+button,
+select,
+textarea {
+  font-family: inherit;
+}
