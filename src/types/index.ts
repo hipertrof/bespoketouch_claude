@@ -95,12 +95,20 @@ export interface PersonalizationState {
   preferences: Preferences;
 }
 
+export interface TreatmentSelection {
+  treatmentId: string | null;
+  treatmentMinutes: number | null;
+}
+
 export interface GuestState {
   step: AppStep;
   // Index-aligned with `guests` — guestNames[i] is the name of guests[i].
   guestNames: string[];
-  treatmentId: string | null;
-  treatmentMinutes: number | null;
+  // Index-aligned with `guests`. When !separateTreatments, both entries are
+  // kept mirrored to the same value by the reducer.
+  treatmentSelections: TreatmentSelection[];
+  // Only meaningful when partySize === 2.
+  separateTreatments: boolean;
   partySize: PartySize;
   // Index into `guests` for whichever person is currently personalizing.
   activeGuestIndex: number;
@@ -110,8 +118,9 @@ export interface GuestState {
 export type GuestAction =
   | { type: "SET_STEP"; step: AppStep }
   | { type: "SET_GUEST_NAME"; index: number; name: string }
-  | { type: "SET_TREATMENT"; treatmentId: string }
-  | { type: "SET_TREATMENT_MINUTES"; minutes: number }
+  | { type: "SET_TREATMENT"; index: number; treatmentId: string }
+  | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
+  | { type: "SET_SEPARATE_TREATMENTS"; separate: boolean }
   | { type: "SET_PARTY_SIZE"; partySize: PartySize }
   | { type: "SET_BODY_GENDER"; bodyGender: BodyGender }
   | { type: "SET_ZONE_MARK"; zoneId: ZoneId; mark: ZoneMark }

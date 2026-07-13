@@ -212,3 +212,14 @@ export const lowestPrice = (massage: MassageType, partySize: PartySize): number 
     .filter((p): p is number => p !== undefined);
   return prices.length > 0 ? Math.min(...prices) : undefined;
 };
+
+// Every duration offered by at least one massage at this party size — used
+// to let staff pick a duration before narrowing down which massages fit it
+// (not every massage offers every duration).
+export const allDurationsForPartySize = (partySize: PartySize): number[] => {
+  const minutes = new Set<number>();
+  massageTypes.forEach((m) => {
+    availableDurations(m, partySize).forEach((d) => minutes.add(d.minutes));
+  });
+  return [...minutes].sort((a, b) => a - b);
+};

@@ -42,8 +42,11 @@ export function MasseurDashboard() {
   const activeGuest = state.guests[selectedGuestIndex] ?? state.guests[0];
   const { preferences } = activeGuest;
 
-  const treatment = massageTypes.find((m) => m.id === state.treatmentId);
-  const treatmentDuration = treatment?.durations.find((d) => d.minutes === state.treatmentMinutes);
+  const currentSelection = state.treatmentSelections[selectedGuestIndex] ?? state.treatmentSelections[0];
+  const treatment = massageTypes.find((m) => m.id === currentSelection?.treatmentId);
+  const treatmentDuration = treatment?.durations.find(
+    (d) => d.minutes === currentSelection?.treatmentMinutes,
+  );
   const price =
     treatmentDuration && durationPrice(treatmentDuration, state.partySize) !== undefined
       ? formatPrice(durationPrice(treatmentDuration, state.partySize)!)
@@ -107,7 +110,7 @@ export function MasseurDashboard() {
           </div>
           <div className="text-xl font-semibold text-charcoal sm:text-2xl">
             {treatment
-              ? `${state.treatmentMinutes ?? "—"} min ${treatmentName}${price ? ` · ${price}` : ""}`
+              ? `${currentSelection?.treatmentMinutes ?? "—"} min ${treatmentName}${price ? ` · ${price}` : ""}`
               : "—"}
           </div>
         </div>
@@ -120,6 +123,11 @@ export function MasseurDashboard() {
               </div>
               <div className="flex items-center gap-1.5 text-xl font-semibold text-charcoal sm:text-2xl">
                 <Users size={18} className="text-slate-light" />2
+                {state.separateTreatments && (
+                  <span className="rounded-full bg-clay-tint px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-clay-dark">
+                    Różne zabiegi
+                  </span>
+                )}
               </div>
             </div>
           </>
