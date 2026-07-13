@@ -86,8 +86,8 @@ export const ui: Record<string, Dict> = {
     id: "Musik latar",
     uk: "Фонова музика",
   },
-  on: { pl: "WŁĄCZONE", en: "ON", id: "AKTIF", uk: "УВІМКНЕНО" },
-  off: { pl: "WYŁĄCZONE", en: "OFF", id: "NONAKTIF", uk: "ВИМКНЕНО" },
+  on: { pl: "Włączone", en: "On", id: "Aktif", uk: "Увімкнено" },
+  off: { pl: "Wyłączone", en: "Off", id: "Nonaktif", uk: "Вимкнено" },
   importantWarning: {
     pl: "WAŻNE: Przestrzegaj stref wykluczonych",
     en: "IMPORTANT: Respect excluded zones",
