@@ -20,6 +20,7 @@ import { StaticBodyMap } from "../BodyMap/StaticBodyMap";
 import { GuestNoteCard } from "../GuestNoteCard";
 import { massageTypes, durationPrice, formatPrice } from "../../data/massageTypes";
 import { oils } from "../../data/oils";
+import { guestDisplayName } from "../../utils/guestName";
 import {
   communicationTranslations,
   languages,
@@ -96,7 +97,7 @@ export function MasseurDashboard() {
             {t("guest", lang)}
           </div>
           <div className="text-xl font-semibold text-charcoal sm:text-2xl">
-            {state.guestName || "—"}
+            {guestDisplayName(state.guestNames, state.partySize)}
           </div>
         </div>
         <div className="hidden h-10 w-px bg-sand sm:block" />
@@ -160,7 +161,7 @@ export function MasseurDashboard() {
                   : "text-slate hover:bg-oatmeal"
               }`}
             >
-              {t("person", lang)} {i + 1}
+              {state.guestNames[i]?.trim() || `${t("person", lang)} ${i + 1}`}
             </button>
           ))}
         </div>

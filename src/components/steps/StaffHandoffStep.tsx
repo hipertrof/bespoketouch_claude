@@ -2,6 +2,7 @@ import { ArrowRight, Hand } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
 import { massageTypes } from "../../data/massageTypes";
+import { guestDisplayName } from "../../utils/guestName";
 
 export function StaffHandoffStep() {
   const { state, dispatch } = useGuest();
@@ -14,7 +15,7 @@ export function StaffHandoffStep() {
         <Hand size={36} strokeWidth={1.5} />
       </div>
       <h1 className="mb-3 font-serif text-3xl text-charcoal sm:text-4xl">
-        Wszystko gotowe, {state.guestName || "Gościu"}.
+        Wszystko gotowe, {guestDisplayName(state.guestNames, state.partySize)}.
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
         {treatment

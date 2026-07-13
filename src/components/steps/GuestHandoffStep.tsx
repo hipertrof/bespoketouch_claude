@@ -5,7 +5,12 @@ import { Button } from "../Button";
 // Interstitial shown between the two guests of a couple's treatment, once
 // the first person has finished the body map + preferences steps.
 export function GuestHandoffStep() {
-  const { dispatch } = useGuest();
+  const { state, dispatch } = useGuest();
+  // activeGuestIndex is already advanced to the next guest by the time this
+  // screen renders (see COMPLETE_GUEST_PREFERENCES), so index 0 is always
+  // "who just finished" and activeGuestIndex is "who's next".
+  const finishedName = state.guestNames[0]?.trim() || "Pierwsza osoba";
+  const nextName = state.guestNames[state.activeGuestIndex]?.trim() || "Druga osoba";
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">
@@ -13,11 +18,11 @@ export function GuestHandoffStep() {
         <Hand size={36} strokeWidth={1.5} />
       </div>
       <h1 className="mb-3 font-serif text-3xl text-charcoal sm:text-4xl">
-        Dziękujemy! Teraz kolej na drugą osobę.
+        Dziękujemy, {finishedName}! Kolejna osoba: {nextName}.
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
-        Przekaż tablet drugiej osobie, aby mogła zaznaczyć swoje obszary
-        pracy i dopasować własne preferencje.
+        {nextName}, przekazujemy Ci tablet — możesz teraz zaznaczyć swoje
+        obszary pracy i dopasować własne preferencje.
       </p>
 
       <Button onClick={() => dispatch({ type: "SET_STEP", step: "bodyMap" })} className="mt-10">

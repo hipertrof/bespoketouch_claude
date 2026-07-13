@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ArrowRight, Sparkles, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import {
@@ -19,13 +18,18 @@ const partySizeOptions: { value: PartySize; label: string }[] = [
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
-  const [name, setName] = useState(state.guestName);
   const selectedId = state.treatmentId;
+  const isCouple = state.partySize === 2;
 
-  const canContinue = name.trim().length > 0 && selectedId !== null && state.treatmentMinutes !== null;
+  const namesFilled = state.guestNames
+    .slice(0, state.partySize)
+    .every((n) => n.trim().length > 0);
+  const canContinue = namesFilled && selectedId !== null && state.treatmentMinutes !== null;
 
   const handleContinue = () => {
-    dispatch({ type: "SET_NAME", name: name.trim() });
+    state.guestNames.slice(0, state.partySize).forEach((n, i) => {
+      dispatch({ type: "SET_GUEST_NAME", index: i, name: n.trim() });
+    });
     dispatch({ type: "SET_STEP", step: "staffHandoff" });
   };
 
@@ -56,23 +60,6 @@ export function WelcomeStep() {
       </div>
 
       <div className="mb-10">
-        <label
-          htmlFor="guestName"
-          className="mb-2.5 block text-sm font-semibold text-charcoal"
-        >
-          Imię gościa
-        </label>
-        <input
-          id="guestName"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Wpisz imię gościa"
-          className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-lg text-charcoal placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
-        />
-      </div>
-
-      <div className="mb-10">
         <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-charcoal">
           <Users size={16} className="text-slate-light" />
           Liczba osób
@@ -93,11 +80,48 @@ export function WelcomeStep() {
             </button>
           ))}
         </div>
-        {state.partySize === 2 && (
+        {isCouple && (
           <p className="mt-2.5 max-w-md text-xs leading-relaxed text-slate-light">
             Osoby personalizują masaż kolejno, jedna po drugiej, na tym samym
             tablecie.
           </p>
+        )}
+      </div>
+
+      <div className="mb-10 flex flex-wrap gap-6">
+        <div>
+          <label
+            htmlFor="guestName-0"
+            className="mb-2.5 block text-sm font-semibold text-charcoal"
+          >
+            {isCouple ? "Imię pierwszej osoby" : "Imię gościa"}
+          </label>
+          <input
+            id="guestName-0"
+            type="text"
+            value={state.guestNames[0] ?? ""}
+            onChange={(e) => dispatch({ type: "SET_GUEST_NAME", index: 0, name: e.target.value })}
+            placeholder="Wpisz imię gościa"
+            className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-lg text-charcoal placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+          />
+        </div>
+        {isCouple && (
+          <div>
+            <label
+              htmlFor="guestName-1"
+              className="mb-2.5 block text-sm font-semibold text-charcoal"
+            >
+              Imię drugiej osoby
+            </label>
+            <input
+              id="guestName-1"
+              type="text"
+              value={state.guestNames[1] ?? ""}
+              onChange={(e) => dispatch({ type: "SET_GUEST_NAME", index: 1, name: e.target.value })}
+              placeholder="Wpisz imię drugiej osoby"
+              className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-lg text-charcoal placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+            />
+          </div>
         )}
       </div>
 

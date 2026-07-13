@@ -43,7 +43,7 @@ export function PreferencesStep() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       {isCouple && (
         <span className="mb-3 inline-flex items-center rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
-          Osoba {state.activeGuestIndex + 1} z 2
+          {state.guestNames[state.activeGuestIndex]?.trim() || `Osoba ${state.activeGuestIndex + 1}`}
         </span>
       )}
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">

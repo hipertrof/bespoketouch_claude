@@ -19,7 +19,7 @@ const createPersonalization = (): PersonalizationState => ({
 
 const initialState: GuestState = {
   step: "welcome",
-  guestName: "",
+  guestNames: [""],
   treatmentId: null,
   treatmentMinutes: null,
   partySize: 1,
@@ -41,8 +41,10 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
   switch (action.type) {
     case "SET_STEP":
       return { ...state, step: action.step };
-    case "SET_NAME":
-      return { ...state, guestName: action.name };
+    case "SET_GUEST_NAME": {
+      const guestNames = state.guestNames.map((n, i) => (i === action.index ? action.name : n));
+      return { ...state, guestNames };
+    }
     case "SET_TREATMENT":
       return { ...state, treatmentId: action.treatmentId, treatmentMinutes: null };
     case "SET_TREATMENT_MINUTES":
@@ -54,6 +56,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
             ? state.guests
             : [...state.guests, createPersonalization()]
           : [state.guests[0]];
+      const guestNames =
+        action.partySize === 2
+          ? state.guestNames.length === 2
+            ? state.guestNames
+            : [...state.guestNames, ""]
+          : [state.guestNames[0]];
 
       // The currently selected treatment/duration may not be offered for the
       // new party size (e.g. "Balijski z Masłem Shea" has no couple price) —
@@ -73,6 +81,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         ...state,
         partySize: action.partySize,
         guests,
+        guestNames,
         activeGuestIndex: 0,
         treatmentId: treatmentStillOffered ? state.treatmentId : null,
         treatmentMinutes: treatmentStillOffered && minutesStillValid ? state.treatmentMinutes : null,

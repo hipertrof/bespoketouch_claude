@@ -97,7 +97,8 @@ export interface PersonalizationState {
 
 export interface GuestState {
   step: AppStep;
-  guestName: string;
+  // Index-aligned with `guests` — guestNames[i] is the name of guests[i].
+  guestNames: string[];
   treatmentId: string | null;
   treatmentMinutes: number | null;
   partySize: PartySize;
@@ -108,7 +109,7 @@ export interface GuestState {
 
 export type GuestAction =
   | { type: "SET_STEP"; step: AppStep }
-  | { type: "SET_NAME"; name: string }
+  | { type: "SET_GUEST_NAME"; index: number; name: string }
   | { type: "SET_TREATMENT"; treatmentId: string }
   | { type: "SET_TREATMENT_MINUTES"; minutes: number }
   | { type: "SET_PARTY_SIZE"; partySize: PartySize }
