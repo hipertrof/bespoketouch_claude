@@ -20,6 +20,8 @@ type Dict = Record<LangCode, string>;
 export const ui: Record<string, Dict> = {
   guest: { pl: "Gość", en: "Guest", id: "Tamu", uk: "Гість" },
   treatment: { pl: "Zabieg", en: "Treatment", id: "Perawatan", uk: "Процедура" },
+  person: { pl: "Osoba", en: "Person", id: "Orang", uk: "Особа" },
+  partySize: { pl: "Liczba osób", en: "Party size", id: "Jumlah orang", uk: "Кількість осіб" },
   bodyZones: { pl: "Strefy ciała", en: "Body zones", id: "Zona tubuh", uk: "Зони тіла" },
   front: { pl: "Przód", en: "Front", id: "Depan", uk: "Перед" },
   back: { pl: "Tył", en: "Back", id: "Belakang", uk: "Спина" },
@@ -179,23 +181,89 @@ export const zoneTranslations: Record<ZoneId, Dict> = {
 };
 
 export const massageNameTranslations: Record<string, Dict> = {
+  tajski: {
+    pl: "Masaż Tajski",
+    en: "Thai Massage",
+    id: "Pijat Thailand",
+    uk: "Тайський масаж",
+  },
   balijski: {
     pl: "Masaż Balijski",
     en: "Balinese Massage",
     id: "Pijat Bali",
     uk: "Балійський масаж",
   },
-  gleboki: {
-    pl: "Masaż Głęboki",
-    en: "Deep Tissue Massage",
-    id: "Pijat Jaringan Dalam",
-    uk: "Глибокий масаж",
+  "balijski-cieplymi-olejkami": {
+    pl: "Masaż Balijski Ciepłymi Olejkami",
+    en: "Balinese Massage with Warm Oils",
+    id: "Pijat Bali dengan Minyak Hangat",
+    uk: "Балійський масаж теплими оліями",
   },
-  szwedzki: {
-    pl: "Masaż Szwedzki",
-    en: "Swedish Massage",
-    id: "Pijat Swedia",
-    uk: "Шведський масаж",
+  "balijski-maslo-shea": {
+    pl: "Masaż Balijski z Masłem Shea",
+    en: "Balinese Massage with Shea Butter",
+    id: "Pijat Bali dengan Shea Butter",
+    uk: "Балійський масаж з маслом ши",
+  },
+  "balijski-mocny": {
+    pl: "Masaż Balijski Mocny (Sportowy)",
+    en: "Deep Balinese Massage (Sport)",
+    id: "Pijat Bali Kuat (Olahraga)",
+    uk: "Сильний балійський масаж (спортивний)",
+  },
+  "lomi-lomi": {
+    pl: "Masaż Lomi Lomi",
+    en: "Lomi Lomi Massage",
+    id: "Pijat Lomi Lomi",
+    uk: "Масаж Ломі-Ломі",
+  },
+  "bambusem-relaksacyjny": {
+    pl: "Relaksacyjny Masaż Bambusem",
+    en: "Relaxing Bamboo Massage",
+    id: "Pijat Bambu Relaksasi",
+    uk: "Розслаблюючий бамбуковий масаж",
+  },
+  "bambusem-antycellulitowy": {
+    pl: "Antycellulitowy Masaż Bambusem",
+    en: "Anti-Cellulite Bamboo Massage",
+    id: "Pijat Bambu Anti-Selulit",
+    uk: "Антицелюлітний бамбуковий масаж",
+  },
+  "gornej-czesci-ciala": {
+    pl: "Masaż Górnej Części Ciała",
+    en: "Upper Body Massage",
+    id: "Pijat Tubuh Bagian Atas",
+    uk: "Масаж верхньої частини тіла",
+  },
+  "stop-refleksologia": {
+    pl: "Masaż Stóp z Refleksologią",
+    en: "Foot Massage with Reflexology",
+    id: "Pijat Kaki dengan Refleksologi",
+    uk: "Масаж стоп з рефлексологією",
+  },
+  "twarzy-arganowy": {
+    pl: "Odmładzający Masaż Twarzy Olejkiem Arganowym",
+    en: "Rejuvenating Facial Massage with Argan Oil",
+    id: "Pijat Wajah Peremajaan dengan Minyak Argan",
+    uk: "Омолоджувальний масаж обличчя з аргановою олією",
+  },
+  "twarzy-liftingujacy": {
+    pl: "Nusa Liftingujący Masaż Twarzy",
+    en: "Nusa Face-Lifting Massage",
+    id: "Pijat Wajah Pengencangan Nusa",
+    uk: "Ліфтинговий масаж обличчя Nusa",
+  },
+  "balijski-ciaza": {
+    pl: "Masaż Balijski dla Kobiet w Ciąży",
+    en: "Balinese Massage for Pregnant Women",
+    id: "Pijat Bali untuk Ibu Hamil",
+    uk: "Балійський масаж для вагітних",
+  },
+  "balijski-dzieci": {
+    pl: "Masaż Balijski dla Dzieci",
+    en: "Balinese Massage for Children",
+    id: "Pijat Bali untuk Anak-anak",
+    uk: "Балійський масаж для дітей",
   },
   "goracymi-kamieniami": {
     pl: "Masaż Gorącymi Kamieniami",
@@ -203,11 +271,23 @@ export const massageNameTranslations: Record<string, Dict> = {
     id: "Pijat Batu Panas",
     uk: "Масаж гарячими каменями",
   },
-  prenatalny: {
-    pl: "Masaż Prenatalny",
-    en: "Prenatal Massage",
-    id: "Pijat Prenatal",
-    uk: "Пренатальний масаж",
+  stemplami: {
+    pl: "Masaż Stemplami",
+    en: "Herbal Compress Massage",
+    id: "Pijat Kompres Herbal",
+    uk: "Масаж трав'яними мішечками",
+  },
+  "goraca-swieca": {
+    pl: "Masaż Gorącą Świecą",
+    en: "Hot Candle Massage",
+    id: "Pijat Lilin Panas",
+    uk: "Масаж гарячою свічкою",
+  },
+  "cztery-rece": {
+    pl: "Ekskluzywny Masaż na 4 Ręce",
+    en: "Exclusive Four-Hands Massage",
+    id: "Pijat Empat Tangan Eksklusif",
+    uk: "Ексклюзивний масаж на 4 руки",
   },
 };
 

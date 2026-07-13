@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, Ban, MessageSquareText, Star } from "lucide-react";
-import { useGuest } from "../../context/GuestContext";
+import { useGuest, useActiveGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
 import { BodySilhouette, figureAspectRatio } from "../BodyMap/BodySilhouette";
 import { ZoneMarker } from "../BodyMap/ZoneMarker";
 import { ZonePopover } from "../BodyMap/ZonePopover";
 import { markersForView } from "../BodyMap/markerPositions";
 import { zoneLabel, zoneSummaryLabel } from "../../data/zones";
-import type { BodyView, ZoneId, ZoneMark } from "../../types";
+import type { BodyGender, BodyView, ZoneId, ZoneMark } from "../../types";
 
 function ZoneChipWithNote({ label, note }: { label: string; note?: string }) {
   const trimmed = note?.trim();
@@ -23,13 +23,15 @@ function ZoneChipWithNote({ label, note }: { label: string; note?: string }) {
 
 export function BodyMapStep() {
   const { state, dispatch } = useGuest();
+  const activeGuest = useActiveGuest();
   const [view, setView] = useState<BodyView>("front");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
+  const isCouple = state.partySize === 2;
   const markers = markersForView(view);
 
   const zonesByMark = (mark: ZoneMark): ZoneId[] =>
-    (Object.entries(state.zones) as [ZoneId, ZoneMark][])
+    (Object.entries(activeGuest.zones) as [ZoneId, ZoneMark][])
       .filter(([, m]) => m === mark)
       .map(([id]) => id);
 
@@ -38,10 +40,10 @@ export function BodyMapStep() {
 
   // Zones that only have a note attached (mark left at "standard") — without
   // this, a comment-only zone never shows up anywhere in the summary.
-  const notedStandardZones = (Object.keys(state.zoneNotes) as ZoneId[]).filter((id) => {
-    const note = state.zoneNotes[id]?.trim();
+  const notedStandardZones = (Object.keys(activeGuest.zoneNotes) as ZoneId[]).filter((id) => {
+    const note = activeGuest.zoneNotes[id]?.trim();
     if (!note) return false;
-    const mark = state.zones[id] ?? "standard";
+    const mark = activeGuest.zones[id] ?? "standard";
     return mark !== "priority" && mark !== "blocked";
   });
 
@@ -66,6 +68,11 @@ export function BodyMapStep() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      {isCouple && (
+        <span className="mb-3 inline-flex items-center rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
+          Osoba {state.activeGuestIndex + 1} z 2
+        </span>
+      )}
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">
         Obszary pracy
       </h1>
@@ -76,40 +83,59 @@ export function BodyMapStep() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
         <div>
-          <div className="mb-5 inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
-            {(["front", "back"] as BodyView[]).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => {
-                  setView(v);
-                  setActiveIndex(null);
-                }}
-                className={`min-h-11 rounded-full px-6 text-sm font-semibold transition-all duration-300 ${
-                  view === v
-                    ? "bg-sage-dark text-cream shadow-soft"
-                    : "text-slate hover:bg-oatmeal"
-                }`}
-              >
-                {v === "front" ? "Przód" : "Tył"}
-              </button>
-            ))}
+          <div className="mb-5 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
+              {(["front", "back"] as BodyView[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => {
+                    setView(v);
+                    setActiveIndex(null);
+                  }}
+                  className={`min-h-11 rounded-full px-6 text-sm font-semibold transition-all duration-300 ${
+                    view === v
+                      ? "bg-sage-dark text-cream shadow-soft"
+                      : "text-slate hover:bg-oatmeal"
+                  }`}
+                >
+                  {v === "front" ? "Przód" : "Tył"}
+                </button>
+              ))}
+            </div>
+
+            <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
+              {(["female", "male"] as BodyGender[]).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => dispatch({ type: "SET_BODY_GENDER", bodyGender: g })}
+                  className={`min-h-11 rounded-full px-5 text-sm font-semibold transition-all duration-300 ${
+                    activeGuest.bodyGender === g
+                      ? "bg-clay text-white shadow-soft"
+                      : "text-slate hover:bg-oatmeal"
+                  }`}
+                >
+                  {g === "male" ? "Mężczyzna" : "Kobieta"}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div
-            style={{ aspectRatio: figureAspectRatio(state.bodyGender) }}
+            style={{ aspectRatio: figureAspectRatio(activeGuest.bodyGender) }}
             className="relative mx-auto w-full max-w-64 select-none rounded-3xl border border-sand/60 bg-white/60 p-6 shadow-soft sm:max-w-72"
             onClick={(e) => {
               if (e.target === e.currentTarget) setActiveIndex(null);
             }}
           >
-            <BodySilhouette view={view} gender={state.bodyGender} />
+            <BodySilhouette view={view} gender={activeGuest.bodyGender} />
             {markers.map((marker, index) => (
               <ZoneMarker
                 key={`${marker.zoneId}-${index}`}
                 position={marker}
                 label={zoneLabel(marker.zoneId)}
-                mark={state.zones[marker.zoneId] ?? "standard"}
+                mark={activeGuest.zones[marker.zoneId] ?? "standard"}
                 isActive={activeIndex === index}
                 onToggle={() => handleToggle(index)}
               />
@@ -118,8 +144,8 @@ export function BodyMapStep() {
               <ZonePopover
                 position={markers[activeIndex]}
                 label={zoneLabel(markers[activeIndex].zoneId)}
-                current={state.zones[markers[activeIndex].zoneId] ?? "standard"}
-                note={state.zoneNotes[markers[activeIndex].zoneId] ?? ""}
+                current={activeGuest.zones[markers[activeIndex].zoneId] ?? "standard"}
+                note={activeGuest.zoneNotes[markers[activeIndex].zoneId] ?? ""}
                 onSelect={handleSelect}
                 onNoteChange={handleNoteChange}
                 onClose={() => setActiveIndex(null)}
@@ -148,7 +174,7 @@ export function BodyMapStep() {
               </h3>
               <div className="flex flex-col gap-2">
                 {priorityZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -162,7 +188,7 @@ export function BodyMapStep() {
               </h3>
               <div className="flex flex-col gap-2">
                 {blockedZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -176,7 +202,7 @@ export function BodyMapStep() {
               </h3>
               <div className="flex flex-col gap-2">
                 {notedStandardZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={state.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -196,7 +222,7 @@ export function BodyMapStep() {
             </p>
             <textarea
               id="generalNote"
-              value={state.generalNote}
+              value={activeGuest.generalNote}
               onChange={(e) =>
                 dispatch({ type: "SET_GENERAL_NOTE", note: e.target.value })
               }
@@ -211,7 +237,12 @@ export function BodyMapStep() {
       <div className="mt-10 flex flex-col-reverse justify-between gap-3 sm:flex-row">
         <Button
           variant="secondary"
-          onClick={() => dispatch({ type: "SET_STEP", step: "staffHandoff" })}
+          onClick={() =>
+            dispatch({
+              type: "SET_STEP",
+              step: isCouple && state.activeGuestIndex === 1 ? "guestHandoff" : "staffHandoff",
+            })
+          }
         >
           <ArrowLeft size={18} />
           Wstecz

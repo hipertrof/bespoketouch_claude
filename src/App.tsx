@@ -5,6 +5,7 @@ import { WelcomeStep } from "./components/steps/WelcomeStep";
 import { StaffHandoffStep } from "./components/steps/StaffHandoffStep";
 import { BodyMapStep } from "./components/steps/BodyMapStep";
 import { PreferencesStep } from "./components/steps/PreferencesStep";
+import { GuestHandoffStep } from "./components/steps/GuestHandoffStep";
 import { HandoffStep } from "./components/steps/HandoffStep";
 import { MasseurDashboard } from "./components/steps/MasseurDashboard";
 
@@ -25,6 +26,7 @@ function Screen() {
         {state.step === "staffHandoff" && <StaffHandoffStep />}
         {state.step === "bodyMap" && <BodyMapStep />}
         {state.step === "preferences" && <PreferencesStep />}
+        {state.step === "guestHandoff" && <GuestHandoffStep />}
         {state.step === "handoff" && <HandoffStep />}
         {state.step === "masseur" && <MasseurDashboard />}
       </main>

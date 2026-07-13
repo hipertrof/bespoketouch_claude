@@ -1,4 +1,4 @@
-import type { BodyGender, BodyView, GuestState, ZoneMark } from "../../types";
+import type { BodyGender, BodyView, PersonalizationState, ZoneMark } from "../../types";
 import { BodySilhouette, figureAspectRatio } from "./BodySilhouette";
 import { markersForView } from "./markerPositions";
 import { t, tZone, type LangCode } from "../../i18n/translations";
@@ -16,7 +16,7 @@ export function StaticBodyMap({
 }: {
   view: BodyView;
   gender: BodyGender;
-  zones: GuestState["zones"];
+  zones: PersonalizationState["zones"];
   lang?: LangCode;
 }) {
   const markers = markersForView(view).filter((m) => {

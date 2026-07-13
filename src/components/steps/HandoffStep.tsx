@@ -4,6 +4,7 @@ import { Button } from "../Button";
 
 export function HandoffStep() {
   const { state, dispatch } = useGuest();
+  const isCouple = state.partySize === 2;
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">
@@ -14,8 +15,8 @@ export function HandoffStep() {
         Dziękujemy, {state.guestName || "Gościu"}.
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
-        Twoje preferencje zostały zapisane. Prosimy o przekazanie tabletu
-        recepcjonistce lub masażyście.
+        {isCouple ? "Wasze preferencje zostały zapisane." : "Twoje preferencje zostały zapisane."}{" "}
+        Prosimy o przekazanie tabletu recepcjonistce lub masażyście.
       </p>
 
       <Button

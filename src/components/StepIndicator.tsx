@@ -9,8 +9,14 @@ const STEPS: { step: AppStep; label: string }[] = [
 ];
 
 // staffHandoff is a brief interstitial before the guest begins Krok 1's tasks,
-// so it renders as part of "Powitanie" rather than its own step.
-const normalizeStep = (step: AppStep): AppStep => (step === "staffHandoff" ? "welcome" : step);
+// so it renders as part of "Powitanie" rather than its own step. guestHandoff
+// (between the two people of a couple's treatment) leads back into the body
+// map, so it renders as part of "Mapa ciała".
+const normalizeStep = (step: AppStep): AppStep => {
+  if (step === "staffHandoff") return "welcome";
+  if (step === "guestHandoff") return "bodyMap";
+  return step;
+};
 
 export function StepIndicator({ current }: { current: AppStep }) {
   const currentIndex = STEPS.findIndex((s) => s.step === normalizeStep(current));

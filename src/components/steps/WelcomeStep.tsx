@@ -1,21 +1,43 @@
 import { useState } from "react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
-import { massageTypes } from "../../data/massageTypes";
+import {
+  massageTypes,
+  availableDurations,
+  durationPrice,
+  formatPrice,
+  isAvailableForPartySize,
+  lowestPrice,
+} from "../../data/massageTypes";
 import { Button } from "../Button";
-import type { BodyGender } from "../../types";
+import type { MassageType, PartySize } from "../../types";
+
+const partySizeOptions: { value: PartySize; label: string }[] = [
+  { value: 1, label: "1 osoba" },
+  { value: 2, label: "2 osoby (para)" },
+];
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
   const [name, setName] = useState(state.guestName);
   const selectedId = state.treatmentId;
 
-  const canContinue = name.trim().length > 0 && selectedId !== null;
+  const canContinue = name.trim().length > 0 && selectedId !== null && state.treatmentMinutes !== null;
 
   const handleContinue = () => {
     dispatch({ type: "SET_NAME", name: name.trim() });
     dispatch({ type: "SET_STEP", step: "staffHandoff" });
   };
+
+  const handleSelectMassage = (massage: MassageType) => {
+    dispatch({ type: "SET_TREATMENT", treatmentId: massage.id });
+    const durations = availableDurations(massage, state.partySize);
+    if (durations.length === 1) {
+      dispatch({ type: "SET_TREATMENT_MINUTES", minutes: durations[0].minutes });
+    }
+  };
+
+  const availableMassages = massageTypes.filter((m) => isAvailableForPartySize(m, state.partySize));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
@@ -51,25 +73,32 @@ export function WelcomeStep() {
       </div>
 
       <div className="mb-10">
-        <h2 className="mb-4 text-sm font-semibold text-charcoal">
-          Sylwetka na mapie ciała
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <Users size={16} className="text-slate-light" />
+          Liczba osób
         </h2>
         <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
-          {(["female", "male"] as BodyGender[]).map((g) => (
+          {partySizeOptions.map((opt) => (
             <button
-              key={g}
+              key={opt.value}
               type="button"
-              onClick={() => dispatch({ type: "SET_BODY_GENDER", bodyGender: g })}
+              onClick={() => dispatch({ type: "SET_PARTY_SIZE", partySize: opt.value })}
               className={`min-h-12 rounded-full px-6 text-sm font-semibold transition-all duration-300 ${
-                state.bodyGender === g
+                state.partySize === opt.value
                   ? "bg-clay text-white shadow-soft"
                   : "text-slate hover:bg-oatmeal"
               }`}
             >
-              {g === "male" ? "Mężczyzna" : "Kobieta"}
+              {opt.label}
             </button>
           ))}
         </div>
+        {state.partySize === 2 && (
+          <p className="mt-2.5 max-w-md text-xs leading-relaxed text-slate-light">
+            Osoby personalizują masaż kolejno, jedna po drugiej, na tym samym
+            tablecie.
+          </p>
+        )}
       </div>
 
       <div className="mb-10">
@@ -77,37 +106,61 @@ export function WelcomeStep() {
           Wybór masażu
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {massageTypes.map((massage) => {
+          {availableMassages.map((massage) => {
             const isSelected = selectedId === massage.id;
+            const durations = availableDurations(massage, state.partySize);
+            const from = lowestPrice(massage, state.partySize);
             return (
-              <button
+              <div
                 key={massage.id}
-                type="button"
-                onClick={() =>
-                  dispatch({ type: "SET_TREATMENT", treatmentId: massage.id })
-                }
-                className={`group flex min-h-32 flex-col justify-between rounded-2xl border p-5 text-left shadow-soft transition-all duration-300 active:scale-[0.98] ${
+                className={`flex min-h-32 flex-col justify-between rounded-2xl border p-5 shadow-soft transition-all duration-300 ${
                   isSelected
                     ? "border-clay bg-clay-tint ring-2 ring-clay/40"
                     : "border-sand bg-white hover:border-clay/50 hover:bg-oatmeal/60"
                 }`}
               >
-                <div>
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <h3 className="text-base font-semibold text-charcoal">
-                      {massage.name}
-                    </h3>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMassage(massage)}
+                  className="flex w-full flex-col items-start gap-1 text-left active:scale-[0.98]"
+                >
+                  <h3 className="text-base font-semibold text-charcoal">
+                    {massage.name}
+                  </h3>
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-light">
-                    {massage.duration}
+                    {durations.length > 1 ? `od ${formatPrice(from!)}` : formatPrice(from!)}
                   </span>
-                </div>
+                </button>
+
                 {isSelected && (
-                  <p className="mt-3 text-sm leading-relaxed text-charcoal/80">
-                    {massage.description}
-                  </p>
+                  <div className="mt-3">
+                    <p className="text-sm leading-relaxed text-charcoal/80">
+                      {massage.description}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {durations.map((d) => {
+                        const isDurationSelected = state.treatmentMinutes === d.minutes;
+                        return (
+                          <button
+                            key={d.minutes}
+                            type="button"
+                            onClick={() =>
+                              dispatch({ type: "SET_TREATMENT_MINUTES", minutes: d.minutes })
+                            }
+                            className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] ${
+                              isDurationSelected
+                                ? "border-sage-dark bg-sage-dark text-cream"
+                                : "border-sand bg-white text-slate hover:border-clay/40"
+                            }`}
+                          >
+                            {d.minutes} min · {formatPrice(durationPrice(d, state.partySize)!)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

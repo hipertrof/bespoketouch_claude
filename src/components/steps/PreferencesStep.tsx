@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
-import { useGuest } from "../../context/GuestContext";
+import { useGuest, useActiveGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
 import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
@@ -30,7 +30,9 @@ const musicOptions: { value: MusicPreference; label: string; icon: ReactNode }[]
 
 export function PreferencesStep() {
   const { state, dispatch } = useGuest();
-  const { preferences } = state;
+  const activeGuest = useActiveGuest();
+  const { preferences } = activeGuest;
+  const isCouple = state.partySize === 2;
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -39,6 +41,11 @@ export function PreferencesStep() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      {isCouple && (
+        <span className="mb-3 inline-flex items-center rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
+          Osoba {state.activeGuestIndex + 1} z 2
+        </span>
+      )}
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">
         Twoje preferencje
       </h1>
@@ -211,7 +218,7 @@ export function PreferencesStep() {
           <ArrowLeft size={18} />
           Wstecz
         </Button>
-        <Button onClick={() => dispatch({ type: "SET_STEP", step: "handoff" })}>
+        <Button onClick={() => dispatch({ type: "COMPLETE_GUEST_PREFERENCES" })}>
           Zatwierdź i zablokuj preferencje
           <ArrowRight size={18} />
         </Button>

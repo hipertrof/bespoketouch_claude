@@ -6,6 +6,7 @@ import { massageTypes } from "../../data/massageTypes";
 export function StaffHandoffStep() {
   const { state, dispatch } = useGuest();
   const treatment = massageTypes.find((m) => m.id === state.treatmentId);
+  const isCouple = state.partySize === 2;
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">
@@ -17,11 +18,20 @@ export function StaffHandoffStep() {
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
         {treatment
-          ? `Wybrany zabieg to ${treatment.name.toLowerCase()}.`
+          ? `Wybrany zabieg to ${treatment.name.toLowerCase()}${
+              state.treatmentMinutes ? ` (${state.treatmentMinutes} min)` : ""
+            }.`
           : "Twój zabieg jest już wybrany."}{" "}
         Zaznacz teraz obszary pracy na mapie ciała i dopasuj swoje
         preferencje.
       </p>
+
+      {isCouple && (
+        <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-light">
+          Ten zabieg jest dla dwóch osób — najpierw personalizuje pierwsza
+          osoba, a po zakończeniu przekażecie tablet drugiej.
+        </p>
+      )}
 
       <Button onClick={() => dispatch({ type: "SET_STEP", step: "bodyMap" })} className="mt-10">
         Rozpocznij personalizację
