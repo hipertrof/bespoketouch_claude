@@ -4,6 +4,10 @@ const DEEPL_TARGET: Partial<Record<LangCode, string>> = {
   en: "EN-US",
   id: "ID",
   uk: "UK",
+  it: "IT",
+  fr: "FR",
+  de: "DE",
+  es: "ES",
 };
 
 export function isTranslatable(lang: LangCode): boolean {

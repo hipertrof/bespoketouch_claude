@@ -41,6 +41,7 @@ const initialState: GuestState = {
   treatmentSelections: [{ treatmentId: null, treatmentMinutes: null }],
   separateTreatments: false,
   partySize: 1,
+  language: "pl",
   activeGuestIndex: 0,
   guests: [createPersonalization()],
 };
@@ -59,6 +60,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
   switch (action.type) {
     case "SET_STEP":
       return { ...state, step: action.step };
+    case "SET_LANGUAGE":
+      return { ...state, language: action.language };
     case "SET_GUEST_NAME": {
       const guestNames = state.guestNames.map((n, i) => (i === action.index ? action.name : n));
       return { ...state, guestNames };
@@ -153,6 +156,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     }
     case "SET_BODY_GENDER":
       return updateActiveGuest(state, (g) => ({ ...g, bodyGender: action.bodyGender }));
+    case "SET_GUEST_GENDER": {
+      const guests = state.guests.map((g, i) =>
+        i === action.index ? { ...g, bodyGender: action.bodyGender } : g,
+      );
+      return { ...state, guests };
+    }
     case "SET_ZONE_MARK":
       return updateActiveGuest(state, (g) => ({
         ...g,
@@ -177,7 +186,8 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       return { ...state, step: "handoff" };
     }
     case "RESET_SESSION":
-      return initialState;
+      // Keep the staff's chosen UI language across sessions.
+      return { ...initialState, language: state.language };
     default:
       return state;
   }

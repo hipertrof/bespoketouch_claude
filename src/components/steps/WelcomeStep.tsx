@@ -9,19 +9,22 @@ import {
   isAvailableForPartySize,
   lowestPrice,
 } from "../../data/massageTypes";
+import { massageNameTranslations, t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
 import { Toggle } from "../Toggle";
-import type { MassageType, PartySize } from "../../types";
+import type { BodyGender, MassageType, PartySize } from "../../types";
 
-const partySizeOptions: { value: PartySize; label: string }[] = [
-  { value: 1, label: "1 osoba" },
-  { value: 2, label: "2 osoby (para)" },
+const partySizeOptions: { value: PartySize; labelKey: string }[] = [
+  { value: 1, labelKey: "partyOne" },
+  { value: 2, labelKey: "partyTwo" },
 ];
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
+  const lang = state.language;
   const isCouple = state.partySize === 2;
   const showPersonTabs = isCouple && state.separateTreatments;
+  const massageName = (m: MassageType) => massageNameTranslations[m.id]?.[lang] ?? m.name;
 
   const [editingGuestIndex, setEditingGuestIndex] = useState(0);
   useEffect(() => {
@@ -64,31 +67,24 @@ export function WelcomeStep() {
   const otherGuestSummary = (index: number) => {
     const sel = state.treatmentSelections[index];
     const treatment = massageTypes.find((m) => m.id === sel?.treatmentId);
-    return treatment ? treatment.name : "nie wybrano";
+    return treatment ? massageName(treatment) : t("notChosen", lang);
   };
 
   const durationOptions = allDurationsForPartySize(state.partySize);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-      <div className="mb-10 flex flex-col items-start gap-3 sm:mb-14">
+      <div className="mb-10 flex flex-col items-start gap-3 sm:mb-10">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
           <Sparkles size={12} />
-          Zameldowanie gościa
+          {t("checkInBadge", lang)}
         </span>
-        <h1 className="font-serif text-3xl leading-tight text-charcoal sm:text-4xl lg:text-5xl">
-          Witaj w BespokeTouch.
-        </h1>
-        <p className="max-w-xl text-base leading-relaxed text-slate sm:text-lg">
-          Uzupełnij dane gościa i wybrany zabieg, a następnie przekaż tablet,
-          aby mógł spersonalizować swój masaż.
-        </p>
       </div>
 
       <div className="mb-10">
         <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-charcoal">
           <Users size={16} className="text-slate-light" />
-          Liczba osób
+          {t("partySize", lang)}
         </h2>
         <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
           {partySizeOptions.map((opt) => (
@@ -102,53 +98,62 @@ export function WelcomeStep() {
                   : "text-slate hover:bg-oatmeal"
               }`}
             >
-              {opt.label}
+              {t(opt.labelKey, lang)}
             </button>
           ))}
         </div>
         {isCouple && (
           <p className="mt-2.5 max-w-md text-xs leading-relaxed text-slate-light">
-            Osoby personalizują masaż kolejno, jedna po drugiej, na tym samym
-            tablecie.
+            {t("coupleHint", lang)}
           </p>
         )}
       </div>
 
-      <div className="mb-10 flex flex-wrap gap-6">
-        <div>
-          <label
-            htmlFor="guestName-0"
-            className="mb-2.5 block text-sm font-semibold text-charcoal"
-          >
-            {isCouple ? "Imię pierwszej osoby" : "Imię gościa"}
-          </label>
-          <input
-            id="guestName-0"
-            type="text"
-            value={state.guestNames[0] ?? ""}
-            onChange={(e) => dispatch({ type: "SET_GUEST_NAME", index: 0, name: e.target.value })}
-            placeholder="Wpisz imię gościa"
-            className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-lg text-charcoal placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
-          />
-        </div>
-        {isCouple && (
-          <div>
-            <label
-              htmlFor="guestName-1"
-              className="mb-2.5 block text-sm font-semibold text-charcoal"
-            >
-              Imię drugiej osoby
-            </label>
-            <input
-              id="guestName-1"
-              type="text"
-              value={state.guestNames[1] ?? ""}
-              onChange={(e) => dispatch({ type: "SET_GUEST_NAME", index: 1, name: e.target.value })}
-              placeholder="Wpisz imię drugiej osoby"
-              className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-lg text-charcoal placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
-            />
+      <div className="mb-10 flex flex-wrap gap-8">
+        {Array.from({ length: state.partySize }).map((_, i) => (
+          <div key={i} className="flex flex-col gap-3">
+            <div>
+              <label
+                htmlFor={`guestName-${i}`}
+                className="mb-2.5 block text-sm font-semibold text-charcoal"
+              >
+                {!isCouple
+                  ? t("nameGuest", lang)
+                  : i === 0
+                    ? t("nameFirst", lang)
+                    : t("nameSecond", lang)}
+              </label>
+              <input
+                id={`guestName-${i}`}
+                type="text"
+                value={state.guestNames[i] ?? ""}
+                onChange={(e) =>
+                  dispatch({ type: "SET_GUEST_NAME", index: i, name: e.target.value })
+                }
+                placeholder={t("namePlaceholder", lang)}
+                className="min-h-14 w-full max-w-md rounded-2xl border border-sand bg-white px-5 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+              />
+            </div>
+            <div>
+              <div className="inline-flex self-start rounded-full border border-sand bg-white p-1 shadow-soft">
+                {(["female", "male"] as BodyGender[]).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => dispatch({ type: "SET_GUEST_GENDER", index: i, bodyGender: g })}
+                    className={`min-h-10 rounded-full px-4 text-sm font-semibold transition-all duration-300 ${
+                      state.guests[i]?.bodyGender === g
+                        ? "bg-clay text-white shadow-soft"
+                        : "text-slate hover:bg-oatmeal"
+                    }`}
+                  >
+                    {g === "male" ? t("genderMale", lang) : t("genderFemale", lang)}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
       {isCouple && (
@@ -156,16 +161,16 @@ export function WelcomeStep() {
           <Toggle
             checked={state.separateTreatments}
             onChange={(v) => dispatch({ type: "SET_SEPARATE_TREATMENTS", separate: v })}
-            label="Różne masaże dla każdej osoby"
+            label={t("differentMassages", lang)}
           />
           <div>
             <div className="text-sm font-semibold text-charcoal">
-              Różne masaże dla każdej osoby
+              {t("differentMassages", lang)}
             </div>
             <div className="text-xs text-slate-light">
               {state.separateTreatments
-                ? "Każda osoba wybiera własny masaż; czas trwania jest wspólny dla obu."
-                : "Obie osoby otrzymują ten sam masaż."}
+                ? t("differentMassagesOn", lang)
+                : t("differentMassagesOff", lang)}
             </div>
           </div>
         </div>
@@ -173,12 +178,10 @@ export function WelcomeStep() {
 
       <div className="mb-10">
         <h2 className="mb-1 text-sm font-semibold text-charcoal">
-          Czas trwania
+          {t("durationHeading", lang)}
         </h2>
         <p className="mb-4 text-xs text-slate-light">
-          {isCouple
-            ? "Wspólny dla obu osób. Nie każdy masaż dostępny jest w każdym czasie trwania."
-            : "Nie każdy masaż dostępny jest w każdym czasie trwania."}
+          {isCouple ? t("durationHintCouple", lang) : t("durationHint", lang)}
         </p>
         <div className="flex flex-wrap gap-2">
           {durationOptions.map((minutes) => {
@@ -205,7 +208,7 @@ export function WelcomeStep() {
 
       <div className="mb-10">
         <h2 className="mb-4 text-sm font-semibold text-charcoal">
-          Wybór masażu
+          {t("massageChoiceHeading", lang)}
         </h2>
 
         {showPersonTabs && (
@@ -222,21 +225,21 @@ export function WelcomeStep() {
                       : "text-slate hover:bg-oatmeal"
                   }`}
                 >
-                  {state.guestNames[i]?.trim() || `Osoba ${i + 1}`}
+                  {state.guestNames[i]?.trim() || `${t("person", lang)} ${i + 1}`}
                 </button>
               ))}
             </div>
             <span className="text-xs text-slate-light">
-              {state.guestNames[1 - editingGuestIndex]?.trim() || `Osoba ${2 - editingGuestIndex}`}:{" "}
-              {otherGuestSummary(1 - editingGuestIndex)}
+              {state.guestNames[1 - editingGuestIndex]?.trim() ||
+                `${t("person", lang)} ${2 - editingGuestIndex}`}
+              : {otherGuestSummary(1 - editingGuestIndex)}
             </span>
           </div>
         )}
 
         {availableMassages.length === 0 ? (
           <p className="max-w-md text-sm font-medium text-rose-dark">
-            Żaden zabieg nie jest dostępny w wybranym czasie trwania — wybierz
-            inny czas trwania.
+            {t("noMassageForDuration", lang)}
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -251,27 +254,19 @@ export function WelcomeStep() {
                   key={massage.id}
                   type="button"
                   onClick={() => handleSelectMassage(massage)}
-                  className={`flex min-h-32 flex-col items-start justify-between rounded-2xl border p-5 text-left shadow-soft transition-all duration-300 active:scale-[0.98] ${
+                  className={`flex flex-col items-start gap-1 rounded-2xl border p-4 text-left shadow-soft transition-all duration-300 active:scale-[0.98] ${
                     isSelected
                       ? "border-clay bg-clay-tint ring-2 ring-clay/40"
                       : "border-sand bg-white hover:border-clay/50 hover:bg-oatmeal/60"
                   }`}
                 >
-                  <div className="flex w-full flex-col items-start gap-1">
-                    <h3 className="text-base font-semibold text-charcoal">
-                      {massage.name}
-                    </h3>
-                    {!state.separateTreatments && (
-                      <span className="text-xs font-medium uppercase tracking-wide text-slate-light">
-                        {durations.length > 1 ? `od ${formatPrice(from!)}` : formatPrice(from!)}
-                      </span>
-                    )}
-                  </div>
-
-                  {isSelected && (
-                    <p className="mt-3 text-sm leading-relaxed text-charcoal/80">
-                      {massage.description}
-                    </p>
+                  <h3 className="text-base font-semibold text-charcoal">{massageName(massage)}</h3>
+                  {!state.separateTreatments && (
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-light">
+                      {durations.length > 1
+                        ? tf("priceFrom", lang, { price: formatPrice(from!) })
+                        : formatPrice(from!)}
+                    </span>
                   )}
                 </button>
               );
@@ -286,7 +281,7 @@ export function WelcomeStep() {
           onClick={handleContinue}
           className="w-full sm:w-auto"
         >
-          Przekaż tablet gościowi
+          {t("handToGuest", lang)}
           <ArrowRight size={18} />
         </Button>
       </div>

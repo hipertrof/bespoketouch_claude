@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Ban, Check, CheckCircle2, Star } from "lucide-react";
-import type { ZoneMark } from "../../types";
+import type { LangCode, ZoneMark } from "../../types";
+import { t } from "../../i18n/translations";
 import type { MarkerPosition } from "./markerPositions";
 
 interface ZonePopoverProps {
@@ -8,6 +9,7 @@ interface ZonePopoverProps {
   label: string;
   current: ZoneMark;
   note: string;
+  lang: LangCode;
   onSelect: (mark: ZoneMark) => void;
   onNoteChange: (note: string) => void;
   onClose: () => void;
@@ -15,28 +17,28 @@ interface ZonePopoverProps {
 
 const options: {
   mark: ZoneMark;
-  title: string;
+  titleKey: string;
   icon: ReactNode;
   tint: string;
   border: string;
 }[] = [
   {
     mark: "priority",
-    title: "Obszar priorytetowy",
+    titleKey: "zonePriority",
     icon: <Star size={18} className="fill-clay-dark text-clay-dark" />,
     tint: "bg-clay-tint",
     border: "border-clay",
   },
   {
     mark: "standard",
-    title: "Standardowa uwaga",
+    titleKey: "zoneStandard",
     icon: <CheckCircle2 size={18} className="text-sage-dark" />,
     tint: "bg-sage-tint",
     border: "border-sage",
   },
   {
     mark: "blocked",
-    title: "Nie masować",
+    titleKey: "doNotMassage",
     icon: <Ban size={18} className="text-rose-dark" />,
     tint: "bg-rose-tint",
     border: "border-rose",
@@ -48,6 +50,7 @@ export function ZonePopover({
   label,
   current,
   note,
+  lang,
   onSelect,
   onNoteChange,
   onClose,
@@ -79,7 +82,7 @@ export function ZonePopover({
             onClick={onClose}
             className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-light transition-colors duration-200 hover:text-charcoal"
           >
-            Zamknij
+            {t("close", lang)}
           </button>
         </div>
 
@@ -102,7 +105,7 @@ export function ZonePopover({
                   {opt.icon}
                 </span>
                 <span className="flex-1 text-sm font-semibold uppercase tracking-wide text-charcoal">
-                  {opt.title}
+                  {t(opt.titleKey, lang)}
                 </span>
                 {isSelected && (
                   <Check size={17} strokeWidth={2.5} className="shrink-0 text-charcoal/70" />
@@ -117,13 +120,13 @@ export function ZonePopover({
             htmlFor="zoneNote"
             className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-light"
           >
-            Uwagi
+            {t("notes", lang)}
           </label>
           <textarea
             id="zoneNote"
             value={note}
             onChange={(e) => onNoteChange(e.target.value)}
-            placeholder="np. blizna, wrażliwa skóra…"
+            placeholder={t("zoneNotePlaceholder", lang)}
             rows={2}
             className="w-full resize-none rounded-xl border border-sand bg-cream/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
           />
@@ -133,7 +136,7 @@ export function ZonePopover({
             className="mt-3 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-sage-dark text-sm font-semibold text-cream transition-all duration-200 active:scale-[0.98] hover:bg-sage"
           >
             <Check size={16} />
-            Gotowe
+            {t("done", lang)}
           </button>
         </div>
       </div>

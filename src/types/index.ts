@@ -9,6 +9,10 @@ export type AppStep =
 
 export type BodyView = "front" | "back";
 
+// UI languages. Defined here (not in i18n/translations) so GuestState can
+// reference it without a circular import; translations.ts re-exports it.
+export type LangCode = "pl" | "en" | "uk" | "it" | "fr" | "de" | "es" | "id";
+
 export type BodyGender = "male" | "female";
 
 export type ZoneMark = "standard" | "priority" | "blocked";
@@ -110,6 +114,8 @@ export interface GuestState {
   // Only meaningful when partySize === 2.
   separateTreatments: boolean;
   partySize: PartySize;
+  // Global UI language, set from the header selector. Default "pl".
+  language: LangCode;
   // Index into `guests` for whichever person is currently personalizing.
   activeGuestIndex: number;
   guests: PersonalizationState[];
@@ -122,7 +128,9 @@ export type GuestAction =
   | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
   | { type: "SET_SEPARATE_TREATMENTS"; separate: boolean }
   | { type: "SET_PARTY_SIZE"; partySize: PartySize }
+  | { type: "SET_LANGUAGE"; language: LangCode }
   | { type: "SET_BODY_GENDER"; bodyGender: BodyGender }
+  | { type: "SET_GUEST_GENDER"; index: number; bodyGender: BodyGender }
   | { type: "SET_ZONE_MARK"; zoneId: ZoneId; mark: ZoneMark }
   | { type: "SET_ZONE_NOTE"; zoneId: ZoneId; note: string }
   | { type: "SET_GENERAL_NOTE"; note: string }

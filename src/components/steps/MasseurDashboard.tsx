@@ -35,7 +35,10 @@ import {
 
 export function MasseurDashboard() {
   const { state, dispatch } = useGuest();
-  const [lang, setLang] = useState<LangCode>("pl");
+  // Seed from the globally chosen language, but keep it independently
+  // switchable here (an Indonesian-speaking masseur can view an English
+  // guest's summary in Indonesian).
+  const [lang, setLang] = useState<LangCode>(state.language);
   const [selectedGuestIndex, setSelectedGuestIndex] = useState(0);
 
   const isCouple = state.partySize === 2;
@@ -125,7 +128,7 @@ export function MasseurDashboard() {
                 <Users size={18} className="text-slate-light" />2
                 {state.separateTreatments && (
                   <span className="rounded-full bg-clay-tint px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-clay-dark">
-                    Różne zabiegi
+                    {t("differentTreatments", lang)}
                   </span>
                 )}
               </div>

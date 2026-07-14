@@ -6,30 +6,40 @@ import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
 import { Toggle } from "../Toggle";
 import { oils } from "../../data/oils";
+import {
+  communicationTranslations,
+  musicTranslations,
+  oilNameTranslations,
+  oilSubtitleTranslations,
+  pillowTranslations,
+  pressureTranslations,
+  t,
+} from "../../i18n/translations";
 import type { CommunicationStyle, MusicPreference, PressureLevel } from "../../types";
 
-const pressureOptions: { value: PressureLevel; label: string }[] = [
-  { value: "Lekki", label: "Lekki" },
-  { value: "Średni", label: "Średni" },
-  { value: "Mocny", label: "Mocny" },
-  { value: "Głęboki", label: "Głęboki" },
-];
+const pressureOrder: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
 
-const pressureDescriptions: Record<PressureLevel, string> = {
-  Lekki: "Lekki nacisk – delikatny i kojący.",
-  Średni: "Średni nacisk – zrównoważony i relaksujący.",
-  Mocny: "Mocny nacisk – intensywny i pobudzający krążenie.",
-  Głęboki: "Głęboki nacisk – praca na głębokich warstwach mięśni.",
+const pressureDescKey: Record<PressureLevel, string> = {
+  Lekki: "pressureDescLight",
+  Średni: "pressureDescMedium",
+  Mocny: "pressureDescFirm",
+  Głęboki: "pressureDescDeep",
 };
 
-const musicOptions: { value: MusicPreference; label: string; icon: ReactNode }[] = [
-  { value: "nature", label: "Dźwięki natury", icon: <Music size={16} /> },
-  { value: "ambient", label: "Ambient", icon: <Music size={16} /> },
-  { value: "silence", label: "Cisza", icon: <VolumeX size={16} /> },
+const musicOptions: { value: MusicPreference; icon: ReactNode }[] = [
+  { value: "nature", icon: <Music size={16} /> },
+  { value: "ambient", icon: <Music size={16} /> },
+  { value: "silence", icon: <VolumeX size={16} /> },
+];
+
+const communicationOptions: { value: CommunicationStyle; subtitleKey: string; icon: ReactNode }[] = [
+  { value: "silent", subtitleKey: "commSilentSubtitle", icon: <VolumeX size={18} /> },
+  { value: "guided", subtitleKey: "commGuidedSubtitle", icon: <MessageCircle size={18} /> },
 ];
 
 export function PreferencesStep() {
   const { state, dispatch } = useGuest();
+  const lang = state.language;
   const activeGuest = useActiveGuest();
   const { preferences } = activeGuest;
   const isCouple = state.partySize === 2;
@@ -43,35 +53,35 @@ export function PreferencesStep() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       {isCouple && (
         <span className="mb-3 inline-flex items-center rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
-          {state.guestNames[state.activeGuestIndex]?.trim() || `Osoba ${state.activeGuestIndex + 1}`}
+          {state.guestNames[state.activeGuestIndex]?.trim() ||
+            `${t("person", lang)} ${state.activeGuestIndex + 1}`}
         </span>
       )}
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">
-        Twoje preferencje
+        {t("prefsTitle", lang)}
       </h1>
       <p className="mb-8 max-w-xl text-base leading-relaxed text-slate">
-        Dopasuj masaż do swoich potrzeb. Wszystko po to, aby stworzyć Twoje
-        idealne doświadczenie.
+        {t("prefsIntro", lang)}
       </p>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <PreferenceCard
-          title="Siła nacisku"
-          description="Wybierz preferowaną intensywność nacisku podczas masażu."
+          title={t("pressureCardTitle", lang)}
+          description={t("pressureCardDesc", lang)}
         >
           <SegmentedControl
-            options={pressureOptions}
+            options={pressureOrder.map((v) => ({ value: v, label: pressureTranslations[v][lang] }))}
             value={preferences.pressure}
             onChange={(v) => setPref("pressure", v)}
           />
           <p className="mt-3 text-xs font-medium text-slate-light">
-            {pressureDescriptions[preferences.pressure]}
+            {t(pressureDescKey[preferences.pressure], lang)}
           </p>
         </PreferenceCard>
 
         <PreferenceCard
-          title="Olejek do masażu"
-          description="Wybierz kompozycję zapachową, która wspiera Twoje samopoczucie."
+          title={t("massageOil", lang)}
+          description={t("oilCardDesc", lang)}
         >
           <div className="grid grid-cols-2 gap-2.5">
             {oils.map((oil) => {
@@ -93,9 +103,11 @@ export function PreferencesStep() {
                     </span>
                   )}
                   <div className="pr-5 text-sm font-semibold text-charcoal">
-                    {oil.name}
+                    {oilNameTranslations[oil.id]?.[lang] ?? oil.name}
                   </div>
-                  <div className="text-xs text-slate-light">{oil.subtitle}</div>
+                  <div className="text-xs text-slate-light">
+                    {oilSubtitleTranslations[oil.id]?.[lang] ?? oil.subtitle}
+                  </div>
                 </button>
               );
             })}
@@ -103,30 +115,30 @@ export function PreferencesStep() {
         </PreferenceCard>
 
         <PreferenceCard
-          title="Podgrzewanie stołu"
-          description="Ciepły stół zwiększa komfort i pomaga w rozluźnieniu mięśni."
+          title={t("tableWarming", lang)}
+          description={t("tableWarmingCardDesc", lang)}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-semibold text-charcoal">
               <Flame size={18} className="text-clay-dark" />
-              {preferences.tableWarming ? "Włączone" : "Wyłączone"}
+              {preferences.tableWarming ? t("on", lang) : t("off", lang)}
             </div>
             <Toggle
               checked={preferences.tableWarming}
               onChange={(v) => setPref("tableWarming", v)}
-              label="Podgrzewanie stołu"
+              label={t("tableWarming", lang)}
             />
           </div>
 
           <div className="my-4 h-px bg-sand" />
 
           <div className="mb-2 text-sm font-semibold text-charcoal">
-            Poduszka zagłówka
+            {t("headrestPillow", lang)}
           </div>
           <SegmentedControl
             options={[
-              { value: "Standardowa", label: "Standardowa" },
-              { value: "Ultra-miękka", label: "Ultra-miękka" },
+              { value: "Standardowa", label: pillowTranslations["Standardowa"][lang] },
+              { value: "Ultra-miękka", label: pillowTranslations["Ultra-miękka"][lang] },
             ]}
             value={preferences.headrestPillow}
             onChange={(v) => setPref("headrestPillow", v)}
@@ -135,7 +147,7 @@ export function PreferencesStep() {
           <div className="my-4 h-px bg-sand" />
 
           <div className="mb-2 text-sm font-semibold text-charcoal">
-            Muzyka w tle
+            {t("backgroundMusic", lang)}
           </div>
           <div className="flex flex-wrap gap-2">
             {musicOptions.map((opt) => {
@@ -152,7 +164,7 @@ export function PreferencesStep() {
                   }`}
                 >
                   {opt.icon}
-                  {opt.label}
+                  {musicTranslations[opt.value][lang]}
                 </button>
               );
             })}
@@ -160,26 +172,11 @@ export function PreferencesStep() {
         </PreferenceCard>
 
         <PreferenceCard
-          title="Komunikacja"
-          description="Wybierz preferowany sposób komunikacji podczas masażu."
+          title={t("communication", lang)}
+          description={t("communicationCardDesc", lang)}
         >
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {(
-              [
-                {
-                  value: "silent" as CommunicationStyle,
-                  title: "Sesja w ciszy",
-                  subtitle: "Skupienie na relaksie i oddechu.",
-                  icon: <VolumeX size={18} />,
-                },
-                {
-                  value: "guided" as CommunicationStyle,
-                  title: "Z przewodnikiem",
-                  subtitle: "Terapeuta będzie informował i pytał o odczucia.",
-                  icon: <MessageCircle size={18} />,
-                },
-              ] as const
-            ).map((opt) => {
+            {communicationOptions.map((opt) => {
               const isSelected = preferences.communication === opt.value;
               return (
                 <button
@@ -192,16 +189,14 @@ export function PreferencesStep() {
                       : "border-sand bg-white hover:border-clay/40 hover:bg-oatmeal/60"
                   }`}
                 >
-                  <span
-                    className={isSelected ? "text-clay-dark" : "text-slate-light"}
-                  >
+                  <span className={isSelected ? "text-clay-dark" : "text-slate-light"}>
                     {opt.icon}
                   </span>
                   <span className="text-sm font-semibold text-charcoal">
-                    {opt.title}
+                    {communicationTranslations[opt.value][lang]}
                   </span>
                   <span className="text-xs leading-snug text-slate-light">
-                    {opt.subtitle}
+                    {t(opt.subtitleKey, lang)}
                   </span>
                 </button>
               );
@@ -216,10 +211,10 @@ export function PreferencesStep() {
           onClick={() => dispatch({ type: "SET_STEP", step: "bodyMap" })}
         >
           <ArrowLeft size={18} />
-          Wstecz
+          {t("backButton", lang)}
         </Button>
         <Button onClick={() => dispatch({ type: "COMPLETE_GUEST_PREFERENCES" })}>
-          Zatwierdź i zablokuj preferencje
+          {t("confirmLock", lang)}
           <ArrowRight size={18} />
         </Button>
       </div>

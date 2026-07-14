@@ -1,11 +1,12 @@
 import { Check } from "lucide-react";
-import type { AppStep } from "../types";
+import { t } from "../i18n/translations";
+import type { AppStep, LangCode } from "../types";
 
-const STEPS: { step: AppStep; label: string }[] = [
-  { step: "welcome", label: "Powitanie" },
-  { step: "bodyMap", label: "Mapa ciała" },
-  { step: "preferences", label: "Preferencje" },
-  { step: "handoff", label: "Podsumowanie" },
+const STEPS: { step: AppStep; labelKey: string }[] = [
+  { step: "welcome", labelKey: "stepWelcome" },
+  { step: "bodyMap", labelKey: "stepBodyMap" },
+  { step: "preferences", labelKey: "stepPreferences" },
+  { step: "handoff", labelKey: "stepSummary" },
 ];
 
 // staffHandoff is a brief interstitial before the guest begins Krok 1's tasks,
@@ -18,7 +19,7 @@ const normalizeStep = (step: AppStep): AppStep => {
   return step;
 };
 
-export function StepIndicator({ current }: { current: AppStep }) {
+export function StepIndicator({ current, lang = "pl" }: { current: AppStep; lang?: LangCode }) {
   const currentIndex = STEPS.findIndex((s) => s.step === normalizeStep(current));
   if (currentIndex === -1) return null;
 
@@ -41,13 +42,13 @@ export function StepIndicator({ current }: { current: AppStep }) {
             >
               {isDone ? <Check size={13} strokeWidth={2.5} /> : i + 1}
             </div>
-            <span
-              className={`hidden text-sm font-medium sm:inline ${
-                isCurrent ? "text-charcoal" : "text-slate-light"
-              }`}
-            >
-              {s.label}
-            </span>
+            {/* Only the current step shows its label — keeps the row on one
+                line regardless of how long the words get in any language. */}
+            {isCurrent && (
+              <span className="hidden whitespace-nowrap text-sm font-medium text-charcoal sm:inline">
+                {t(s.labelKey, lang)}
+              </span>
+            )}
             {i < STEPS.length - 1 && (
               <span className="h-px w-3 bg-sand sm:w-5 lg:ml-1 lg:w-8" />
             )}

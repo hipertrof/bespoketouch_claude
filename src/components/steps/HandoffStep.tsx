@@ -1,10 +1,12 @@
 import { CheckCircle2, UserCog } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
+import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 
 export function HandoffStep() {
   const { state, dispatch } = useGuest();
+  const lang = state.language;
   const isCouple = state.partySize === 2;
 
   return (
@@ -13,11 +15,11 @@ export function HandoffStep() {
         <CheckCircle2 size={40} strokeWidth={1.5} />
       </div>
       <h1 className="mb-3 font-serif text-3xl text-charcoal sm:text-4xl">
-        Dziękujemy, {guestDisplayName(state.guestNames, state.partySize)}.
+        {tf("thanksName", lang, { name: guestDisplayName(state.guestNames, state.partySize, lang) })}
       </h1>
       <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
-        {isCouple ? "Wasze preferencje zostały zapisane." : "Twoje preferencje zostały zapisane."}{" "}
-        Prosimy o przekazanie tabletu recepcjonistce lub masażyście.
+        {isCouple ? t("prefsSavedCouple", lang) : t("prefsSavedSingle", lang)}{" "}
+        {t("passTablet", lang)}
       </p>
 
       <Button
@@ -26,7 +28,7 @@ export function HandoffStep() {
         className="mt-16"
       >
         <UserCog size={18} />
-        Panel Masażysty
+        {t("therapistPanel", lang)}
       </Button>
     </div>
   );

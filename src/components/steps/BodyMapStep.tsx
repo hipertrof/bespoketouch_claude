@@ -6,8 +6,8 @@ import { BodySilhouette, figureAspectRatio } from "../BodyMap/BodySilhouette";
 import { ZoneMarker } from "../BodyMap/ZoneMarker";
 import { ZonePopover } from "../BodyMap/ZonePopover";
 import { markersForView } from "../BodyMap/markerPositions";
-import { zoneLabel, zoneSummaryLabel } from "../../data/zones";
-import type { BodyGender, BodyView, ZoneId, ZoneMark } from "../../types";
+import { t, tZone } from "../../i18n/translations";
+import type { BodyView, ZoneId, ZoneMark } from "../../types";
 
 function ZoneChipWithNote({ label, note }: { label: string; note?: string }) {
   const trimmed = note?.trim();
@@ -23,6 +23,7 @@ function ZoneChipWithNote({ label, note }: { label: string; note?: string }) {
 
 export function BodyMapStep() {
   const { state, dispatch } = useGuest();
+  const lang = state.language;
   const activeGuest = useActiveGuest();
   const [view, setView] = useState<BodyView>("front");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -70,15 +71,15 @@ export function BodyMapStep() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       {isCouple && (
         <span className="mb-3 inline-flex items-center rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
-          {state.guestNames[state.activeGuestIndex]?.trim() || `Osoba ${state.activeGuestIndex + 1}`}
+          {state.guestNames[state.activeGuestIndex]?.trim() ||
+            `${t("person", lang)} ${state.activeGuestIndex + 1}`}
         </span>
       )}
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">
-        Obszary pracy
+        {t("workAreasTitle", lang)}
       </h1>
       <p className="mb-8 max-w-xl text-base leading-relaxed text-slate">
-        Wskaż miejsca wymagające szczególnej uwagi — lub te, które powinniśmy
-        pominąć.
+        {t("workAreasIntro", lang)}
       </p>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
@@ -99,24 +100,7 @@ export function BodyMapStep() {
                       : "text-slate hover:bg-oatmeal"
                   }`}
                 >
-                  {v === "front" ? "Przód" : "Tył"}
-                </button>
-              ))}
-            </div>
-
-            <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
-              {(["female", "male"] as BodyGender[]).map((g) => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_BODY_GENDER", bodyGender: g })}
-                  className={`min-h-11 rounded-full px-5 text-sm font-semibold transition-all duration-300 ${
-                    activeGuest.bodyGender === g
-                      ? "bg-clay text-white shadow-soft"
-                      : "text-slate hover:bg-oatmeal"
-                  }`}
-                >
-                  {g === "male" ? "Mężczyzna" : "Kobieta"}
+                  {v === "front" ? t("front", lang) : t("back", lang)}
                 </button>
               ))}
             </div>
@@ -134,7 +118,7 @@ export function BodyMapStep() {
               <ZoneMarker
                 key={`${marker.zoneId}-${index}`}
                 position={marker}
-                label={zoneLabel(marker.zoneId)}
+                label={tZone(marker.zoneId, lang)}
                 mark={activeGuest.zones[marker.zoneId] ?? "standard"}
                 isActive={activeIndex === index}
                 onToggle={() => handleToggle(index)}
@@ -143,9 +127,10 @@ export function BodyMapStep() {
             {activeIndex !== null && (
               <ZonePopover
                 position={markers[activeIndex]}
-                label={zoneLabel(markers[activeIndex].zoneId)}
+                label={tZone(markers[activeIndex].zoneId, lang)}
                 current={activeGuest.zones[markers[activeIndex].zoneId] ?? "standard"}
                 note={activeGuest.zoneNotes[markers[activeIndex].zoneId] ?? ""}
+                lang={lang}
                 onSelect={handleSelect}
                 onNoteChange={handleNoteChange}
                 onClose={() => setActiveIndex(null)}
@@ -156,13 +141,12 @@ export function BodyMapStep() {
 
         <div className="flex flex-col gap-4">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-light">
-            Zestawienie wybranych stref
+            {t("selectedZonesHeading", lang)}
           </h2>
 
           {!hasSelection && (
             <div className="rounded-2xl border border-dashed border-sand bg-white/50 px-4 py-6 text-center text-sm leading-relaxed text-slate-light">
-              Nie zaznaczono jeszcze żadnych stref. Dotknij punktu na
-              sylwetce, aby oznaczyć obszar jako priorytetowy lub wykluczony.
+              {t("noZonesSelected", lang)}
             </div>
           )}
 
@@ -170,11 +154,11 @@ export function BodyMapStep() {
             <div className="rounded-2xl border border-clay/40 bg-clay-tint/50 p-4">
               <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-clay-dark">
                 <Star size={13} className="fill-clay-dark" />
-                Intensywna praca (priorytet)
+                {t("intensiveWork", lang)}
               </h3>
               <div className="flex flex-col gap-2">
                 {priorityZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={tZone(id, lang)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -184,11 +168,11 @@ export function BodyMapStep() {
             <div className="rounded-2xl border border-rose/40 bg-rose-tint/50 p-4">
               <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-rose-dark">
                 <Ban size={13} />
-                Nie masować (strefa wykluczona)
+                {t("doNotMassageZone", lang)}
               </h3>
               <div className="flex flex-col gap-2">
                 {blockedZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={tZone(id, lang)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -198,11 +182,11 @@ export function BodyMapStep() {
             <div className="rounded-2xl border border-sage/40 bg-sage-tint/50 p-4">
               <h3 className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage-dark">
                 <MessageSquareText size={13} />
-                Uwagi do pozostałych stref
+                {t("notesOtherZones", lang)}
               </h3>
               <div className="flex flex-col gap-2">
                 {notedStandardZones.map((id) => (
-                  <ZoneChipWithNote key={id} label={zoneSummaryLabel(id)} note={activeGuest.zoneNotes[id]} />
+                  <ZoneChipWithNote key={id} label={tZone(id, lang)} note={activeGuest.zoneNotes[id]} />
                 ))}
               </div>
             </div>
@@ -214,11 +198,10 @@ export function BodyMapStep() {
               className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate"
             >
               <MessageSquareText size={14} className="text-slate-light" />
-              Dodatkowe uwagi / zalecenia dla masażysty
+              {t("generalNoteLabel", lang)}
             </label>
             <p className="mt-1 mb-2.5 text-xs leading-relaxed text-slate-light">
-              Wpisz zalecenia, bolesne punkty, alergie lub inne szczególne
-              wymagania.
+              {t("generalNoteHelp", lang)}
             </p>
             <textarea
               id="generalNote"
@@ -226,7 +209,7 @@ export function BodyMapStep() {
               onChange={(e) =>
                 dispatch({ type: "SET_GENERAL_NOTE", note: e.target.value })
               }
-              placeholder="Np. proszę o mocniejszy masaż karku, mam alergię na olejki cytrusowe…"
+              placeholder={t("generalNotePlaceholder", lang)}
               rows={4}
               className="w-full resize-none rounded-xl border border-sand bg-cream/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
             />
@@ -245,10 +228,10 @@ export function BodyMapStep() {
           }
         >
           <ArrowLeft size={18} />
-          Wstecz
+          {t("backButton", lang)}
         </Button>
         <Button onClick={() => dispatch({ type: "SET_STEP", step: "preferences" })}>
-          Zapisz i kontynuuj
+          {t("saveContinue", lang)}
           <ArrowRight size={18} />
         </Button>
       </div>

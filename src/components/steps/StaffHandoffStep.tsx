@@ -2,21 +2,30 @@ import { ArrowRight, Hand } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { Button } from "../Button";
 import { massageTypes } from "../../data/massageTypes";
+import { massageNameTranslations, t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 
 export function StaffHandoffStep() {
   const { state, dispatch } = useGuest();
+  const lang = state.language;
   const isCouple = state.partySize === 2;
   const showSeparate = isCouple && state.separateTreatments;
 
-  const treatmentLine = (index: number) => {
-    const sel = state.treatmentSelections[index];
-    const treatment = massageTypes.find((m) => m.id === sel?.treatmentId);
-    if (!treatment) return "—";
-    return `${treatment.name}${sel?.treatmentMinutes ? ` (${sel.treatmentMinutes} min)` : ""}`;
+  const massageName = (id: string | null | undefined) => {
+    const treatment = massageTypes.find((m) => m.id === id);
+    if (!treatment) return null;
+    return massageNameTranslations[treatment.id]?.[lang] ?? treatment.name;
   };
 
-  const singleTreatment = massageTypes.find((m) => m.id === state.treatmentSelections[0]?.treatmentId);
+  const treatmentLine = (index: number) => {
+    const sel = state.treatmentSelections[index];
+    const name = massageName(sel?.treatmentId);
+    if (!name) return "—";
+    return `${name}${sel?.treatmentMinutes ? ` (${sel.treatmentMinutes} min)` : ""}`;
+  };
+
+  const singleName = massageName(state.treatmentSelections[0]?.treatmentId);
+  const singleMinutes = state.treatmentSelections[0]?.treatmentMinutes;
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">
@@ -24,7 +33,7 @@ export function StaffHandoffStep() {
         <Hand size={36} strokeWidth={1.5} />
       </div>
       <h1 className="mb-3 font-serif text-3xl text-charcoal sm:text-4xl">
-        Wszystko gotowe, {guestDisplayName(state.guestNames, state.partySize)}.
+        {tf("allReady", lang, { name: guestDisplayName(state.guestNames, state.partySize, lang) })}
       </h1>
 
       {showSeparate ? (
@@ -32,7 +41,7 @@ export function StaffHandoffStep() {
           {[0, 1].map((i) => (
             <p key={i} className="text-base leading-relaxed text-slate sm:text-lg">
               <span className="font-semibold text-charcoal">
-                {state.guestNames[i]?.trim() || `Osoba ${i + 1}`}:
+                {state.guestNames[i]?.trim() || `${t("person", lang)} ${i + 1}`}:
               </span>{" "}
               {treatmentLine(i)}
             </p>
@@ -40,31 +49,26 @@ export function StaffHandoffStep() {
         </div>
       ) : (
         <p className="max-w-md text-base leading-relaxed text-slate sm:text-lg">
-          {singleTreatment
-            ? `Wybrany zabieg to ${singleTreatment.name.toLowerCase()}${
-                state.treatmentSelections[0]?.treatmentMinutes
-                  ? ` (${state.treatmentSelections[0].treatmentMinutes} min)`
-                  : ""
-              }.`
-            : "Twój zabieg jest już wybrany."}
+          {singleName
+            ? tf("chosenTreatment", lang, {
+                treatment: `${singleName}${singleMinutes ? ` (${singleMinutes} min)` : ""}`,
+              })
+            : t("treatmentAlreadyChosen", lang)}
         </p>
       )}
 
       <p className="mt-3 max-w-md text-base leading-relaxed text-slate sm:text-lg">
-        Zaznacz teraz obszary pracy na mapie ciała i dopasuj swoje
-        preferencje.
+        {t("personalizePrompt", lang)}
       </p>
 
       {isCouple && (
         <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-light">
-          {showSeparate
-            ? "Każda osoba ma wybrany własny zabieg — najpierw personalizuje pierwsza osoba, a po zakończeniu przekażecie tablet drugiej."
-            : "Ten zabieg jest dla dwóch osób — najpierw personalizuje pierwsza osoba, a po zakończeniu przekażecie tablet drugiej."}
+          {showSeparate ? t("coupleFlowSeparate", lang) : t("coupleFlowShared", lang)}
         </p>
       )}
 
       <Button onClick={() => dispatch({ type: "SET_STEP", step: "bodyMap" })} className="mt-10">
-        Rozpocznij personalizację
+        {t("startPersonalization", lang)}
         <ArrowRight size={18} />
       </Button>
     </div>
