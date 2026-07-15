@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,16 +15,17 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
+import { useCatalog } from "../../context/CatalogContext";
+import { toMassageTypes } from "../../lib/catalog";
 import { Button } from "../Button";
 import { StaticBodyMap } from "../BodyMap/StaticBodyMap";
 import { GuestNoteCard } from "../GuestNoteCard";
-import { massageTypes, durationPrice, formatPrice } from "../../data/massageTypes";
+import { durationPrice, formatPrice } from "../../data/massageTypes";
 import { oils } from "../../data/oils";
 import { guestDisplayName } from "../../utils/guestName";
 import {
   communicationTranslations,
   languages,
-  massageNameTranslations,
   musicTranslations,
   oilNameTranslations,
   pillowTranslations,
@@ -35,18 +36,22 @@ import {
 
 export function MasseurDashboard() {
   const { state, dispatch } = useGuest();
+  const { catalog } = useCatalog();
   // Seed from the globally chosen language, but keep it independently
   // switchable here (an Indonesian-speaking masseur can view an English
   // guest's summary in Indonesian).
   const [lang, setLang] = useState<LangCode>(state.language);
   const [selectedGuestIndex, setSelectedGuestIndex] = useState(0);
+  // Re-mapped whenever the masseur switches language, so the treatment name
+  // follows their pick, not the guest's session language.
+  const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
 
   const isCouple = state.partySize === 2;
   const activeGuest = state.guests[selectedGuestIndex] ?? state.guests[0];
   const { preferences } = activeGuest;
 
   const currentSelection = state.treatmentSelections[selectedGuestIndex] ?? state.treatmentSelections[0];
-  const treatment = massageTypes.find((m) => m.id === currentSelection?.treatmentId);
+  const treatment = massages.find((m) => m.id === currentSelection?.treatmentId);
   const treatmentDuration = treatment?.durations.find(
     (d) => d.minutes === currentSelection?.treatmentMinutes,
   );
@@ -59,7 +64,7 @@ export function MasseurDashboard() {
     ([, note]) => note && note.trim().length > 0,
   ) as [string, string][];
 
-  const treatmentName = treatment ? massageNameTranslations[treatment.id]?.[lang] ?? treatment.name : null;
+  const treatmentName = treatment ? treatment.name : null;
   const oilName = oil ? oilNameTranslations[oil.id]?.[lang] ?? oil.name : null;
 
   const summaryItems = [

@@ -119,6 +119,10 @@ export interface GuestState {
   // Index into `guests` for whichever person is currently personalizing.
   activeGuestIndex: number;
   guests: PersonalizationState[];
+  // The offer the kiosk is running against, loaded from the DB (or the bundled
+  // fallback) by CatalogContext. Held here — language-agnostic, names unused —
+  // only so the reducer can validate selections against the live offer.
+  catalog: MassageType[];
 }
 
 export type GuestAction =
@@ -138,4 +142,7 @@ export type GuestAction =
   // Guest finished the body map + preferences steps. Routes to the next
   // guest's handoff screen, or to the final handoff if everyone is done.
   | { type: "COMPLETE_GUEST_PREFERENCES" }
+  // Offer (re)loaded by CatalogContext. Re-validates existing selections
+  // against the new offer so a stale pick can't survive an offer swap.
+  | { type: "SET_CATALOG"; catalog: MassageType[] }
   | { type: "RESET_SESSION" };

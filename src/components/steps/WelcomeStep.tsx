@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Sparkles, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
+import { useCatalog } from "../../context/CatalogContext";
+import { toMassageTypes } from "../../lib/catalog";
 import {
-  massageTypes,
   allDurationsForPartySize,
   availableDurations,
   formatPrice,
   isAvailableForPartySize,
   lowestPrice,
 } from "../../data/massageTypes";
-import { massageNameTranslations, t, tf } from "../../i18n/translations";
+import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
 import { Toggle } from "../Toggle";
 import type { BodyGender, MassageType, PartySize } from "../../types";
@@ -21,10 +22,12 @@ const partySizeOptions: { value: PartySize; labelKey: string }[] = [
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
+  const { catalog } = useCatalog();
   const lang = state.language;
+  // The offer, mapped to the session language (names already translated).
+  const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
   const isCouple = state.partySize === 2;
   const showPersonTabs = isCouple && state.separateTreatments;
-  const massageName = (m: MassageType) => massageNameTranslations[m.id]?.[lang] ?? m.name;
 
   const [editingGuestIndex, setEditingGuestIndex] = useState(0);
   useEffect(() => {
@@ -58,7 +61,7 @@ export function WelcomeStep() {
 
   // Not every massage offers every duration, so once staff picks a duration
   // the grid narrows to massages that actually offer it.
-  const availableMassages = massageTypes.filter((m) => {
+  const availableMassages = massages.filter((m) => {
     if (!isAvailableForPartySize(m, state.partySize)) return false;
     if (currentMinutes === null) return true;
     return availableDurations(m, state.partySize).some((d) => d.minutes === currentMinutes);
@@ -66,11 +69,11 @@ export function WelcomeStep() {
 
   const otherGuestSummary = (index: number) => {
     const sel = state.treatmentSelections[index];
-    const treatment = massageTypes.find((m) => m.id === sel?.treatmentId);
-    return treatment ? massageName(treatment) : t("notChosen", lang);
+    const treatment = massages.find((m) => m.id === sel?.treatmentId);
+    return treatment ? treatment.name : t("notChosen", lang);
   };
 
-  const durationOptions = allDurationsForPartySize(state.partySize);
+  const durationOptions = allDurationsForPartySize(massages, state.partySize);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
@@ -260,7 +263,7 @@ export function WelcomeStep() {
                       : "border-sand bg-white hover:border-clay/50 hover:bg-oatmeal/60"
                   }`}
                 >
-                  <h3 className="text-base font-semibold text-charcoal">{massageName(massage)}</h3>
+                  <h3 className="text-base font-semibold text-charcoal">{massage.name}</h3>
                   {!state.separateTreatments && (
                     <span className="text-xs font-medium uppercase tracking-wide text-slate-light">
                       {durations.length > 1

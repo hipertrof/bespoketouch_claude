@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GuestProvider, useGuest } from "./context/GuestContext";
+import { CatalogProvider } from "./context/CatalogContext";
 import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Header } from "./components/Header";
@@ -48,9 +49,11 @@ function App() {
           <Route
             path="/"
             element={
-              <GuestProvider>
-                <KioskScreen />
-              </GuestProvider>
+              <CatalogProvider>
+                <GuestProvider>
+                  <KioskScreen />
+                </GuestProvider>
+              </CatalogProvider>
             }
           />
           <Route path="/login" element={<LoginPage />} />

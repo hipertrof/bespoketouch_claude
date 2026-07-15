@@ -1,12 +1,25 @@
-import { createContext, useContext, useReducer, type ReactNode } from "react";
-import type { GuestAction, GuestState, PartySize, PersonalizationState, TreatmentSelection } from "../types";
+import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
+import type {
+  GuestAction,
+  GuestState,
+  MassageType,
+  PartySize,
+  PersonalizationState,
+  TreatmentSelection,
+} from "../types";
 import { massageTypes, durationPrice } from "../data/massageTypes";
+import { toMassageTypes } from "../lib/catalog";
+import { useCatalog } from "./CatalogContext";
 
 // Drops a selection that's no longer offered for the new party size (e.g.
-// "Balijski z Masłem Shea" has no couple price) rather than leaving it
-// silently invalid.
-function validateSelection(sel: TreatmentSelection, partySize: PartySize): TreatmentSelection {
-  const treatment = massageTypes.find((m) => m.id === sel.treatmentId);
+// "Balijski z Masłem Shea" has no couple price) — or no longer in the offer at
+// all — rather than leaving it silently invalid.
+function validateSelection(
+  sel: TreatmentSelection,
+  partySize: PartySize,
+  catalog: MassageType[],
+): TreatmentSelection {
+  const treatment = catalog.find((m) => m.id === sel.treatmentId);
   const treatmentStillOffered = treatment?.durations.some(
     (d) => durationPrice(d, partySize) !== undefined,
   );
@@ -44,6 +57,9 @@ const initialState: GuestState = {
   language: "pl",
   activeGuestIndex: 0,
   guests: [createPersonalization()],
+  // Seeded with the bundled offer; CatalogContext swaps in the DB offer once
+  // it resolves (see GuestProvider).
+  catalog: massageTypes,
 };
 
 function updateActiveGuest(
@@ -85,7 +101,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         nextTreatmentIds.every((id) => {
           // No massage chosen yet for this guest — nothing to conflict with.
           if (id === null) return true;
-          const treatment = massageTypes.find((m) => m.id === id);
+          const treatment = state.catalog.find((m) => m.id === id);
           const duration = treatment?.durations.find((d) => d.minutes === currentMinutes);
           return duration ? durationPrice(duration, state.partySize) !== undefined : false;
         });
@@ -137,12 +153,14 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       const treatmentSelections =
         action.partySize === 2
           ? state.treatmentSelections.length === 2
-            ? state.treatmentSelections.map((sel) => validateSelection(sel, action.partySize))
+            ? state.treatmentSelections.map((sel) =>
+                validateSelection(sel, action.partySize, state.catalog),
+              )
             : [
-                validateSelection(state.treatmentSelections[0], action.partySize),
-                validateSelection(state.treatmentSelections[0], action.partySize),
+                validateSelection(state.treatmentSelections[0], action.partySize, state.catalog),
+                validateSelection(state.treatmentSelections[0], action.partySize, state.catalog),
               ]
-          : [validateSelection(state.treatmentSelections[0], action.partySize)];
+          : [validateSelection(state.treatmentSelections[0], action.partySize, state.catalog)];
 
       return {
         ...state,
@@ -185,9 +203,18 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       }
       return { ...state, step: "handoff" };
     }
+    case "SET_CATALOG": {
+      // Re-validate every selection against the new offer, so a pick that's no
+      // longer offered (or whose duration/price changed) can't silently linger.
+      const treatmentSelections = state.treatmentSelections.map((sel) =>
+        validateSelection(sel, state.partySize, action.catalog),
+      );
+      return { ...state, catalog: action.catalog, treatmentSelections };
+    }
     case "RESET_SESSION":
-      // Keep the staff's chosen UI language across sessions.
-      return { ...initialState, language: state.language };
+      // Keep the staff's chosen UI language and the loaded offer across sessions
+      // (CatalogContext won't re-dispatch unless the offer itself changes).
+      return { ...initialState, language: state.language, catalog: state.catalog };
     default:
       return state;
   }
@@ -202,6 +229,14 @@ const GuestContext = createContext<GuestContextValue | null>(null);
 
 export function GuestProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(guestReducer, initialState);
+  const { catalog } = useCatalog();
+
+  // Push the loaded offer into guest state for the reducer to validate against.
+  // Mapped in Polish only — validation reads durations/prices, never names.
+  useEffect(() => {
+    dispatch({ type: "SET_CATALOG", catalog: toMassageTypes(catalog, "pl") });
+  }, [catalog]);
+
   return (
     <GuestContext.Provider value={{ state, dispatch }}>
       {children}

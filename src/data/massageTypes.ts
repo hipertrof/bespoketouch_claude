@@ -215,10 +215,14 @@ export const lowestPrice = (massage: MassageType, partySize: PartySize): number 
 
 // Every duration offered by at least one massage at this party size — used
 // to let staff pick a duration before narrowing down which massages fit it
-// (not every massage offers every duration).
-export const allDurationsForPartySize = (partySize: PartySize): number[] => {
+// (not every massage offers every duration). Operates on the passed catalogue
+// so the kiosk can drive it from the DB-loaded offer, not just the bundled one.
+export const allDurationsForPartySize = (
+  massages: MassageType[],
+  partySize: PartySize,
+): number[] => {
   const minutes = new Set<number>();
-  massageTypes.forEach((m) => {
+  massages.forEach((m) => {
     availableDurations(m, partySize).forEach((d) => minutes.add(d.minutes));
   });
   return [...minutes].sort((a, b) => a - b);

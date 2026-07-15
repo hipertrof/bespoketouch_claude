@@ -60,6 +60,29 @@ export async function fetchCatalog(locationId: string): Promise<CatalogService[]
   }));
 }
 
+// The bundled Nusa catalogue expressed in the DB CatalogService[] shape, so the
+// kiosk's offline/fallback path flows through the exact same toMassageTypes()
+// mapper as the DB path (one code path, no per-source branching downstream).
+// Used when there's no ?location= param, or the DB fetch fails / is empty.
+export function bundledCatalog(): CatalogService[] {
+  return massageTypes.map((m, i) => ({
+    id: m.id,
+    location_id: "bundled",
+    name_i18n: { ...(massageNameTranslations[m.id] ?? {}), pl: m.name },
+    description_i18n: {},
+    active: true,
+    sort: i,
+    durations: m.durations.map((d) => ({
+      id: `${m.id}-${d.minutes}`,
+      service_id: m.id,
+      minutes: d.minutes,
+      price_single: d.priceSingle ?? null,
+      price_couple: d.priceCouple ?? null,
+      couple_available: d.priceCouple !== undefined,
+    })),
+  }));
+}
+
 // Maps a DB catalogue to the app's existing MassageType[] shape, so the kiosk
 // flow (WelcomeStep, GuestContext, MasseurDashboard) can consume it unchanged.
 // `lang` picks the display name/description; falls back to pl then any value.

@@ -1,21 +1,22 @@
+import { useMemo } from "react";
 import { ArrowRight, Hand } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
+import { useCatalog } from "../../context/CatalogContext";
+import { toMassageTypes } from "../../lib/catalog";
 import { Button } from "../Button";
-import { massageTypes } from "../../data/massageTypes";
-import { massageNameTranslations, t, tf } from "../../i18n/translations";
+import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 
 export function StaffHandoffStep() {
   const { state, dispatch } = useGuest();
+  const { catalog } = useCatalog();
   const lang = state.language;
+  const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
   const isCouple = state.partySize === 2;
   const showSeparate = isCouple && state.separateTreatments;
 
-  const massageName = (id: string | null | undefined) => {
-    const treatment = massageTypes.find((m) => m.id === id);
-    if (!treatment) return null;
-    return massageNameTranslations[treatment.id]?.[lang] ?? treatment.name;
-  };
+  const massageName = (id: string | null | undefined) =>
+    massages.find((m) => m.id === id)?.name ?? null;
 
   const treatmentLine = (index: number) => {
     const sel = state.treatmentSelections[index];
