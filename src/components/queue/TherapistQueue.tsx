@@ -143,6 +143,9 @@ export function TherapistQueue() {
             <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
               {t("offer", lang)}
             </Link>
+            <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
+              {t("staffNav", lang)}
+            </Link>
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}

@@ -209,6 +209,31 @@ export const ui: Record<string, Dict> = {
   queueStatusSubmitted: { pl: "Zgłoszona", en: "Submitted", uk: "Подана", it: "Inviata", fr: "Soumise", de: "Eingereicht", es: "Enviada", id: "Terkirim" },
   queueStatusDone: { pl: "Zakończona", en: "Done", uk: "Завершена", it: "Completata", fr: "Terminée", de: "Erledigt", es: "Hecha", id: "Selesai" },
   queueNav: { pl: "Kolejka", en: "Queue", uk: "Черга", it: "Coda", fr: "File", de: "Warteschlange", es: "Cola", id: "Antrean" },
+
+  // Staff management
+  staffTitle: { pl: "Zarządzanie personelem", en: "Staff management", uk: "Керування персоналом", it: "Gestione del personale", fr: "Gestion du personnel", de: "Personalverwaltung", es: "Gestión del personal", id: "Manajemen staf" },
+  staffNav: { pl: "Personel", en: "Staff", uk: "Персонал", it: "Personale", fr: "Personnel", de: "Personal", es: "Personal", id: "Staf" },
+  staffAccountLabel: { pl: "Konto", en: "Account", uk: "Обліковий запис", it: "Account", fr: "Compte", de: "Konto", es: "Cuenta", id: "Akun" },
+  staffNoAccounts: { pl: "Brak kont, którymi możesz zarządzać.", en: "No accounts you can manage.", uk: "Немає облікових записів для керування.", it: "Nessun account che puoi gestire.", fr: "Aucun compte que vous pouvez gérer.", de: "Keine verwaltbaren Konten.", es: "No hay cuentas que puedas gestionar.", id: "Tidak ada akun yang bisa Anda kelola." },
+  staffMembers: { pl: "Członkowie", en: "Members", uk: "Учасники", it: "Membri", fr: "Membres", de: "Mitglieder", es: "Miembros", id: "Anggota" },
+  staffNoMembers: { pl: "Brak członków.", en: "No members yet.", uk: "Ще немає учасників.", it: "Ancora nessun membro.", fr: "Aucun membre pour l'instant.", de: "Noch keine Mitglieder.", es: "Aún no hay miembros.", id: "Belum ada anggota." },
+  staffInvite: { pl: "Zaproś członka", en: "Invite member", uk: "Запросити учасника", it: "Invita un membro", fr: "Inviter un membre", de: "Mitglied einladen", es: "Invitar miembro", id: "Undang anggota" },
+  staffEmail: { pl: "E-mail", en: "Email", uk: "Електронна пошта", it: "E-mail", fr: "E-mail", de: "E-Mail", es: "Correo electrónico", id: "Email" },
+  staffRole: { pl: "Rola", en: "Role", uk: "Роль", it: "Ruolo", fr: "Rôle", de: "Rolle", es: "Rol", id: "Peran" },
+  staffLocationAll: { pl: "Całe konto", en: "Account-wide", uk: "Весь обліковий запис", it: "Tutto l'account", fr: "Tout le compte", de: "Kontoweit", es: "Toda la cuenta", id: "Seluruh akun" },
+  staffAdd: { pl: "Zaproś", en: "Invite", uk: "Запросити", it: "Invita", fr: "Inviter", de: "Einladen", es: "Invitar", id: "Undang" },
+  staffInviting: { pl: "Zapraszanie…", en: "Inviting…", uk: "Запрошення…", it: "Invito in corso…", fr: "Invitation…", de: "Einladen…", es: "Invitando…", id: "Mengundang…" },
+  staffRemove: { pl: "Usuń", en: "Remove", uk: "Видалити", it: "Rimuovi", fr: "Retirer", de: "Entfernen", es: "Quitar", id: "Hapus" },
+  staffRemoveConfirm: { pl: "Usunąć członka {email}?", en: "Remove {email}?", uk: "Видалити учасника {email}?", it: "Rimuovere {email}?", fr: "Retirer {email} ?", de: "{email} entfernen?", es: "¿Quitar a {email}?", id: "Hapus {email}?" },
+  staffAdded: { pl: "Dodano członka.", en: "Member added.", uk: "Учасника додано.", it: "Membro aggiunto.", fr: "Membre ajouté.", de: "Mitglied hinzugefügt.", es: "Miembro añadido.", id: "Anggota ditambahkan." },
+  staffAlreadyMember: { pl: "Ta osoba jest już członkiem.", en: "This person is already a member.", uk: "Ця особа вже є учасником.", it: "Questa persona è già un membro.", fr: "Cette personne est déjà membre.", de: "Diese Person ist bereits Mitglied.", es: "Esta persona ya es miembro.", id: "Orang ini sudah menjadi anggota." },
+  staffInviteLinkNote: { pl: "Nowy członek — przekaż mu ten link, aby ustawił hasło:", en: "New member — send them this link to set their password:", uk: "Новий учасник — надішліть це посилання для встановлення пароля:", it: "Nuovo membro — inviagli questo link per impostare la password:", fr: "Nouveau membre — envoyez-lui ce lien pour définir son mot de passe :", de: "Neues Mitglied — senden Sie ihm diesen Link zum Festlegen des Passworts:", es: "Nuevo miembro — envíale este enlace para establecer su contraseña:", id: "Anggota baru — kirim tautan ini untuk mengatur kata sandi:" },
+  staffCopy: { pl: "Kopiuj", en: "Copy", uk: "Копіювати", it: "Copia", fr: "Copier", de: "Kopieren", es: "Copiar", id: "Salin" },
+  staffCopied: { pl: "Skopiowano", en: "Copied", uk: "Скопійовано", it: "Copiato", fr: "Copié", de: "Kopiert", es: "Copiado", id: "Disalin" },
+  roleOwner: { pl: "Właściciel", en: "Owner", uk: "Власник", it: "Titolare", fr: "Propriétaire", de: "Inhaber", es: "Propietario", id: "Pemilik" },
+  roleManager: { pl: "Menedżer", en: "Manager", uk: "Менеджер", it: "Manager", fr: "Gérant", de: "Manager", es: "Gerente", id: "Manajer" },
+  roleTherapist: { pl: "Masażysta", en: "Therapist", uk: "Масажист", it: "Massaggiatore", fr: "Masseur", de: "Therapeut", es: "Masajista", id: "Terapis" },
+  roleFrontdesk: { pl: "Recepcja", en: "Front desk", uk: "Ресепшн", it: "Reception", fr: "Réception", de: "Empfang", es: "Recepción", id: "Resepsionis" },
 };
 
 export const zoneTranslations: Record<ZoneId, Dict> = {

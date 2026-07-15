@@ -113,6 +113,9 @@ export function OfferCMS() {
             <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
               {t("queueNav", lang)}
             </Link>
+            <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
+              {t("staffNav", lang)}
+            </Link>
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}

@@ -16,6 +16,7 @@ import { LoginPage } from "./components/auth/LoginPage";
 import { PlatformAdminDashboard } from "./components/admin/PlatformAdminDashboard";
 import { OfferCMS } from "./components/manage/OfferCMS";
 import { TherapistQueue } from "./components/queue/TherapistQueue";
+import { StaffManagement } from "./components/staff/StaffManagement";
 
 // The kiosk guest-intake flow (state machine, no login). Lives at "/".
 function KioskScreen() {
@@ -61,6 +62,7 @@ function App() {
           <Route path="/admin" element={<PlatformAdminDashboard />} />
           <Route path="/manage" element={<OfferCMS />} />
           <Route path="/queue" element={<TherapistQueue />} />
+          <Route path="/staff" element={<StaffManagement />} />
         </Routes>
       </BrowserRouter>
       </LanguageProvider>
