@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { addMember } from "./_membersCore";
+// Explicit .js extension: Vercel runs this as ESM (package.json "type":"module")
+// without bundling, and Node ESM requires the extension on relative imports.
+import { addMember } from "./_membersCore.js";
 
 // Member-invite endpoint. Keeps SUPABASE_SERVICE_ROLE_KEY server-side and does
 // its own caller auth (see membersCore). The dev equivalent is the Vite
