@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { GuestProvider, useGuest } from "./context/GuestContext";
+import { AuthProvider } from "./context/AuthContext";
 import { Header } from "./components/Header";
 import { WelcomeStep } from "./components/steps/WelcomeStep";
 import { StaffHandoffStep } from "./components/steps/StaffHandoffStep";
@@ -36,9 +37,11 @@ function Screen() {
 
 function App() {
   return (
-    <GuestProvider>
-      <Screen />
-    </GuestProvider>
+    <AuthProvider>
+      <GuestProvider>
+        <Screen />
+      </GuestProvider>
+    </AuthProvider>
   );
 }
 
