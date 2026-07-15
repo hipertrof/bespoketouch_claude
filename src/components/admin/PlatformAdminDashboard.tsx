@@ -1,0 +1,237 @@
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../lib/supabase";
+import { Button } from "../Button";
+
+interface Account {
+  id: string;
+  name: string;
+  plan: string | null;
+  slots_paid: number;
+  subscription_start: string | null;
+  subscription_end: string | null;
+  created_at: string;
+}
+
+// Platform Admin dashboard (god mode): create accounts and set their slots +
+// subscription dates. Access is gated by profiles.is_platform_admin; the RLS
+// policies (accounts_admin_write) also enforce this at the database.
+export function PlatformAdminDashboard() {
+  const { user, loading, isPlatformAdmin, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+
+  const load = useCallback(async () => {
+    setFetching(true);
+    const { data, error } = await supabase
+      .from("accounts")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) setListError(error.message);
+    else setAccounts(data as Account[]);
+    setFetching(false);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && !user) navigate("/login");
+  }, [loading, user, navigate]);
+
+  useEffect(() => {
+    if (isPlatformAdmin) load();
+  }, [isPlatformAdmin, load]);
+
+  if (loading) return <Centered>Loading…</Centered>;
+  if (!user) return null; // redirecting
+  if (!isPlatformAdmin) {
+    return (
+      <Centered>
+        <div className="text-center">
+          <p className="text-charcoal">You are signed in but not a platform admin.</p>
+          <Button variant="secondary" className="mt-4" onClick={() => signOut()}>
+            Sign out
+          </Button>
+        </div>
+      </Centered>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-cream px-6 py-10">
+      <div className="mx-auto max-w-4xl">
+        <header className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="font-serif text-3xl text-charcoal">Platform Admin</h1>
+            <p className="text-sm text-slate">{user.email}</p>
+          </div>
+          <Button variant="ghost" onClick={() => signOut()}>
+            Sign out
+          </Button>
+        </header>
+
+        <CreateAccountForm onCreated={load} />
+
+        <section className="mt-10">
+          <h2 className="mb-3 font-serif text-xl text-charcoal">Accounts</h2>
+          {listError && <p className="text-sm text-rose-dark">{listError}</p>}
+          {fetching ? (
+            <p className="text-slate">Loading accounts…</p>
+          ) : accounts.length === 0 ? (
+            <p className="text-slate">No accounts yet. Create one above.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {accounts.map((a) => (
+                <AccountRow key={a.id} account={a} onSaved={load} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-cream px-6 text-slate">
+      {children}
+    </div>
+  );
+}
+
+function CreateAccountForm({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [slots, setSlots] = useState(1);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    const { error } = await supabase.from("accounts").insert({
+      name: name.trim(),
+      slots_paid: slots,
+      subscription_start: start || null,
+      subscription_end: end || null,
+    });
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setName("");
+    setSlots(1);
+    setStart("");
+    setEnd("");
+    onCreated();
+  }
+
+  return (
+    <form onSubmit={submit} className="rounded-3xl bg-white p-6 shadow-soft">
+      <h2 className="mb-4 font-serif text-xl text-charcoal">New account</h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Spa / company name">
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputClass}
+            placeholder="Nusa Spa"
+          />
+        </Field>
+        <Field label="Slots paid">
+          <input
+            type="number"
+            min={0}
+            value={slots}
+            onChange={(e) => setSlots(Number(e.target.value))}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Subscription start">
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Subscription end">
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />
+        </Field>
+      </div>
+      {error && <p className="mt-3 text-sm text-rose-dark">{error}</p>}
+      <Button type="submit" disabled={busy} className="mt-4">
+        {busy ? "Creating…" : "Create account"}
+      </Button>
+    </form>
+  );
+}
+
+function AccountRow({ account, onSaved }: { account: Account; onSaved: () => void }) {
+  const [slots, setSlots] = useState(account.slots_paid);
+  const [start, setStart] = useState(account.subscription_start ?? "");
+  const [end, setEnd] = useState(account.subscription_end ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dirty =
+    slots !== account.slots_paid ||
+    start !== (account.subscription_start ?? "") ||
+    end !== (account.subscription_end ?? "");
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase
+      .from("accounts")
+      .update({ slots_paid: slots, subscription_start: start || null, subscription_end: end || null })
+      .eq("id", account.id);
+    setBusy(false);
+    if (error) setError(error.message);
+    else onSaved();
+  }
+
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-soft">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="min-w-40 flex-1">
+          <div className="font-serif text-lg text-charcoal">{account.name}</div>
+          <div className="text-xs text-slate-light">{account.plan ?? "no plan"}</div>
+        </div>
+        <Field label="Slots">
+          <input
+            type="number"
+            min={0}
+            value={slots}
+            onChange={(e) => setSlots(Number(e.target.value))}
+            className={`${inputClass} w-24`}
+          />
+        </Field>
+        <Field label="Start">
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="End">
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />
+        </Field>
+        <Button variant="secondary" disabled={!dirty || busy} onClick={save}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}
+    </div>
+  );
+}
+
+const inputClass =
+  "min-h-11 rounded-xl border border-sand bg-cream px-3 text-charcoal outline-none focus:border-sage";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+      {label}
+      {children}
+    </label>
+  );
+}
