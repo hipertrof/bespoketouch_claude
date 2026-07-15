@@ -193,6 +193,22 @@ export const ui: Record<string, Dict> = {
   cmsActive: { pl: "Aktywna", en: "Active", uk: "Активна", it: "Attiva", fr: "Actif", de: "Aktiv", es: "Activo", id: "Aktif" },
   cmsDelete: { pl: "Usuń", en: "Delete", uk: "Видалити", it: "Elimina", fr: "Supprimer", de: "Löschen", es: "Eliminar", id: "Hapus" },
   cmsDeleteConfirm: { pl: "Usunąć '{name}'? Tej operacji nie można cofnąć.", en: "Delete '{name}'? This cannot be undone.", uk: "Видалити '{name}'? Цю дію не можна скасувати.", it: "Eliminare '{name}'? L'operazione non può essere annullata.", fr: "Supprimer '{name}' ? Cette action est irréversible.", de: "'{name}' löschen? Dies kann nicht rückgängig gemacht werden.", es: "¿Eliminar '{name}'? Esto no se puede deshacer.", id: "Hapus '{name}'? Ini tidak dapat dibatalkan." },
+
+  // Intake save (kiosk handoff)
+  intakeSaveFailed: { pl: "Nie udało się zapisać wizyty w systemie — przekaż preferencje masażyście ustnie.", en: "Couldn't save the visit to the system — pass the preferences to the therapist in person.", uk: "Не вдалося зберегти візит у системі — передайте побажання масажисту особисто.", it: "Impossibile salvare la visita nel sistema — comunica le preferenze al massaggiatore di persona.", fr: "Impossible d'enregistrer la visite — transmettez les préférences au masseur en personne.", de: "Der Besuch konnte nicht gespeichert werden — geben Sie die Vorlieben dem Therapeuten persönlich weiter.", es: "No se pudo guardar la visita en el sistema — comunique las preferencias al masajista en persona.", id: "Gagal menyimpan kunjungan ke sistem — sampaikan preferensi ke terapis secara langsung." },
+
+  // Therapist queue
+  queueTitle: { pl: "Kolejka wizyt", en: "Visit queue", uk: "Черга візитів", it: "Coda delle visite", fr: "File d'attente des visites", de: "Besuchs-Warteschlange", es: "Cola de visitas", id: "Antrean kunjungan" },
+  queueEmpty: { pl: "Brak wizyt w kolejce.", en: "No visits in the queue.", uk: "У черзі немає візитів.", it: "Nessuna visita in coda.", fr: "Aucune visite dans la file.", de: "Keine Besuche in der Warteschlange.", es: "No hay visitas en la cola.", id: "Tidak ada kunjungan dalam antrean." },
+  queueError: { pl: "Nie udało się wczytać kolejki.", en: "Couldn't load the queue.", uk: "Не вдалося завантажити чергу.", it: "Impossibile caricare la coda.", fr: "Impossible de charger la file.", de: "Warteschlange konnte nicht geladen werden.", es: "No se pudo cargar la cola.", id: "Gagal memuat antrean." },
+  queueRefresh: { pl: "Odśwież", en: "Refresh", uk: "Оновити", it: "Aggiorna", fr: "Actualiser", de: "Aktualisieren", es: "Actualizar", id: "Segarkan" },
+  queueBack: { pl: "Wróć do kolejki", en: "Back to queue", uk: "Назад до черги", it: "Torna alla coda", fr: "Retour à la file", de: "Zurück zur Warteschlange", es: "Volver a la cola", id: "Kembali ke antrean" },
+  queueOpen: { pl: "Otwórz", en: "Open", uk: "Відкрити", it: "Apri", fr: "Ouvrir", de: "Öffnen", es: "Abrir", id: "Buka" },
+  queueMarkDone: { pl: "Oznacz jako zakończone", en: "Mark as done", uk: "Позначити виконаним", it: "Segna come completata", fr: "Marquer comme terminée", de: "Als erledigt markieren", es: "Marcar como hecha", id: "Tandai selesai" },
+  queueReopen: { pl: "Przywróć do kolejki", en: "Reopen", uk: "Повернути в чергу", it: "Riapri", fr: "Rouvrir", de: "Wieder öffnen", es: "Reabrir", id: "Buka kembali" },
+  queueStatusSubmitted: { pl: "Zgłoszona", en: "Submitted", uk: "Подана", it: "Inviata", fr: "Soumise", de: "Eingereicht", es: "Enviada", id: "Terkirim" },
+  queueStatusDone: { pl: "Zakończona", en: "Done", uk: "Завершена", it: "Completata", fr: "Terminée", de: "Erledigt", es: "Hecha", id: "Selesai" },
+  queueNav: { pl: "Kolejka", en: "Queue", uk: "Черга", it: "Coda", fr: "File", de: "Warteschlange", es: "Cola", id: "Antrean" },
 };
 
 export const zoneTranslations: Record<ZoneId, Dict> = {

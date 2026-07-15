@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -110,6 +110,9 @@ export function OfferCMS() {
             <p className="text-sm text-slate">{user.email}</p>
           </div>
           <div className="flex items-center gap-3">
+            <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
+              {t("queueNav", lang)}
+            </Link>
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}
