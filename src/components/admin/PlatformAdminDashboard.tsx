@@ -175,6 +175,7 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
   const [end, setEnd] = useState(account.subscription_end ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showLocations, setShowLocations] = useState(false);
 
   const dirty =
     slots !== account.slots_paid ||
@@ -219,6 +220,90 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
           {busy ? "Saving…" : "Save"}
         </Button>
       </div>
+      {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}
+      <button
+        type="button"
+        onClick={() => setShowLocations((v) => !v)}
+        className="mt-3 text-xs font-medium text-sage-dark hover:underline"
+      >
+        {showLocations ? "Hide locations" : "Manage locations"}
+      </button>
+      {showLocations && <LocationsSection accountId={account.id} />}
+    </div>
+  );
+}
+
+interface LocationLite {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+// Locations under one account. Platform admin can create them here (RLS
+// allows platform admin to write locations); the Offer CMS then edits each
+// location's services. Bridges the gap until the Account Owner dashboard.
+function LocationsSection({ accountId }: { accountId: string }) {
+  const [locations, setLocations] = useState<LocationLite[]>([]);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("locations")
+      .select("id, name, active")
+      .eq("account_id", accountId)
+      .order("name", { ascending: true });
+    if (error) setError(error.message);
+    else setLocations((data as LocationLite[]) ?? []);
+  }, [accountId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function create(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("locations").insert({ account_id: accountId, name: name.trim() });
+    setBusy(false);
+    if (error) setError(error.message);
+    else {
+      setName("");
+      load();
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl bg-oatmeal p-4">
+      {locations.length === 0 ? (
+        <p className="mb-3 text-xs text-slate">No locations yet.</p>
+      ) : (
+        <ul className="mb-3 flex flex-col gap-1 text-sm text-charcoal">
+          {locations.map((l) => (
+            <li key={l.id} className="flex items-center gap-2">
+              <span>{l.name}</span>
+              {!l.active && <span className="text-xs text-slate-light">(inactive)</span>}
+              <span className="font-mono text-[10px] text-slate-light">{l.id}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={create} className="flex items-end gap-2">
+        <Field label="New location name">
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputClass}
+            placeholder="Nusa Spa — Wrocław"
+          />
+        </Field>
+        <Button variant="secondary" type="submit" disabled={busy}>
+          {busy ? "Adding…" : "Add"}
+        </Button>
+      </form>
       {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}
     </div>
   );
