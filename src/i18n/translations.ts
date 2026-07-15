@@ -156,6 +156,40 @@ export const ui: Record<string, Dict> = {
   // guestName fallbacks
   guestVocative: { pl: "Gościu", en: "Guest", uk: "Гостю", it: "Ospite", fr: "Cher invité", de: "Lieber Gast", es: "Estimado huésped", id: "Tamu" },
   nameAnd: { pl: "i", en: "and", uk: "та", it: "e", fr: "et", de: "und", es: "y", id: "dan" },
+
+  // Auth (LoginPage) + shared dashboard chrome
+  staffSignIn: { pl: "Logowanie personelu", en: "Staff sign in", uk: "Вхід для персоналу", it: "Accesso staff", fr: "Connexion du personnel", de: "Mitarbeiter-Anmeldung", es: "Acceso del personal", id: "Masuk staf" },
+  email: { pl: "E-mail", en: "Email", uk: "Електронна пошта", it: "Email", fr: "E-mail", de: "E-Mail", es: "Correo electrónico", id: "Email" },
+  password: { pl: "Hasło", en: "Password", uk: "Пароль", it: "Password", fr: "Mot de passe", de: "Passwort", es: "Contraseña", id: "Kata sandi" },
+  signIn: { pl: "Zaloguj się", en: "Sign in", uk: "Увійти", it: "Accedi", fr: "Se connecter", de: "Anmelden", es: "Iniciar sesión", id: "Masuk" },
+  signingIn: { pl: "Logowanie…", en: "Signing in…", uk: "Вхід…", it: "Accesso…", fr: "Connexion…", de: "Anmeldung…", es: "Iniciando sesión…", id: "Masuk…" },
+  signInFailed: { pl: "Logowanie nie powiodło się.", en: "Sign-in failed.", uk: "Не вдалося увійти.", it: "Accesso non riuscito.", fr: "Échec de la connexion.", de: "Anmeldung fehlgeschlagen.", es: "Error al iniciar sesión.", id: "Gagal masuk." },
+  signOut: { pl: "Wyloguj się", en: "Sign out", uk: "Вийти", it: "Esci", fr: "Se déconnecter", de: "Abmelden", es: "Cerrar sesión", id: "Keluar" },
+  save: { pl: "Zapisz", en: "Save", uk: "Зберегти", it: "Salva", fr: "Enregistrer", de: "Speichern", es: "Guardar", id: "Simpan" },
+  saving: { pl: "Zapisywanie…", en: "Saving…", uk: "Збереження…", it: "Salvataggio…", fr: "Enregistrement…", de: "Speichern…", es: "Guardando…", id: "Menyimpan…" },
+  loading: { pl: "Ładowanie…", en: "Loading…", uk: "Завантаження…", it: "Caricamento…", fr: "Chargement…", de: "Laden…", es: "Cargando…", id: "Memuat…" },
+
+  // Offer CMS (/manage)
+  offer: { pl: "Oferta", en: "Offer", uk: "Пропозиція", it: "Offerta", fr: "Offre", de: "Angebot", es: "Oferta", id: "Penawaran" },
+  cmsNoLocations: { pl: "Nie masz jeszcze żadnych lokalizacji do zarządzania. Utwórz jedną w panelu administratora platformy.", en: "No locations you can manage yet. Create one from the Platform Admin dashboard.", uk: "У вас ще немає локацій для керування. Створіть її в панелі адміністратора платформи.", it: "Non hai ancora sedi da gestire. Creane una dal pannello dell'amministratore della piattaforma.", fr: "Vous n'avez pas encore d'établissements à gérer. Créez-en un depuis le tableau de bord de l'administrateur.", de: "Sie haben noch keine Standorte zu verwalten. Erstellen Sie einen im Plattform-Admin-Dashboard.", es: "Aún no tienes ubicaciones que gestionar. Crea una desde el panel de administrador de la plataforma.", id: "Belum ada lokasi yang dapat Anda kelola. Buat satu dari dasbor admin platform." },
+  locationLabel: { pl: "Lokalizacja", en: "Location", uk: "Локація", it: "Sede", fr: "Établissement", de: "Standort", es: "Ubicación", id: "Lokasi" },
+  cmsNoServices: { pl: "Ta lokalizacja nie ma jeszcze żadnych usług.", en: "This location has no services yet.", uk: "У цій локації ще немає послуг.", it: "Questa sede non ha ancora servizi.", fr: "Cet établissement n'a pas encore de services.", de: "Dieser Standort hat noch keine Leistungen.", es: "Esta ubicación aún no tiene servicios.", id: "Lokasi ini belum memiliki layanan." },
+  cmsImport: { pl: "Importuj katalog Nusa", en: "Import Nusa catalogue", uk: "Імпортувати каталог Nusa", it: "Importa catalogo Nusa", fr: "Importer le catalogue Nusa", de: "Nusa-Katalog importieren", es: "Importar catálogo Nusa", id: "Impor katalog Nusa" },
+  cmsImporting: { pl: "Importowanie…", en: "Importing…", uk: "Імпортування…", it: "Importazione…", fr: "Importation…", de: "Importieren…", es: "Importando…", id: "Mengimpor…" },
+  cmsAddBlank: { pl: "Dodaj pustą usługę", en: "Add blank service", uk: "Додати порожню послугу", it: "Aggiungi servizio vuoto", fr: "Ajouter un service vierge", de: "Leere Leistung hinzufügen", es: "Añadir servicio en blanco", id: "Tambah layanan kosong" },
+  cmsAddService: { pl: "Dodaj usługę", en: "Add service", uk: "Додати послугу", it: "Aggiungi servizio", fr: "Ajouter un service", de: "Leistung hinzufügen", es: "Añadir servicio", id: "Tambah layanan" },
+  cmsName: { pl: "Nazwa", en: "Name", uk: "Назва", it: "Nome", fr: "Nom", de: "Name", es: "Nombre", id: "Nama" },
+  cmsDescription: { pl: "Opis", en: "Description", uk: "Опис", it: "Descrizione", fr: "Description", de: "Beschreibung", es: "Descripción", id: "Deskripsi" },
+  cmsDurations: { pl: "Czasy trwania", en: "Durations", uk: "Тривалість", it: "Durate", fr: "Durées", de: "Dauer", es: "Duraciones", id: "Durasi" },
+  cmsMin: { pl: "Min", en: "Min", uk: "Хв", it: "Min", fr: "Min", de: "Min", es: "Min", id: "Mnt" },
+  cmsPriceSingle: { pl: "Jedna os. (zł)", en: "Single (zł)", uk: "Одна ос. (zł)", it: "Singola (zł)", fr: "Une pers. (zł)", de: "Einzel (zł)", es: "Individual (zł)", id: "Satu (zł)" },
+  cmsPriceCouple: { pl: "Para (zł)", en: "Couple (zł)", uk: "Пара (zł)", it: "Coppia (zł)", fr: "Couple (zł)", de: "Paar (zł)", es: "Pareja (zł)", id: "Pasangan (zł)" },
+  cmsCoupleShort: { pl: "para", en: "couple", uk: "пара", it: "coppia", fr: "couple", de: "Paar", es: "pareja", id: "pasangan" },
+  cmsRemove: { pl: "usuń", en: "remove", uk: "видалити", it: "rimuovi", fr: "retirer", de: "entfernen", es: "quitar", id: "hapus" },
+  cmsAddDuration: { pl: "dodaj czas trwania", en: "add duration", uk: "додати тривалість", it: "aggiungi durata", fr: "ajouter une durée", de: "Dauer hinzufügen", es: "añadir duración", id: "tambah durasi" },
+  cmsActive: { pl: "Aktywna", en: "Active", uk: "Активна", it: "Attiva", fr: "Actif", de: "Aktiv", es: "Activo", id: "Aktif" },
+  cmsDelete: { pl: "Usuń", en: "Delete", uk: "Видалити", it: "Elimina", fr: "Supprimer", de: "Löschen", es: "Eliminar", id: "Hapus" },
+  cmsDeleteConfirm: { pl: "Usunąć '{name}'? Tej operacji nie można cofnąć.", en: "Delete '{name}'? This cannot be undone.", uk: "Видалити '{name}'? Цю дію не можна скасувати.", it: "Eliminare '{name}'? L'operazione non può essere annullata.", fr: "Supprimer '{name}' ? Cette action est irréversible.", de: "'{name}' löschen? Dies kann nicht rückgängig gemacht werden.", es: "¿Eliminar '{name}'? Esto no se puede deshacer.", id: "Hapus '{name}'? Ini tidak dapat dibatalkan." },
 };
 
 export const zoneTranslations: Record<ZoneId, Dict> = {

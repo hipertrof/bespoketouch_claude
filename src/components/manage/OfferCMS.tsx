@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
 import {
   fetchCatalog,
@@ -8,7 +9,9 @@ import {
   type CatalogService,
   type ServiceDurationRow,
 } from "../../lib/catalog";
+import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
+import { LanguageSelector } from "../LanguageSelector";
 
 interface LocationLite {
   id: string;
@@ -19,8 +22,11 @@ interface LocationLite {
 // Location Manager / Owner / Platform Admin offer CMS. Lists the locations the
 // signed-in user can read (RLS filters the rest), lets them pick one, and edit
 // its services + durations. Writes are gated at the DB by can_manage_location().
+// UI language is the global staff language (defaults to Polish) so a
+// non-Polish-speaking manager can switch it from the top selector.
 export function OfferCMS() {
   const { user, loading, signOut } = useAuth();
+  const { lang } = useLanguage();
   const navigate = useNavigate();
 
   const [locations, setLocations] = useState<LocationLite[]>([]);
@@ -92,32 +98,33 @@ export function OfferCMS() {
     else loadCatalog(locationId);
   }
 
-  if (loading) return <Centered>Loading…</Centered>;
+  if (loading) return <Centered>{t("loading", lang)}</Centered>;
   if (!user) return null;
 
   return (
     <div className="min-h-screen bg-cream px-6 py-10">
       <div className="mx-auto max-w-4xl">
-        <header className="mb-8 flex items-center justify-between">
+        <header className="mb-8 flex items-center justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl text-charcoal">Offer</h1>
+            <h1 className="font-serif text-3xl text-charcoal">{t("offer", lang)}</h1>
             <p className="text-sm text-slate">{user.email}</p>
           </div>
-          <Button variant="ghost" onClick={() => signOut()}>
-            Sign out
-          </Button>
+          <div className="flex items-center gap-3">
+            <LanguageSelector />
+            <Button variant="ghost" onClick={() => signOut()}>
+              {t("signOut", lang)}
+            </Button>
+          </div>
         </header>
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
         {locations.length === 0 ? (
-          <p className="text-slate">
-            No locations you can manage yet. Create one from the Platform Admin dashboard.
-          </p>
+          <p className="text-slate">{t("cmsNoLocations", lang)}</p>
         ) : (
           <>
             <label className="mb-6 flex max-w-sm flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
-              Location
+              {t("locationLabel", lang)}
               <select
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
@@ -133,13 +140,13 @@ export function OfferCMS() {
 
             {catalog.length === 0 ? (
               <div className="rounded-3xl bg-white p-8 text-center shadow-soft">
-                <p className="mb-4 text-slate">This location has no services yet.</p>
+                <p className="mb-4 text-slate">{t("cmsNoServices", lang)}</p>
                 <div className="flex justify-center gap-3">
                   <Button onClick={handleImport} disabled={busy}>
-                    {busy ? "Importing…" : "Import Nusa catalogue"}
+                    {busy ? t("cmsImporting", lang) : t("cmsImport", lang)}
                   </Button>
                   <Button variant="secondary" onClick={addService} disabled={busy}>
-                    Add blank service
+                    {t("cmsAddBlank", lang)}
                   </Button>
                 </div>
               </div>
@@ -149,7 +156,7 @@ export function OfferCMS() {
                   <ServiceEditor key={s.id} service={s} onChanged={() => loadCatalog(locationId)} />
                 ))}
                 <Button variant="secondary" onClick={addService} disabled={busy} className="self-start">
-                  + Add service
+                  + {t("cmsAddService", lang)}
                 </Button>
               </div>
             )}
@@ -170,6 +177,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 // One service row: pl/en names, pl description, active flag, and its durations.
 function ServiceEditor({ service, onChanged }: { service: CatalogService; onChanged: () => void }) {
+  const { lang } = useLanguage();
   const [namePl, setNamePl] = useState(service.name_i18n.pl ?? "");
   const [nameEn, setNameEn] = useState(service.name_i18n.en ?? "");
   const [descPl, setDescPl] = useState(service.description_i18n.pl ?? "");
@@ -218,7 +226,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   }
 
   async function remove() {
-    if (!confirm(`Delete "${namePl}"? This cannot be undone.`)) return;
+    if (!confirm(tf("cmsDeleteConfirm", lang, { name: namePl }))) return;
     setBusy(true);
     const { error } = await supabase.from("services").delete().eq("id", service.id);
     setBusy(false);
@@ -244,14 +252,14 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   return (
     <div className={`rounded-2xl bg-white p-5 shadow-soft ${active ? "" : "opacity-60"}`}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Name (PL)">
+        <Field label={`${t("cmsName", lang)} (PL)`}>
           <input value={namePl} onChange={(e) => setNamePl(e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Name (EN)">
+        <Field label={`${t("cmsName", lang)} (EN)`}>
           <input value={nameEn} onChange={(e) => setNameEn(e.target.value)} className={inputClass} />
         </Field>
       </div>
-      <Field label="Description (PL)" className="mt-3">
+      <Field label={`${t("cmsDescription", lang)} (PL)`} className="mt-3">
         <textarea
           value={descPl}
           onChange={(e) => setDescPl(e.target.value)}
@@ -262,12 +270,12 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
 
       <div className="mt-4">
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-light">
-          Durations
+          {t("cmsDurations", lang)}
         </div>
         <div className="flex flex-col gap-2">
           {durations.map((d, i) => (
             <div key={d.id ?? `new-${i}`} className="flex flex-wrap items-end gap-2">
-              <MiniField label="Min">
+              <MiniField label={t("cmsMin", lang)}>
                 <input
                   type="number"
                   value={d.minutes}
@@ -275,7 +283,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                   className={`${inputClass} w-20`}
                 />
               </MiniField>
-              <MiniField label="Single (zł)">
+              <MiniField label={t("cmsPriceSingle", lang)}>
                 <input
                   type="number"
                   value={d.price_single ?? ""}
@@ -287,7 +295,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                   className={`${inputClass} w-24`}
                 />
               </MiniField>
-              <MiniField label="Couple (zł)">
+              <MiniField label={t("cmsPriceCouple", lang)}>
                 <input
                   type="number"
                   value={d.price_couple ?? ""}
@@ -306,14 +314,14 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                   checked={d.couple_available}
                   onChange={(e) => updateDuration(i, { couple_available: e.target.checked })}
                 />
-                couple
+                {t("cmsCoupleShort", lang)}
               </label>
               <button
                 type="button"
                 onClick={() => removeDuration(d, i)}
                 className="pb-3 text-xs text-rose-dark hover:underline"
               >
-                remove
+                {t("cmsRemove", lang)}
               </button>
             </div>
           ))}
@@ -327,7 +335,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
             }
             className="self-start text-xs text-sage-dark hover:underline"
           >
-            + add duration
+            + {t("cmsAddDuration", lang)}
           </button>
         </div>
       </div>
@@ -337,14 +345,14 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
       <div className="mt-4 flex items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-slate">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active
+          {t("cmsActive", lang)}
         </label>
         <div className="flex-1" />
         <button type="button" onClick={remove} disabled={busy} className="text-sm text-rose-dark hover:underline">
-          Delete
+          {t("cmsDelete", lang)}
         </button>
         <Button variant="secondary" onClick={save} disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? t("saving", lang) : t("save", lang)}
         </Button>
       </div>
     </div>

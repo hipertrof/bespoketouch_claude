@@ -44,15 +44,15 @@ export function PlatformAdminDashboard() {
     if (isPlatformAdmin) load();
   }, [isPlatformAdmin, load]);
 
-  if (loading) return <Centered>Loading…</Centered>;
+  if (loading) return <Centered>Ładowanie…</Centered>;
   if (!user) return null; // redirecting
   if (!isPlatformAdmin) {
     return (
       <Centered>
         <div className="text-center">
-          <p className="text-charcoal">You are signed in but not a platform admin.</p>
+          <p className="text-charcoal">Jesteś zalogowany, ale nie masz uprawnień administratora platformy.</p>
           <Button variant="secondary" className="mt-4" onClick={() => signOut()}>
-            Sign out
+            Wyloguj się
           </Button>
         </div>
       </Centered>
@@ -64,23 +64,23 @@ export function PlatformAdminDashboard() {
       <div className="mx-auto max-w-4xl">
         <header className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="font-serif text-3xl text-charcoal">Platform Admin</h1>
+            <h1 className="font-serif text-3xl text-charcoal">Administrator Platformy</h1>
             <p className="text-sm text-slate">{user.email}</p>
           </div>
           <Button variant="ghost" onClick={() => signOut()}>
-            Sign out
+            Wyloguj się
           </Button>
         </header>
 
         <CreateAccountForm onCreated={load} />
 
         <section className="mt-10">
-          <h2 className="mb-3 font-serif text-xl text-charcoal">Accounts</h2>
+          <h2 className="mb-3 font-serif text-xl text-charcoal">Konta</h2>
           {listError && <p className="text-sm text-rose-dark">{listError}</p>}
           {fetching ? (
-            <p className="text-slate">Loading accounts…</p>
+            <p className="text-slate">Ładowanie kont…</p>
           ) : accounts.length === 0 ? (
-            <p className="text-slate">No accounts yet. Create one above.</p>
+            <p className="text-slate">Brak kont. Utwórz jedno powyżej.</p>
           ) : (
             <div className="flex flex-col gap-3">
               {accounts.map((a) => (
@@ -134,9 +134,9 @@ function CreateAccountForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form onSubmit={submit} className="rounded-3xl bg-white p-6 shadow-soft">
-      <h2 className="mb-4 font-serif text-xl text-charcoal">New account</h2>
+      <h2 className="mb-4 font-serif text-xl text-charcoal">Nowe konto</h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Spa / company name">
+        <Field label="Nazwa spa / firmy">
           <input
             required
             value={name}
@@ -145,7 +145,7 @@ function CreateAccountForm({ onCreated }: { onCreated: () => void }) {
             placeholder="Nusa Spa"
           />
         </Field>
-        <Field label="Slots paid">
+        <Field label="Opłacone stanowiska">
           <input
             type="number"
             min={0}
@@ -154,16 +154,16 @@ function CreateAccountForm({ onCreated }: { onCreated: () => void }) {
             className={inputClass}
           />
         </Field>
-        <Field label="Subscription start">
+        <Field label="Początek subskrypcji">
           <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Subscription end">
+        <Field label="Koniec subskrypcji">
           <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />
         </Field>
       </div>
       {error && <p className="mt-3 text-sm text-rose-dark">{error}</p>}
       <Button type="submit" disabled={busy} className="mt-4">
-        {busy ? "Creating…" : "Create account"}
+        {busy ? "Tworzenie…" : "Utwórz konto"}
       </Button>
     </form>
   );
@@ -201,7 +201,7 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
           <div className="font-serif text-lg text-charcoal">{account.name}</div>
           <div className="text-xs text-slate-light">{account.plan ?? "no plan"}</div>
         </div>
-        <Field label="Slots">
+        <Field label="Stanowiska">
           <input
             type="number"
             min={0}
@@ -210,14 +210,14 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
             className={`${inputClass} w-24`}
           />
         </Field>
-        <Field label="Start">
+        <Field label="Początek">
           <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inputClass} />
         </Field>
-        <Field label="End">
+        <Field label="Koniec">
           <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className={inputClass} />
         </Field>
         <Button variant="secondary" disabled={!dirty || busy} onClick={save}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Zapisywanie…" : "Zapisz"}
         </Button>
       </div>
       {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}
@@ -226,7 +226,7 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
         onClick={() => setShowLocations((v) => !v)}
         className="mt-3 text-xs font-medium text-sage-dark hover:underline"
       >
-        {showLocations ? "Hide locations" : "Manage locations"}
+        {showLocations ? "Ukryj lokalizacje" : "Zarządzaj lokalizacjami"}
       </button>
       {showLocations && <LocationsSection accountId={account.id} />}
     </div>
@@ -278,20 +278,20 @@ function LocationsSection({ accountId }: { accountId: string }) {
   return (
     <div className="mt-3 rounded-xl bg-oatmeal p-4">
       {locations.length === 0 ? (
-        <p className="mb-3 text-xs text-slate">No locations yet.</p>
+        <p className="mb-3 text-xs text-slate">Brak lokalizacji.</p>
       ) : (
         <ul className="mb-3 flex flex-col gap-1 text-sm text-charcoal">
           {locations.map((l) => (
             <li key={l.id} className="flex items-center gap-2">
               <span>{l.name}</span>
-              {!l.active && <span className="text-xs text-slate-light">(inactive)</span>}
+              {!l.active && <span className="text-xs text-slate-light">(nieaktywna)</span>}
               <span className="font-mono text-[10px] text-slate-light">{l.id}</span>
             </li>
           ))}
         </ul>
       )}
       <form onSubmit={create} className="flex items-end gap-2">
-        <Field label="New location name">
+        <Field label="Nazwa nowej lokalizacji">
           <input
             required
             value={name}
@@ -301,7 +301,7 @@ function LocationsSection({ accountId }: { accountId: string }) {
           />
         </Field>
         <Button variant="secondary" type="submit" disabled={busy}>
-          {busy ? "Adding…" : "Add"}
+          {busy ? "Dodawanie…" : "Dodaj"}
         </Button>
       </form>
       {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}

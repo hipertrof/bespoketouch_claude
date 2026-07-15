@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GuestProvider, useGuest } from "./context/GuestContext";
 import { AuthProvider } from "./context/AuthContext";
+import { LanguageProvider } from "./context/LanguageContext";
 import { Header } from "./components/Header";
 import { WelcomeStep } from "./components/steps/WelcomeStep";
 import { StaffHandoffStep } from "./components/steps/StaffHandoffStep";
@@ -41,6 +42,7 @@ function KioskScreen() {
 function App() {
   return (
     <AuthProvider>
+      <LanguageProvider>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route
@@ -56,6 +58,7 @@ function App() {
           <Route path="/manage" element={<OfferCMS />} />
         </Routes>
       </BrowserRouter>
+      </LanguageProvider>
     </AuthProvider>
   );
 }
