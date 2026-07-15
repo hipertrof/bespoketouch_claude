@@ -90,8 +90,8 @@ export async function importDefaultCatalog(locationId: string): Promise<number> 
   let imported = 0;
   for (let i = 0; i < massageTypes.length; i++) {
     const m = massageTypes[i];
-    // pl name/description come from the bundled catalogue; other languages from
-    // the i18n name map (descriptions stay pl-only until a manager translates).
+    // pl name comes from the bundled catalogue; other languages from the i18n
+    // name map. Descriptions are not stored (removed from the offer model).
     const nameI18n: Record<string, string> = {
       ...(massageNameTranslations[m.id] ?? {}),
       pl: m.name,
@@ -101,7 +101,6 @@ export async function importDefaultCatalog(locationId: string): Promise<number> 
       .insert({
         location_id: locationId,
         name_i18n: nameI18n,
-        description_i18n: { pl: m.description },
         active: true,
         sort: i,
       })

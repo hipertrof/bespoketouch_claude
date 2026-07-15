@@ -9,7 +9,8 @@ import {
   type CatalogService,
   type ServiceDurationRow,
 } from "../../lib/catalog";
-import { t, tf } from "../../i18n/translations";
+import { languages, t, tf } from "../../i18n/translations";
+import type { LangCode } from "../../types";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
 
@@ -89,7 +90,6 @@ export function OfferCMS() {
     const { error } = await supabase.from("services").insert({
       location_id: locationId,
       name_i18n: { pl: "Nowa usługa" },
-      description_i18n: {},
       active: true,
       sort: catalog.length,
     });
@@ -175,28 +175,43 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-// One service row: pl/en names, pl description, active flag, and its durations.
+// The non-Polish languages a manager can optionally translate a name into.
+const otherLangs = languages.map((l) => l.code).filter((c): c is LangCode => c !== "pl");
+
+// One service row: a required Polish name, optional per-language name
+// translations (blank = falls back to Polish), an active flag, and durations.
 function ServiceEditor({ service, onChanged }: { service: CatalogService; onChanged: () => void }) {
   const { lang } = useLanguage();
-  const [namePl, setNamePl] = useState(service.name_i18n.pl ?? "");
-  const [nameEn, setNameEn] = useState(service.name_i18n.en ?? "");
-  const [descPl, setDescPl] = useState(service.description_i18n.pl ?? "");
+  // Per-language name map, seeded from the stored translations.
+  const [names, setNames] = useState<Record<string, string>>(() => ({ ...service.name_i18n }));
+  const [showTranslations, setShowTranslations] = useState(false);
   const [active, setActive] = useState(service.active);
   const [durations, setDurations] = useState<ServiceDurationRow[]>(service.durations);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const setName = (code: string, value: string) =>
+    setNames((prev) => ({ ...prev, [code]: value }));
+
   async function save() {
+    const pl = (names.pl ?? "").trim();
+    if (!pl) {
+      setError(t("cmsNameRequired", lang));
+      return;
+    }
     setBusy(true);
     setError(null);
-    // Preserve other-language keys; only overwrite pl/en.
+    // Rebuild name_i18n: Polish always present; other languages only if the
+    // manager filled them in (empty ones are dropped so the kiosk falls back
+    // to Polish). Description is intentionally not stored.
+    const nameI18n: Record<string, string> = { pl };
+    for (const code of otherLangs) {
+      const v = (names[code] ?? "").trim();
+      if (v) nameI18n[code] = v;
+    }
     const { error: sErr } = await supabase
       .from("services")
-      .update({
-        name_i18n: { ...service.name_i18n, pl: namePl, en: nameEn },
-        description_i18n: { ...service.description_i18n, pl: descPl },
-        active,
-      })
+      .update({ name_i18n: nameI18n, active })
       .eq("id", service.id);
     if (sErr) {
       setBusy(false);
@@ -226,7 +241,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   }
 
   async function remove() {
-    if (!confirm(tf("cmsDeleteConfirm", lang, { name: namePl }))) return;
+    if (!confirm(tf("cmsDeleteConfirm", lang, { name: names.pl ?? "" }))) return;
     setBusy(true);
     const { error } = await supabase.from("services").delete().eq("id", service.id);
     setBusy(false);
@@ -251,22 +266,38 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
 
   return (
     <div className={`rounded-2xl bg-white p-5 shadow-soft ${active ? "" : "opacity-60"}`}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={`${t("cmsName", lang)} (PL)`}>
-          <input value={namePl} onChange={(e) => setNamePl(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label={`${t("cmsName", lang)} (EN)`}>
-          <input value={nameEn} onChange={(e) => setNameEn(e.target.value)} className={inputClass} />
-        </Field>
-      </div>
-      <Field label={`${t("cmsDescription", lang)} (PL)`} className="mt-3">
-        <textarea
-          value={descPl}
-          onChange={(e) => setDescPl(e.target.value)}
-          rows={2}
-          className={`${inputClass} resize-y`}
+      <Field label={`${t("cmsName", lang)} (PL)`}>
+        <input
+          required
+          value={names.pl ?? ""}
+          onChange={(e) => setName("pl", e.target.value)}
+          className={inputClass}
         />
       </Field>
+
+      <button
+        type="button"
+        onClick={() => setShowTranslations((v) => !v)}
+        className="mt-2 self-start text-xs font-medium text-sage-dark hover:underline"
+      >
+        {showTranslations ? t("cmsHideTranslations", lang) : t("cmsAddTranslations", lang)}
+      </button>
+      {showTranslations && (
+        <div className="mt-2 rounded-xl bg-oatmeal p-3">
+          <p className="mb-2 text-xs text-slate-light">{t("cmsFallbackNote", lang)}</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {otherLangs.map((code) => (
+              <Field key={code} label={languages.find((l) => l.code === code)!.label}>
+                <input
+                  value={names[code] ?? ""}
+                  onChange={(e) => setName(code, e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4">
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-light">
