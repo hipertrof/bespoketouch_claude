@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GuestProvider, useGuest } from "./context/GuestContext";
 import { AuthProvider } from "./context/AuthContext";
 import { Header } from "./components/Header";
@@ -9,12 +10,13 @@ import { PreferencesStep } from "./components/steps/PreferencesStep";
 import { GuestHandoffStep } from "./components/steps/GuestHandoffStep";
 import { HandoffStep } from "./components/steps/HandoffStep";
 import { MasseurDashboard } from "./components/steps/MasseurDashboard";
+import { LoginPage } from "./components/auth/LoginPage";
+import { PlatformAdminDashboard } from "./components/admin/PlatformAdminDashboard";
 
-function Screen() {
+// The kiosk guest-intake flow (state machine, no login). Lives at "/".
+function KioskScreen() {
   const { state } = useGuest();
 
-  // Each step is a distinct screen; start every one from the top rather than
-  // inheriting the previous step's scroll position.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [state.step]);
@@ -38,9 +40,20 @@ function Screen() {
 function App() {
   return (
     <AuthProvider>
-      <GuestProvider>
-        <Screen />
-      </GuestProvider>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <GuestProvider>
+                <KioskScreen />
+              </GuestProvider>
+            }
+          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin" element={<PlatformAdminDashboard />} />
+        </Routes>
+      </BrowserRouter>
     </AuthProvider>
   );
 }
