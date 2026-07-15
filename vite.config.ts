@@ -6,10 +6,14 @@ import { deeplProxyPlugin } from './vite-plugins/deepl-proxy.js'
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // Base path differs per host:
+  //  - Vercel (backend build target): served from root.
+  //  - GitHub Pages (legacy): served from /bespoketouch_claude/.
+  //  - `vite dev`: root.
+  const isVercel = !!process.env.VERCEL
+  const base = command === 'build' && !isVercel ? '/bespoketouch_claude/' : '/'
   return {
-    // Served from https://<user>.github.io/bespoketouch_claude/ in production;
-    // stays at root during `vite dev`.
-    base: command === 'build' ? '/bespoketouch_claude/' : '/',
+    base,
     plugins: [react(), tailwindcss(), deeplProxyPlugin(env.DEEPL_API_KEY)],
   }
 })
