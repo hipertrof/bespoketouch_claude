@@ -1,0 +1,191 @@
+// Shared logic for the member-invite endpoint, used by both the Vercel
+// serverless function (api/members.ts) and the dev Vite middleware
+// (vite-plugins/members-proxy.ts).
+//
+// Deliberately dependency-free — plain fetch against Supabase's REST + Auth
+// Admin APIs, mirroring api/translate.ts. (An earlier version imported
+// @supabase/supabase-js and crashed the serverless function with
+// FUNCTION_INVOCATION_FAILED; the SDK doesn't survive the function trace here.)
+// Lives in /api as an underscore-prefixed file so Vercel bundles it WITHOUT
+// turning it into its own route.
+//
+// Runs with the SERVICE ROLE key, so it authenticates the caller and authorizes
+// the action itself — RLS does not apply to the service role.
+
+const ROLES = ["owner", "manager", "therapist", "frontdesk"] as const;
+type Role = (typeof ROLES)[number];
+
+export interface MembersEnv {
+  url: string;
+  serviceKey: string;
+}
+
+export interface MembersResult {
+  status: number;
+  json: unknown;
+}
+
+interface AddMemberBody {
+  accountId?: string;
+  locationId?: string | null;
+  role?: string;
+  email?: string;
+}
+
+type Headers = Record<string, string>;
+type JsonRecord = Record<string, unknown>;
+
+export async function addMember(
+  authorization: string | undefined,
+  body: AddMemberBody | undefined,
+  env: MembersEnv,
+): Promise<MembersResult> {
+  if (!env.url || !env.serviceKey) {
+    return { status: 500, json: { error: "Server not configured: SUPABASE_SERVICE_ROLE_KEY is missing." } };
+  }
+
+  const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { status: 401, json: { error: "Missing authorization." } };
+
+  const base = env.url.replace(/\/$/, "");
+  const svc: Headers = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
+
+  // 1. Identify the caller from their JWT.
+  const caller = await getJson(`${base}/auth/v1/user`, {
+    apikey: env.serviceKey,
+    Authorization: `Bearer ${token}`,
+  });
+  const callerId = asRecord(caller.body)?.id;
+  if (!caller.ok || typeof callerId !== "string") {
+    return { status: 401, json: { error: "Invalid or expired session." } };
+  }
+
+  // 2. Validate input.
+  const accountId = body?.accountId;
+  const role = body?.role as Role | undefined;
+  const emailRaw = body?.email;
+  if (!accountId || !role || !emailRaw) {
+    return { status: 400, json: { error: "Missing accountId, role or email." } };
+  }
+  if (!ROLES.includes(role)) return { status: 400, json: { error: "Invalid role." } };
+  const email = String(emailRaw).trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { status: 400, json: { error: "Invalid email address." } };
+  }
+  const locationId: string | null = role === "owner" ? null : body?.locationId ?? null;
+  if (role !== "owner" && !locationId) {
+    return { status: 400, json: { error: "A location is required for this role." } };
+  }
+
+  // 3. Authorize: platform admin or account owner only.
+  const admins = await getJson(
+    `${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`,
+    svc,
+  );
+  const isPlatformAdmin = Boolean(asArray(admins.body)[0]?.is_platform_admin);
+  if (!isPlatformAdmin) {
+    const owner = await getJson(
+      `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+        `&account_id=eq.${accountId}&role=eq.owner&location_id=is.null`,
+      svc,
+    );
+    if (asArray(owner.body).length === 0) {
+      return { status: 403, json: { error: "Not authorized to manage this account." } };
+    }
+  }
+
+  // 3b. Location-scoped roles must target a location within this account.
+  if (locationId) {
+    const loc = await getJson(
+      `${base}/rest/v1/locations?select=id&id=eq.${locationId}&account_id=eq.${accountId}`,
+      svc,
+    );
+    if (asArray(loc.body).length === 0) {
+      return { status: 400, json: { error: "Location does not belong to this account." } };
+    }
+  }
+
+  // 4. Resolve the target user by email, inviting a new one if needed.
+  let targetUserId: string;
+  let inviteLink: string | null = null;
+  const prof = await getJson(
+    `${base}/rest/v1/profiles?select=user_id&email=eq.${encodeURIComponent(email)}`,
+    svc,
+  );
+  const existingProfileId = asArray(prof.body)[0]?.user_id;
+  if (typeof existingProfileId === "string") {
+    targetUserId = existingProfileId;
+  } else {
+    const link = await postJson(`${base}/auth/v1/admin/generate_link`, svc, { type: "invite", email });
+    const linkBody = asRecord(link.body);
+    if (link.ok && typeof linkBody?.id === "string") {
+      targetUserId = linkBody.id;
+      inviteLink = typeof linkBody.action_link === "string" ? linkBody.action_link : null;
+    } else {
+      const existing = await findUserByEmail(base, svc, email);
+      if (!existing) {
+        const msg = typeof linkBody?.msg === "string" ? linkBody.msg : "Could not create the user.";
+        return { status: 500, json: { error: msg } };
+      }
+      targetUserId = existing;
+    }
+  }
+
+  // 5. Insert the membership (idempotent — unique index rejects duplicates).
+  const ins = await fetch(`${base}/rest/v1/memberships`, {
+    method: "POST",
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ user_id: targetUserId, account_id: accountId, location_id: locationId, role }),
+  });
+  const alreadyMember = ins.status === 409;
+  if (!ins.ok && !alreadyMember) {
+    return { status: 500, json: { error: `Could not add member (${ins.status}).` } };
+  }
+
+  return {
+    status: 200,
+    json: { ok: true, invited: Boolean(inviteLink), alreadyMember, inviteLink },
+  };
+}
+
+// Pages through auth users to find one by email (fallback for legacy users
+// missing a profile row; new invites resolve via profiles directly).
+async function findUserByEmail(base: string, svc: Headers, email: string): Promise<string | null> {
+  for (let page = 1; page <= 20; page++) {
+    const r = await getJson(`${base}/auth/v1/admin/users?page=${page}&per_page=200`, svc);
+    const rec = asRecord(r.body);
+    const users = asArray(rec?.users ?? r.body);
+    if (users.length === 0) return null;
+    const hit = users.find((u) => String(u.email ?? "").toLowerCase() === email);
+    if (hit && typeof hit.id === "string") return hit.id;
+    if (users.length < 200) return null;
+  }
+  return null;
+}
+
+function asRecord(v: unknown): JsonRecord | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : null;
+}
+function asArray(v: unknown): JsonRecord[] {
+  return Array.isArray(v) ? (v as JsonRecord[]) : [];
+}
+
+async function getJson(url: string, headers: Headers): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const r = await fetch(url, { headers });
+  const body = await r.json().catch(() => null);
+  return { ok: r.ok, status: r.status, body };
+}
+
+async function postJson(
+  url: string,
+  headers: Headers,
+  payload: unknown,
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await r.json().catch(() => null);
+  return { ok: r.ok, status: r.status, body };
+}

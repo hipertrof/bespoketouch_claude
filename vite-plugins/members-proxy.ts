@@ -1,6 +1,6 @@
 import type { Plugin } from "vite";
 import type { IncomingMessage } from "node:http";
-import { addMember, type MembersEnv } from "../server/membersCore.js";
+import { addMember, type MembersEnv } from "../api/_membersCore.js";
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

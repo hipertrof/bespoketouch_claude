@@ -1,7 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-// Extensionless import: this file is bundled by Vercel's esbuild (not the local
-// tsc project), which resolves the sibling .ts source without an extension.
-import { addMember } from "../server/membersCore";
+import { addMember } from "./_membersCore";
 
 // Member-invite endpoint. Keeps SUPABASE_SERVICE_ROLE_KEY server-side and does
 // its own caller auth (see membersCore). The dev equivalent is the Vite
