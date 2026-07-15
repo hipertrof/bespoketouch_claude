@@ -80,23 +80,22 @@ export async function saveIntake(input: {
   guestNames: string[];
   treatmentSelections: TreatmentSnapshot[];
   personalizations: PersonalizationState[];
-}): Promise<string> {
+}): Promise<void> {
   const expiresAt = new Date(Date.now() + RETENTION_HOURS * 3600 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("intakes")
-    .insert({
-      location_id: input.locationId,
-      status: "submitted",
-      party_size: input.partySize,
-      guest_names: input.guestNames,
-      treatment_selections: input.treatmentSelections,
-      personalizations: input.personalizations,
-      expires_at: expiresAt,
-    })
-    .select("id")
-    .single();
+  // Insert only — no .select() back. The kiosk writes as the anon role, which
+  // has INSERT but deliberately NO SELECT on intakes (they hold guest PII). A
+  // returning-select would commit the row yet read back zero rows under RLS,
+  // throwing a false failure — and the retry that follows would duplicate it.
+  const { error } = await supabase.from("intakes").insert({
+    location_id: input.locationId,
+    status: "submitted",
+    party_size: input.partySize,
+    guest_names: input.guestNames,
+    treatment_selections: input.treatmentSelections,
+    personalizations: input.personalizations,
+    expires_at: expiresAt,
+  });
   if (error) throw error;
-  return data.id as string;
 }
 
 // ---------------------------------------------------------------------------
