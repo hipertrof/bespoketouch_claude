@@ -74,12 +74,7 @@ export async function addMember(params: {
     body: JSON.stringify(params),
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) {
-    const base = (json.error as string) ?? `Request failed (${res.status})`;
-    // TEMP: surface server diagnostics for the therapist/frontdesk 403.
-    const dbg = json._debug ? ` :: ${JSON.stringify(json._debug)}` : "";
-    throw new Error(base + dbg);
-  }
+  if (!res.ok) throw new Error((json.error as string) ?? `Request failed (${res.status})`);
   return {
     invited: Boolean(json.invited),
     alreadyMember: Boolean(json.alreadyMember),

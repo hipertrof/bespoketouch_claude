@@ -100,7 +100,10 @@ export async function addMember(
     return { status: 400, json: { error: "A location is required for this role." } };
   }
 
-  // 3. Authorize: platform admin or account owner only.
+  // 3. Authorize. Three tiers (per the governance model):
+  //    - platform admin  → anything
+  //    - account owner    → anything in their account
+  //    - location manager → operational staff (therapist/frontdesk) on THEIR location
   const admins = await getJson(
     `${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`,
     svc,
@@ -112,24 +115,21 @@ export async function addMember(
         `&account_id=eq.${accountId}&role=eq.owner&location_id=is.null`,
       svc,
     );
-    if (asArray(owner.body).length === 0) {
-      return {
-        status: 403,
-        json: {
-          error: "Not authorized to manage this account.",
-          // TEMP diagnostic — remove after the therapist/frontdesk 403 is solved.
-          _debug: {
-            role,
-            locationId,
-            accountId,
-            callerId,
-            isPlatformAdmin,
-            adminsStatus: admins.status,
-            adminsBody: admins.body,
-            ownerRows: asArray(owner.body).length,
-          },
-        },
-      };
+    let authorized = asArray(owner.body).length > 0;
+
+    // A location manager may add operational staff to the location they manage
+    // (not owners or other managers — those need an account owner).
+    if (!authorized && locationId && (role === "therapist" || role === "frontdesk")) {
+      const mgr = await getJson(
+        `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+          `&account_id=eq.${accountId}&location_id=eq.${locationId}&role=eq.manager`,
+        svc,
+      );
+      authorized = asArray(mgr.body).length > 0;
+    }
+
+    if (!authorized) {
+      return { status: 403, json: { error: "Not authorized to manage this account." } };
     }
   }
 
