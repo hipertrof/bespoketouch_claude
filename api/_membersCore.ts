@@ -44,6 +44,26 @@ export async function addMember(
     return { status: 500, json: { error: "Server not configured: SUPABASE_SERVICE_ROLE_KEY is missing." } };
   }
 
+  // Guard against pasting a PUBLIC key instead of the secret one — an easy
+  // mix-up (the legacy anon/service_role keys are both eyJ… JWTs; the new keys
+  // are sb_publishable_… vs sb_secret_…). A public key silently runs every query
+  // under RLS and surfaces as a confusing "Not authorized" 403.
+  const keyRole = jwtRole(env.serviceKey);
+  const isPublicKey =
+    env.serviceKey.startsWith("sb_publishable_") || (keyRole !== null && keyRole !== "service_role");
+  if (isPublicKey) {
+    const which = keyRole ? `role "${keyRole}"` : "the publishable key";
+    return {
+      status: 500,
+      json: {
+        error:
+          `SUPABASE_SERVICE_ROLE_KEY looks like a public key (${which}), not the secret ` +
+          `service_role key. In Supabase → Project Settings → API, copy the service_role / ` +
+          `secret key (not anon / publishable) into Vercel and redeploy.`,
+      },
+    };
+  }
+
   const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return { status: 401, json: { error: "Missing authorization." } };
 
@@ -161,6 +181,19 @@ async function findUserByEmail(base: string, svc: Headers, email: string): Promi
     if (users.length < 200) return null;
   }
   return null;
+}
+
+// Reads the `role` claim from a Supabase legacy key (a JWT). Returns null for
+// non-JWT keys (e.g. the new sb_secret_… format), which are left to pass.
+function jwtRole(key: string): string | null {
+  const parts = key.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return typeof payload?.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
 }
 
 function asRecord(v: unknown): JsonRecord | null {
