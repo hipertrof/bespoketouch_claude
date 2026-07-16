@@ -113,7 +113,23 @@ export async function addMember(
       svc,
     );
     if (asArray(owner.body).length === 0) {
-      return { status: 403, json: { error: "Not authorized to manage this account." } };
+      return {
+        status: 403,
+        json: {
+          error: "Not authorized to manage this account.",
+          // TEMP diagnostic — remove after the therapist/frontdesk 403 is solved.
+          _debug: {
+            role,
+            locationId,
+            accountId,
+            callerId,
+            isPlatformAdmin,
+            adminsStatus: admins.status,
+            adminsBody: admins.body,
+            ownerRows: asArray(owner.body).length,
+          },
+        },
+      };
     }
   }
 
