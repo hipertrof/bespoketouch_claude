@@ -201,15 +201,19 @@ export async function membersSelfTest(env: MembersEnv): Promise<MembersResult> {
         ? "jwt"
         : "other";
 
+  const probeUrl = `${base}/rest/v1/profiles?select=user_id&limit=3`;
+  // On a non-2xx the body is a PostgREST error object (code/message/hint) — no
+  // row data — so it is safe to surface for diagnosis.
+  const errText = (r: { status: number; body: unknown }) =>
+    r.status >= 200 && r.status < 300 ? undefined : JSON.stringify(r.body)?.slice(0, 300);
+
   // Variant A: apikey + Authorization: Bearer (what addMember currently uses).
-  const withBearer = await getJson(`${base}/rest/v1/profiles?select=user_id&limit=3`, {
+  const withBearer = await getJson(probeUrl, {
     apikey: env.serviceKey,
     Authorization: `Bearer ${env.serviceKey}`,
   });
-  // Variant B: apikey only (correct usage for the new sb_secret_ keys).
-  const apikeyOnly = await getJson(`${base}/rest/v1/profiles?select=user_id&limit=3`, {
-    apikey: env.serviceKey,
-  });
+  // Variant B: apikey only.
+  const apikeyOnly = await getJson(probeUrl, { apikey: env.serviceKey });
 
   return {
     status: 200,
@@ -217,8 +221,8 @@ export async function membersSelfTest(env: MembersEnv): Promise<MembersResult> {
       configured: true,
       keyFormat: format,
       jwtRole: jwtRole(env.serviceKey),
-      withBearer: { status: withBearer.status, rowsVisible: asArray(withBearer.body).length },
-      apikeyOnly: { status: apikeyOnly.status, rowsVisible: asArray(apikeyOnly.body).length },
+      withBearer: { status: withBearer.status, rows: asArray(withBearer.body).length, err: errText(withBearer) },
+      apikeyOnly: { status: apikeyOnly.status, rows: asArray(apikeyOnly.body).length, err: errText(apikeyOnly) },
     },
   };
 }
