@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { deeplProxyPlugin } from './vite-plugins/deepl-proxy.js'
 import { membersProxyPlugin } from './vite-plugins/members-proxy.js'
 import { guestProxyPlugin } from './vite-plugins/guest-proxy.js'
+import { deviceProxyPlugin } from './vite-plugins/device-proxy.js'
+import { pairingProxyPlugin } from './vite-plugins/pairing-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -28,6 +30,14 @@ export default defineConfig(({ command, mode }) => {
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
         hashSecret: env.GUEST_HASH_SECRET ?? "",
+      }),
+      deviceProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      }),
+      pairingProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       }),
     ],
   }

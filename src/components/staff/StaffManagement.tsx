@@ -178,6 +178,9 @@ export function StaffManagement() {
             <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
               {t("queueNav", lang)}
             </Link>
+            <Link to="/kiosks" className="text-sm font-medium text-sage-dark hover:underline">
+              {t("kiosksNav", lang)}
+            </Link>
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}

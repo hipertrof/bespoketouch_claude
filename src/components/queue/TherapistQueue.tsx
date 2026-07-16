@@ -148,6 +148,9 @@ export function TherapistQueue() {
                 <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
                   {t("staffNav", lang)}
                 </Link>
+                <Link to="/kiosks" className="text-sm font-medium text-sage-dark hover:underline">
+                  {t("kiosksNav", lang)}
+                </Link>
               </>
             )}
             <LanguageSelector />

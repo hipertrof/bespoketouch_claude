@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useDevice } from "./DeviceContext";
 import { bundledCatalog, fetchCatalog, type CatalogService } from "../lib/catalog";
 import {
   fetchLocationInfo,
@@ -37,7 +38,12 @@ const CatalogContext = createContext<CatalogContextValue | null>(null);
 // the kiosk UI never has to handle an empty/loading offer specially.
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const [searchParams] = useSearchParams();
-  const locationId = searchParams.get("location");
+  // Location resolves from the paired device token (the normal path); a
+  // `?location=` query param still overrides it as a dev/legacy escape hatch
+  // (the live tablet ran on it before pairing existed). No token + no param =
+  // bundled demo.
+  const { locationId: deviceLocationId } = useDevice();
+  const locationId = searchParams.get("location") ?? deviceLocationId;
 
   const [catalog, setCatalog] = useState<CatalogService[]>(() => bundledCatalog());
   const [source, setSource] = useState<CatalogSource>("bundled");

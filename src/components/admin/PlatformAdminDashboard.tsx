@@ -299,6 +299,12 @@ function LocationsSection({ accountId }: { accountId: string }) {
                 >
                   Personel
                 </Link>
+                <Link
+                  to={`/kiosks?location=${l.id}`}
+                  className="text-xs font-medium text-sage-dark hover:underline"
+                >
+                  Kioski
+                </Link>
               </span>
             </li>
           ))}
