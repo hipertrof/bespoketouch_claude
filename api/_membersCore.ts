@@ -191,6 +191,16 @@ export async function addMember(
     }
   }
 
+  // 4b. Guarantee profiles.email is populated for this user. The 0006 trigger
+  // normally does this on signup, but it can miss (e.g. profile row predates the
+  // trigger), leaving the staff list showing a raw UUID. Upsert it here — the
+  // client can't read auth.users to recover the email itself.
+  await fetch(`${base}/rest/v1/profiles`, {
+    method: "POST",
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ user_id: targetUserId, email }),
+  });
+
   // 5. Insert the membership (idempotent — unique index rejects duplicates).
   const ins = await fetch(`${base}/rest/v1/memberships`, {
     method: "POST",
