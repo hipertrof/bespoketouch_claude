@@ -58,7 +58,7 @@ export function StaffManagement() {
       .select("id, name")
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
-        if (error) setError(error.message);
+        if (error) setError(errMessage(error, "Failed to load accounts."));
         else {
           setAccounts((data as AccountLite[]) ?? []);
           if (data && data.length > 0) setAccountId((prev) => prev || data[0].id);
@@ -73,10 +73,11 @@ export function StaffManagement() {
         listMembers(accId),
         supabase.from("locations").select("id, name").eq("account_id", accId).order("name"),
       ]);
+      if (locs.error) throw locs.error;
       setMembers(mem);
       setLocations((locs.data as LocationLite[]) ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load.");
+      setError(errMessage(e, "Failed to load."));
     }
   }, []);
 
@@ -94,7 +95,7 @@ export function StaffManagement() {
       await removeMember(m.id);
       setMembers((prev) => prev.filter((x) => x.id !== m.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove.");
+      setError(errMessage(e, "Failed to remove."));
     }
   }
 
@@ -331,3 +332,18 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 const inputClass =
   "min-h-11 rounded-xl border border-sand bg-cream px-3 text-charcoal outline-none focus:border-sage";
+
+// Supabase/PostgREST errors are plain objects, not Error instances — so a bare
+// `e instanceof Error` check drops their real message. Pull out whatever detail
+// is present (message / details / hint / code) for an actionable error.
+function errMessage(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const parts = [o.message, o.details, o.hint, o.code].filter(
+      (p): p is string => typeof p === "string" && p.length > 0,
+    );
+    if (parts.length > 0) return parts.join(" · ");
+  }
+  return fallback;
+}
