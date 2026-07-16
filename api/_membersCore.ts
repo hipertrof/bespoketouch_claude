@@ -183,50 +183,6 @@ async function findUserByEmail(base: string, svc: Headers, email: string): Promi
   return null;
 }
 
-// Non-sensitive config probe: reports only key FORMAT and whether the key
-// actually bypasses RLS (a service_role sees profile rows; a mis-scoped key sees
-// zero). Reveals no key value and no PII — just booleans/counts for debugging.
-// Sends the secret ONLY as apikey here (no Authorization) to test whether that
-// alone grants service_role, which distinguishes the new-key Bearer gotcha.
-export async function membersSelfTest(env: MembersEnv): Promise<MembersResult> {
-  if (!env.url || !env.serviceKey) {
-    return { status: 200, json: { configured: false, hasUrl: Boolean(env.url), hasKey: Boolean(env.serviceKey) } };
-  }
-  const base = env.url.replace(/\/$/, "");
-  const format = env.serviceKey.startsWith("sb_secret_")
-    ? "sb_secret"
-    : env.serviceKey.startsWith("sb_publishable_")
-      ? "sb_publishable"
-      : jwtRole(env.serviceKey)
-        ? "jwt"
-        : "other";
-
-  const probeUrl = `${base}/rest/v1/profiles?select=user_id&limit=3`;
-  // On a non-2xx the body is a PostgREST error object (code/message/hint) — no
-  // row data — so it is safe to surface for diagnosis.
-  const errText = (r: { status: number; body: unknown }) =>
-    r.status >= 200 && r.status < 300 ? undefined : JSON.stringify(r.body)?.slice(0, 300);
-
-  // Variant A: apikey + Authorization: Bearer (what addMember currently uses).
-  const withBearer = await getJson(probeUrl, {
-    apikey: env.serviceKey,
-    Authorization: `Bearer ${env.serviceKey}`,
-  });
-  // Variant B: apikey only.
-  const apikeyOnly = await getJson(probeUrl, { apikey: env.serviceKey });
-
-  return {
-    status: 200,
-    json: {
-      configured: true,
-      keyFormat: format,
-      jwtRole: jwtRole(env.serviceKey),
-      withBearer: { status: withBearer.status, rows: asArray(withBearer.body).length, err: errText(withBearer) },
-      apikeyOnly: { status: apikeyOnly.status, rows: asArray(apikeyOnly.body).length, err: errText(apikeyOnly) },
-    },
-  };
-}
-
 // Reads the `role` claim from a Supabase legacy key (a JWT). Returns null for
 // non-JWT keys (e.g. the new sb_secret_… format), which are left to pass.
 function jwtRole(key: string): string | null {
