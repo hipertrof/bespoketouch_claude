@@ -12,6 +12,7 @@ export interface MemberRow {
   created_at: string;
   email: string | null;
   fullName: string | null;
+  phone: string | null;
 }
 
 export type MemberRole = "owner" | "manager" | "therapist" | "frontdesk";
@@ -30,7 +31,7 @@ export async function listMembers(accountId: string): Promise<MemberRow[]> {
   const userIds = [...new Set(memberships.map((m) => m.user_id as string))];
   const { data: profiles, error: pErr } = await supabase
     .from("profiles")
-    .select("user_id, email, full_name")
+    .select("user_id, email, full_name, phone")
     .in("user_id", userIds);
   if (pErr) throw pErr;
 
@@ -46,6 +47,7 @@ export async function listMembers(accountId: string): Promise<MemberRow[]> {
       created_at: m.created_at as string,
       email: (p?.email as string | null) ?? null,
       fullName: (p?.full_name as string | null) ?? null,
+      phone: (p?.phone as string | null) ?? null,
     };
   });
 }
@@ -63,6 +65,8 @@ export async function addMember(params: {
   locationId: string | null;
   role: MemberRole;
   email: string;
+  fullName?: string;
+  phone?: string;
 }): Promise<AddMemberResult> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -80,6 +84,30 @@ export async function addMember(params: {
     alreadyMember: Boolean(json.alreadyMember),
     inviteLink: (json.inviteLink as string | null) ?? null,
   };
+}
+
+// Updates a membership's role/location and the member's name/phone via the
+// service-role backend (same authorization matrix as add/remove).
+export async function updateMember(params: {
+  membershipId: string;
+  role: MemberRole;
+  locationId: string | null;
+  fullName?: string;
+  phone?: string;
+}): Promise<void> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Not signed in.");
+
+  const res = await fetch("/api/members", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error((json.error as string) ?? `Request failed (${res.status})`);
+  }
 }
 
 // Removes a membership via the service-role backend, which authorizes the caller

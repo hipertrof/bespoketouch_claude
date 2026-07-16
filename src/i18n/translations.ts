@@ -234,6 +234,11 @@ export const ui: Record<string, Dict> = {
   roleManager: { pl: "Menedżer", en: "Manager", uk: "Менеджер", it: "Manager", fr: "Gérant", de: "Manager", es: "Gerente", id: "Manajer" },
   roleTherapist: { pl: "Masażysta", en: "Therapist", uk: "Масажист", it: "Massaggiatore", fr: "Masseur", de: "Therapeut", es: "Masajista", id: "Terapis" },
   roleFrontdesk: { pl: "Recepcja", en: "Front desk", uk: "Ресепшн", it: "Reception", fr: "Réception", de: "Empfang", es: "Recepción", id: "Resepsionis" },
+  staffName: { pl: "Imię i nazwisko", en: "Full name", uk: "Ім'я та прізвище", it: "Nome e cognome", fr: "Nom complet", de: "Vor- und Nachname", es: "Nombre completo", id: "Nama lengkap" },
+  staffPhone: { pl: "Telefon", en: "Phone", uk: "Телефон", it: "Telefono", fr: "Téléphone", de: "Telefon", es: "Teléfono", id: "Telepon" },
+  staffEdit: { pl: "Edytuj", en: "Edit", uk: "Редагувати", it: "Modifica", fr: "Modifier", de: "Bearbeiten", es: "Editar", id: "Ubah" },
+  staffCancel: { pl: "Anuluj", en: "Cancel", uk: "Скасувати", it: "Annulla", fr: "Annuler", de: "Abbrechen", es: "Cancelar", id: "Batal" },
+  staffUpdated: { pl: "Zapisano zmiany.", en: "Changes saved.", uk: "Зміни збережено.", it: "Modifiche salvate.", fr: "Modifications enregistrées.", de: "Änderungen gespeichert.", es: "Cambios guardados.", id: "Perubahan disimpan." },
   staffNeedLocationFirst: { pl: "Najpierw utwórz lokalizację, aby dodać personel.", en: "Create a location first to add staff.", uk: "Спочатку створіть локацію, щоб додати персонал.", it: "Crea prima una sede per aggiungere il personale.", fr: "Créez d'abord un lieu pour ajouter du personnel.", de: "Erstellen Sie zuerst einen Standort, um Personal hinzuzufügen.", es: "Crea primero una ubicación para añadir personal.", id: "Buat lokasi dulu untuk menambahkan staf." },
   // Accept-invite / set-password page (/welcome)
   welcomePwTitle: { pl: "Ustaw hasło", en: "Set your password", uk: "Встановіть пароль", it: "Imposta la password", fr: "Définissez votre mot de passe", de: "Passwort festlegen", es: "Establece tu contraseña", id: "Atur kata sandi" },

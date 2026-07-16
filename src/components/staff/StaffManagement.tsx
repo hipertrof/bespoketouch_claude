@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Copy, Check, Trash2 } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Copy, Check, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -8,6 +8,7 @@ import {
   addMember,
   listMembers,
   removeMember,
+  updateMember,
   type MemberRole,
   type MemberRow,
 } from "../../lib/members";
@@ -41,11 +42,15 @@ export function StaffManagement() {
     useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
+  // Deep link from the admin dashboard: /staff?account=<id> preselects the account.
+  const [searchParams] = useSearchParams();
+  const requestedAccount = searchParams.get("account");
 
   const [accounts, setAccounts] = useState<AccountLite[]>([]);
   const [accountId, setAccountId] = useState("");
   const [locations, setLocations] = useState<LocationLite[]>([]);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Route gate: signed in AND able to manage staff (platform admin, owner, or
@@ -65,11 +70,14 @@ export function StaffManagement() {
       .then(({ data, error }) => {
         if (error) setError(errMessage(error, "Failed to load accounts."));
         else {
-          setAccounts((data as AccountLite[]) ?? []);
-          if (data && data.length > 0) setAccountId((prev) => prev || data[0].id);
+          const list = (data as AccountLite[]) ?? [];
+          setAccounts(list);
+          const preferred =
+            requestedAccount && list.some((a) => a.id === requestedAccount) ? requestedAccount : list[0]?.id;
+          if (preferred) setAccountId((prev) => prev || preferred);
         }
       });
-  }, [user]);
+  }, [user, requestedAccount]);
 
   const load = useCallback(async (accId: string) => {
     setError(null);
@@ -108,9 +116,11 @@ export function StaffManagement() {
         ? ["therapist", "frontdesk"]
         : [];
 
-  const canRemove = (m: MemberRow) =>
+  // Whether the caller may edit/remove this member (same matrix as the server):
+  // admin → anyone; owner → non-owners; manager → therapist/frontdesk on their locations.
+  const canEditTarget = (m: MemberRow) =>
     isPlatformAdmin ||
-    isAccountOwner ||
+    (isAccountOwner && m.role !== "owner") ||
     ((m.role === "therapist" || m.role === "frontdesk") &&
       memberships.some(
         (mgr) =>
@@ -118,6 +128,14 @@ export function StaffManagement() {
           mgr.role === "manager" &&
           (mgr.location_id === null || mgr.location_id === m.location_id),
       ));
+
+  // Visibility (spec): admin sees all; owner sees manager/therapist/frontdesk;
+  // manager sees therapist/frontdesk on their locations.
+  const visibleMembers = members.filter((m) => {
+    if (isPlatformAdmin) return true;
+    if (isAccountOwner) return m.role !== "owner";
+    return canEditTarget(m);
+  });
 
   const locationName = (id: string | null) =>
     id ? locations.find((l) => l.id === id)?.name ?? id : t("staffLocationAll", lang);
@@ -194,35 +212,65 @@ export function StaffManagement() {
 
             <section className="mt-8">
               <h2 className="mb-3 font-serif text-xl text-charcoal">{t("staffMembers", lang)}</h2>
-              {members.length === 0 ? (
+              {visibleMembers.length === 0 ? (
                 <p className="text-slate">{t("staffNoMembers", lang)}</p>
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {members.map((m) => (
-                    <li
-                      key={m.id}
-                      className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-soft"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-charcoal">
-                          {m.email ?? m.fullName ?? m.user_id}
-                        </div>
-                        <div className="text-xs text-slate-light">{locationName(m.location_id)}</div>
-                      </div>
-                      <span className="rounded-full bg-sage-tint px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-sage-dark">
-                        {t(ROLE_KEYS[m.role as MemberRole] ?? "staffRole", lang)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(m)}
-                        aria-label={t("staffRemove", lang)}
-                        disabled={!canRemove(m)}
-                        className="text-slate-light hover:text-rose-dark disabled:opacity-30 disabled:hover:text-slate-light"
+                  {visibleMembers.map((m) =>
+                    editingId === m.id ? (
+                      <li key={m.id} className="rounded-2xl bg-white p-4 shadow-soft">
+                        <MemberEditor
+                          member={m}
+                          locations={locations}
+                          allowedRoles={allowedRoles}
+                          onDone={() => {
+                            setEditingId(null);
+                            load(accountId);
+                          }}
+                          onCancel={() => setEditingId(null)}
+                        />
+                      </li>
+                    ) : (
+                      <li
+                        key={m.id}
+                        className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 shadow-soft"
                       >
-                        <Trash2 size={16} />
-                      </button>
-                    </li>
-                  ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-charcoal">
+                            {m.fullName ?? m.email ?? m.user_id}
+                          </div>
+                          <div className="truncate text-xs text-slate-light">
+                            {[m.fullName ? m.email : null, m.phone, locationName(m.location_id)]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-sage-tint px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-sage-dark">
+                          {t(ROLE_KEYS[m.role as MemberRole] ?? "staffRole", lang)}
+                        </span>
+                        {canEditTarget(m) && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingId(m.id)}
+                            aria-label={t("staffEdit", lang)}
+                            className="text-slate-light hover:text-sage-dark"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                        )}
+                        {canEditTarget(m) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemove(m)}
+                            aria-label={t("staffRemove", lang)}
+                            className="text-slate-light hover:text-rose-dark"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
             </section>
@@ -230,6 +278,109 @@ export function StaffManagement() {
         )}
       </div>
     </div>
+  );
+}
+
+// Inline editor for one member: role, location, name, phone. Saves through the
+// service-role endpoint (same authorization matrix as add/remove).
+function MemberEditor({
+  member,
+  locations,
+  allowedRoles,
+  onDone,
+  onCancel,
+}: {
+  member: MemberRow;
+  locations: LocationLite[];
+  allowedRoles: MemberRole[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { lang } = useLanguage();
+  const roleOptions = allowedRoles.includes(member.role as MemberRole)
+    ? allowedRoles
+    : [member.role as MemberRole, ...allowedRoles];
+  const [role, setRole] = useState<MemberRole>(member.role as MemberRole);
+  const [locationId, setLocationId] = useState(member.location_id ?? "");
+  const [fullName, setFullName] = useState(member.fullName ?? "");
+  const [phone, setPhone] = useState(member.phone ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const needsLocation = role !== "owner";
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (needsLocation && !locationId) {
+      setError(t("locationLabel", lang));
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateMember({
+        membershipId: member.id,
+        role,
+        locationId: needsLocation ? locationId : null,
+        fullName,
+        phone,
+      });
+      onDone();
+    } catch (e2) {
+      setError(errMessage(e2, "Failed."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-col gap-3">
+      <div className="text-sm font-medium text-charcoal">{member.email ?? member.user_id}</div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex min-w-44 flex-1 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("staffName", lang)}
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} />
+        </label>
+        <label className="flex min-w-36 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("staffPhone", lang)}
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("staffRole", lang)}
+          <select value={role} onChange={(e) => setRole(e.target.value as MemberRole)} className={inputClass}>
+            {roleOptions.map((r) => (
+              <option key={r} value={r}>
+                {t(ROLE_KEYS[r], lang)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("locationLabel", lang)}
+          <select
+            value={needsLocation ? locationId : ""}
+            onChange={(e) => setLocationId(e.target.value)}
+            disabled={!needsLocation}
+            className={`${inputClass} disabled:opacity-40`}
+          >
+            <option value="">{needsLocation ? "—" : t("staffLocationAll", lang)}</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy}>
+            {busy ? t("staffInviting", lang) : t("save", lang)}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            {t("staffCancel", lang)}
+          </Button>
+        </div>
+      </div>
+      {error && <p className="text-sm text-rose-dark">{error}</p>}
+    </form>
   );
 }
 
@@ -246,6 +397,8 @@ function InviteForm({
 }) {
   const { lang } = useLanguage();
   const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<MemberRole>(allowedRoles[0] ?? "therapist");
   const [locationId, setLocationId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -281,11 +434,15 @@ function InviteForm({
         locationId: needsLocation ? locationId : null,
         role,
         email: email.trim(),
+        fullName: fullName.trim() || undefined,
+        phone: phone.trim() || undefined,
       });
       if (res.alreadyMember) setNotice(t("staffAlreadyMember", lang));
       else setNotice(t("staffAdded", lang));
       if (res.inviteLink) setInviteLink(res.inviteLink);
       setEmail("");
+      setFullName("");
+      setPhone("");
       onAdded();
     } catch (e2) {
       setError(e2 instanceof Error ? e2.message : "Failed.");
@@ -318,6 +475,14 @@ function InviteForm({
             className={inputClass}
             placeholder="anna@nusaspa.pl"
           />
+        </label>
+        <label className="flex min-w-44 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("staffName", lang)}
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} />
+        </label>
+        <label className="flex min-w-36 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("staffPhone", lang)}
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
           {t("staffRole", lang)}

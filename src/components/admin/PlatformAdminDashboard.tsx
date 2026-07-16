@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../Button";
@@ -282,10 +282,24 @@ function LocationsSection({ accountId }: { accountId: string }) {
       ) : (
         <ul className="mb-3 flex flex-col gap-1 text-sm text-charcoal">
           {locations.map((l) => (
-            <li key={l.id} className="flex items-center gap-2">
+            <li key={l.id} className="flex flex-wrap items-center gap-2">
               <span>{l.name}</span>
               {!l.active && <span className="text-xs text-slate-light">(nieaktywna)</span>}
               <span className="font-mono text-[10px] text-slate-light">{l.id}</span>
+              <span className="ml-auto flex gap-3">
+                <Link
+                  to={`/manage?location=${l.id}`}
+                  className="text-xs font-medium text-sage-dark hover:underline"
+                >
+                  Oferta
+                </Link>
+                <Link
+                  to={`/staff?account=${accountId}`}
+                  className="text-xs font-medium text-sage-dark hover:underline"
+                >
+                  Personel
+                </Link>
+              </span>
             </li>
           ))}
         </ul>

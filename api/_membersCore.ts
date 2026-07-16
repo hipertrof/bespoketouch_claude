@@ -33,6 +33,16 @@ interface AddMemberBody {
   locationId?: string | null;
   role?: string;
   email?: string;
+  fullName?: string;
+  phone?: string;
+}
+
+interface UpdateMemberBody {
+  membershipId?: string;
+  role?: string;
+  locationId?: string | null;
+  fullName?: string;
+  phone?: string;
 }
 
 type Headers = Record<string, string>;
@@ -198,11 +208,15 @@ export async function addMember(
   // 4b. Guarantee profiles.email is populated for this user. The 0006 trigger
   // normally does this on signup, but it can miss (e.g. profile row predates the
   // trigger), leaving the staff list showing a raw UUID. Upsert it here — the
-  // client can't read auth.users to recover the email itself.
+  // client can't read auth.users to recover the email itself. Carries the
+  // optional contact details (full_name, phone) from the invite form too.
+  const profileRow: Record<string, unknown> = { user_id: targetUserId, email };
+  if (typeof body?.fullName === "string" && body.fullName.trim()) profileRow.full_name = body.fullName.trim();
+  if (typeof body?.phone === "string" && body.phone.trim()) profileRow.phone = body.phone.trim();
   await fetch(`${base}/rest/v1/profiles`, {
     method: "POST",
     headers: { ...svc, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ user_id: targetUserId, email }),
+    body: JSON.stringify(profileRow),
   });
 
   // 5. Insert the membership (idempotent — unique index rejects duplicates).
@@ -298,6 +312,129 @@ export async function removeMember(
     headers: { ...svc, Prefer: "return=minimal" },
   });
   if (!del.ok) return { status: 500, json: { error: `Could not remove member (${del.status}).` } };
+  return { status: 200, json: { ok: true } };
+}
+
+// Updates a membership's role/location and the member's contact details.
+// Same matrix as add/remove: admin → anything; owner → any non-owner role in
+// their account; manager → therapist/frontdesk (current AND new role) on
+// locations they manage.
+export async function updateMember(
+  authorization: string | undefined,
+  body: UpdateMemberBody | undefined,
+  env: MembersEnv,
+): Promise<MembersResult> {
+  if (!env.url || !env.serviceKey) {
+    return { status: 500, json: { error: "Server not configured." } };
+  }
+  const membershipId = body?.membershipId;
+  if (!membershipId) return { status: 400, json: { error: "Missing membership id." } };
+
+  const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { status: 401, json: { error: "Missing authorization." } };
+  const base = env.url.replace(/\/$/, "");
+  const svc: Headers = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
+
+  const caller = await getJson(`${base}/auth/v1/user`, {
+    apikey: env.serviceKey,
+    Authorization: `Bearer ${token}`,
+  });
+  const callerId = asRecord(caller.body)?.id;
+  if (!caller.ok || typeof callerId !== "string") {
+    return { status: 401, json: { error: "Invalid or expired session." } };
+  }
+
+  const target = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/memberships?select=user_id,account_id,location_id,role&id=eq.${membershipId}`,
+        svc,
+      )
+    ).body,
+  )[0];
+  if (!target) return { status: 404, json: { error: "Membership not found." } };
+  const accountId = String(target.account_id);
+  const targetUserId = String(target.user_id);
+  const currentRole = String(target.role);
+  const currentLoc = target.location_id ? String(target.location_id) : null;
+
+  const newRole = (body?.role as Role | undefined) ?? (currentRole as Role);
+  if (!ROLES.includes(newRole)) return { status: 400, json: { error: "Invalid role." } };
+  const newLoc: string | null = newRole === "owner" ? null : (body?.locationId ?? currentLoc);
+  if (newRole !== "owner" && !newLoc) {
+    return { status: 400, json: { error: "A location is required for this role." } };
+  }
+
+  // Authorize.
+  const isPlatformAdmin = Boolean(
+    asArray(
+      (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`, svc)).body,
+    )[0]?.is_platform_admin,
+  );
+  if ((newRole === "owner" || currentRole === "owner") && !isPlatformAdmin) {
+    return { status: 403, json: { error: "Only a platform admin can change owners." } };
+  }
+  if (!isPlatformAdmin) {
+    const isOwner =
+      asArray(
+        (
+          await getJson(
+            `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+              `&account_id=eq.${accountId}&role=eq.owner&location_id=is.null`,
+            svc,
+          )
+        ).body,
+      ).length > 0;
+    let authorized = isOwner;
+    const opsRoles = ["therapist", "frontdesk"];
+    if (!authorized && opsRoles.includes(currentRole) && opsRoles.includes(newRole) && currentLoc && newLoc) {
+      // Manager must manage BOTH the current and the new location.
+      const mgrLocs = asArray(
+        (
+          await getJson(
+            `${base}/rest/v1/memberships?select=location_id&user_id=eq.${callerId}` +
+              `&account_id=eq.${accountId}&role=eq.manager`,
+            svc,
+          )
+        ).body,
+      ).map((m) => (m.location_id ? String(m.location_id) : null));
+      const manages = (loc: string) => mgrLocs.includes(null) || mgrLocs.includes(loc);
+      authorized = mgrLocs.length > 0 && manages(currentLoc) && manages(newLoc);
+    }
+    if (!authorized) return { status: 403, json: { error: "Not authorized to update this member." } };
+  }
+
+  // New location must belong to the same account.
+  if (newLoc && newLoc !== currentLoc) {
+    const loc = await getJson(
+      `${base}/rest/v1/locations?select=id&id=eq.${newLoc}&account_id=eq.${accountId}`,
+      svc,
+    );
+    if (asArray(loc.body).length === 0) {
+      return { status: 400, json: { error: "Location does not belong to this account." } };
+    }
+  }
+
+  const patch = await fetch(`${base}/rest/v1/memberships?id=eq.${membershipId}`, {
+    method: "PATCH",
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ role: newRole, location_id: newLoc }),
+  });
+  if (!patch.ok) return { status: 500, json: { error: `Could not update member (${patch.status}).` } };
+
+  // Contact details live on the profile (empty string clears the field).
+  const profilePatch: Record<string, unknown> = {};
+  if (typeof body?.fullName === "string") profilePatch.full_name = body.fullName.trim() || null;
+  if (typeof body?.phone === "string") profilePatch.phone = body.phone.trim() || null;
+  if (Object.keys(profilePatch).length > 0) {
+    const pp = await fetch(`${base}/rest/v1/profiles?user_id=eq.${targetUserId}`, {
+      method: "PATCH",
+      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(profilePatch),
+    });
+    if (!pp.ok) return { status: 500, json: { error: `Could not update profile (${pp.status}).` } };
+  }
+
   return { status: 200, json: { ok: true } };
 }
 

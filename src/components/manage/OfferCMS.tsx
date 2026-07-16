@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -29,6 +29,9 @@ export function OfferCMS() {
   const { user, loading, rolesReady, canManage, canManageLocation, signOut } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
+  // Deep link from the admin dashboard: /manage?location=<id> preselects it.
+  const [searchParams] = useSearchParams();
+  const requestedLocation = searchParams.get("location");
 
   const [locations, setLocations] = useState<LocationLite[]>([]);
   const [locationId, setLocationId] = useState<string>("");
@@ -57,10 +60,14 @@ export function OfferCMS() {
           // RLS lets a manager READ sibling locations; only show ones they can MANAGE.
           const manageable = ((data as LocationLite[]) ?? []).filter((l) => canManageLocation(l));
           setLocations(manageable);
-          if (manageable.length > 0) setLocationId((prev) => prev || manageable[0].id);
+          const preferred =
+            requestedLocation && manageable.some((l) => l.id === requestedLocation)
+              ? requestedLocation
+              : manageable[0]?.id;
+          if (preferred) setLocationId((prev) => prev || preferred);
         }
       });
-  }, [user, rolesReady, canManageLocation]);
+  }, [user, rolesReady, canManageLocation, requestedLocation]);
 
   const loadCatalog = useCallback(async (locId: string) => {
     setError(null);

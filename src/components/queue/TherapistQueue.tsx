@@ -42,7 +42,7 @@ function toView(row: IntakeRow): IntakePanelView {
 // the signed-in user (therapist / manager / owner) belongs to. UI language is
 // the global staff language.
 export function TherapistQueue() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, canManage, signOut } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -140,12 +140,16 @@ export function TherapistQueue() {
             <p className="text-sm text-slate">{user.email}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("offer", lang)}
-            </Link>
-            <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("staffNav", lang)}
-            </Link>
+            {canManage && (
+              <>
+                <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
+                  {t("offer", lang)}
+                </Link>
+                <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
+                  {t("staffNav", lang)}
+                </Link>
+              </>
+            )}
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}
