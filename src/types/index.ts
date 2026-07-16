@@ -111,6 +111,16 @@ export interface TherapistAssignment {
   name: string;
 }
 
+// Opt-in guest CRM (preference memory) state for one guest. The phone is held
+// in memory only — never persisted client-side; the server stores just an
+// HMAC of it. `consent` defaults false and is always required before a save
+// (a prefill alone never writes). `prefilled` = a lookup hit was applied.
+export interface GuestCrmState {
+  phone: string;
+  consent: boolean;
+  prefilled: boolean;
+}
+
 export interface GuestState {
   step: AppStep;
   // Index-aligned with `guests` — guestNames[i] is the name of guests[i].
@@ -129,6 +139,9 @@ export interface GuestState {
   // Index into `guests` for whichever person is currently personalizing.
   activeGuestIndex: number;
   guests: PersonalizationState[];
+  // Index-aligned with `guests` — returning-guest CRM state per person. Only
+  // used when the kiosk is paired to a real location (see CatalogContext).
+  guestCrm: GuestCrmState[];
   // The offer the kiosk is running against, loaded from the DB (or the bundled
   // fallback) by CatalogContext. Held here — language-agnostic, names unused —
   // only so the reducer can validate selections against the live offer.
@@ -141,6 +154,18 @@ export type GuestAction =
   | { type: "SET_TREATMENT"; index: number; treatmentId: string }
   | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
   | { type: "SET_GUEST_THERAPIST"; index: number; therapist: TherapistAssignment | null }
+  | { type: "SET_GUEST_PHONE"; index: number; phone: string }
+  | { type: "SET_GUEST_CONSENT"; index: number; consent: boolean }
+  // A returning-guest lookup hit: merge the stored preferences + zone marks
+  // into guests[index] and flag it prefilled.
+  | {
+      type: "APPLY_GUEST_PROFILE";
+      index: number;
+      preferences: Partial<Preferences>;
+      zones: Partial<Record<ZoneId, ZoneMark>>;
+    }
+  // Reset one guest to defaults (used after a right-to-erasure "forget").
+  | { type: "CLEAR_GUEST_PROFILE"; index: number }
   | { type: "SET_SEPARATE_TREATMENTS"; separate: boolean }
   | { type: "SET_PARTY_SIZE"; partySize: PartySize }
   | { type: "SET_LANGUAGE"; language: LangCode }

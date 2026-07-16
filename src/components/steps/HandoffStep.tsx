@@ -6,6 +6,7 @@ import { Button } from "../Button";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
+import { saveGuestProfile } from "../../lib/guestProfile";
 
 export function HandoffStep() {
   const { state, dispatch } = useGuest();
@@ -40,6 +41,28 @@ export function HandoffStep() {
       setSaveError(true);
     });
   }, [loading, locationId, catalog, state]);
+
+  // Opt-in guest CRM: persist each consenting guest's reusable preferences under
+  // an HMAC-of-phone pseudonym. Fire-once, own guard (StrictMode-safe). Skipped
+  // for the bundled demo (no locationId). Non-blocking and NOT retried on error
+  // — the upsert is idempotent and a lost preference save is only cosmetic.
+  const crmSavedRef = useRef(false);
+  useEffect(() => {
+    if (crmSavedRef.current || loading || !locationId) return;
+    crmSavedRef.current = true;
+    const size = state.partySize;
+    const saves = state.guestCrm.slice(0, size).flatMap((crm, i) => {
+      if (!crm.consent || crm.phone.replace(/\D/g, "").length < 8) return [];
+      return [saveGuestProfile(locationId, crm.phone, state.guests[i])];
+    });
+    if (saves.length > 0) {
+      void Promise.allSettled(saves).then((results) => {
+        for (const r of results) {
+          if (r.status === "rejected") console.error("[crm] save failed:", r.reason);
+        }
+      });
+    }
+  }, [loading, locationId, state]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">

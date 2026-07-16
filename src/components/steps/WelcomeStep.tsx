@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Check, Search, Sparkles, Trash2, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { toMassageTypes } from "../../lib/catalog";
+import {
+  applyStoredPreferences,
+  forgetGuestProfile,
+  lookupGuestProfile,
+} from "../../lib/guestProfile";
 import {
   allDurationsForPartySize,
   availableDurations,
@@ -22,7 +27,7 @@ const partySizeOptions: { value: PartySize; labelKey: string }[] = [
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
-  const { catalog, locationInfo, therapists } = useCatalog();
+  const { catalog, locationInfo, therapists, locationId } = useCatalog();
   const lang = state.language;
   // The offer, mapped to the session language (names already translated).
   const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
@@ -188,6 +193,7 @@ export function WelcomeStep() {
                 </select>
               </div>
             )}
+            {locationId && <ReturningGuestBlock index={i} locationId={locationId} />}
           </div>
         ))}
       </div>
@@ -321,6 +327,126 @@ export function WelcomeStep() {
           <ArrowRight size={18} />
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Returning-guest lookup for one guest. Front-desk enters the guest's phone to
+// prefill their saved preferences. Only rendered when the kiosk is paired to a
+// real location. All failures are non-blocking — the flow continues regardless.
+function ReturningGuestBlock({ index, locationId }: { index: number; locationId: string }) {
+  const { state, dispatch } = useGuest();
+  const lang = state.language;
+  const crm = state.guestCrm[index] ?? { phone: "", consent: false, prefilled: false };
+  const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "failed">("idle");
+  const [confirmForget, setConfirmForget] = useState(false);
+  const [forgotten, setForgotten] = useState(false);
+
+  const phoneValid = crm.phone.replace(/\D/g, "").length >= 8;
+
+  const handleLookup = async () => {
+    if (!phoneValid) return;
+    setStatus("looking");
+    setForgotten(false);
+    try {
+      const stored = await lookupGuestProfile(locationId, crm.phone);
+      if (!stored) {
+        setStatus("missing");
+        return;
+      }
+      const applied = applyStoredPreferences(stored);
+      if (!applied) {
+        setStatus("missing");
+        return;
+      }
+      dispatch({
+        type: "APPLY_GUEST_PROFILE",
+        index,
+        preferences: applied.preferences,
+        zones: applied.zones,
+      });
+      setStatus("found");
+    } catch (err) {
+      console.error("[crm] lookup failed:", err);
+      setStatus("failed");
+    }
+  };
+
+  const handleForget = async () => {
+    if (!confirmForget) {
+      setConfirmForget(true);
+      return;
+    }
+    try {
+      await forgetGuestProfile(locationId, crm.phone);
+      dispatch({ type: "CLEAR_GUEST_PROFILE", index });
+      setStatus("idle");
+      setConfirmForget(false);
+      setForgotten(true);
+    } catch (err) {
+      console.error("[crm] forget failed:", err);
+      setStatus("failed");
+    }
+  };
+
+  return (
+    <div className="mt-1 max-w-md rounded-2xl border border-sand bg-oatmeal/40 p-4">
+      <label
+        htmlFor={`guestPhone-${index}`}
+        className="mb-2 block text-sm font-semibold text-charcoal"
+      >
+        {t("returningGuest", lang)}
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <input
+          id={`guestPhone-${index}`}
+          type="tel"
+          inputMode="tel"
+          value={crm.phone}
+          onChange={(e) => {
+            dispatch({ type: "SET_GUEST_PHONE", index, phone: e.target.value });
+            setStatus("idle");
+            setConfirmForget(false);
+            setForgotten(false);
+          }}
+          placeholder={t("guestPhonePlaceholder", lang)}
+          className="min-h-11 flex-1 rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+        />
+        <button
+          type="button"
+          onClick={handleLookup}
+          disabled={!phoneValid || status === "looking"}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-sand bg-white px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40 disabled:opacity-50"
+        >
+          <Search size={15} />
+          {status === "looking" ? t("guestLooking", lang) : t("guestLookup", lang)}
+        </button>
+      </div>
+      {status === "found" && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-sage-dark">
+          <Check size={14} strokeWidth={3} />
+          {t("guestFound", lang)}
+        </p>
+      )}
+      {status === "missing" && (
+        <p className="mt-2 text-xs text-slate-light">{t("guestNotFound", lang)}</p>
+      )}
+      {status === "failed" && (
+        <p className="mt-2 text-xs text-rose-dark">{t("guestLookupFailed", lang)}</p>
+      )}
+      {forgotten && (
+        <p className="mt-2 text-xs font-medium text-slate">{t("guestForgotten", lang)}</p>
+      )}
+      {(status === "found" || crm.prefilled) && (
+        <button
+          type="button"
+          onClick={handleForget}
+          className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-rose-dark hover:underline"
+        >
+          <Trash2 size={13} />
+          {confirmForget ? t("guestForgetConfirm", lang) : t("guestForget", lang)}
+        </button>
+      )}
     </div>
   );
 }

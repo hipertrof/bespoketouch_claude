@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
 import { useGuest, useActiveGuest } from "../../context/GuestContext";
+import { useCatalog } from "../../context/CatalogContext";
 import { Button } from "../Button";
 import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
@@ -39,10 +40,13 @@ const communicationOptions: { value: CommunicationStyle; subtitleKey: string; ic
 
 export function PreferencesStep() {
   const { state, dispatch } = useGuest();
+  const { locationId } = useCatalog();
   const lang = state.language;
   const activeGuest = useActiveGuest();
   const { preferences } = activeGuest;
   const isCouple = state.partySize === 2;
+  const activeIndex = state.activeGuestIndex;
+  const crm = state.guestCrm[activeIndex] ?? { phone: "", consent: false, prefilled: false };
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -204,6 +208,49 @@ export function PreferencesStep() {
           </div>
         </PreferenceCard>
       </div>
+
+      {locationId && (
+        <div className="mt-8 rounded-2xl border border-sand bg-white p-5 shadow-soft">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-charcoal">
+                {t("consentSaveTitle", lang)}
+              </div>
+              <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+                {t("consentSaveBody", lang)}
+              </p>
+            </div>
+            <Toggle
+              checked={crm.consent}
+              onChange={(v) =>
+                dispatch({ type: "SET_GUEST_CONSENT", index: activeIndex, consent: v })
+              }
+              label={t("consentSaveTitle", lang)}
+            />
+          </div>
+          {crm.consent && !crm.phone.trim() && (
+            <div className="mt-4">
+              <label
+                htmlFor="consentPhone"
+                className="mb-2 block text-sm font-semibold text-charcoal"
+              >
+                {t("consentPhoneLabel", lang)}
+              </label>
+              <input
+                id="consentPhone"
+                type="tel"
+                inputMode="tel"
+                value={crm.phone}
+                onChange={(e) =>
+                  dispatch({ type: "SET_GUEST_PHONE", index: activeIndex, phone: e.target.value })
+                }
+                placeholder={t("guestPhonePlaceholder", lang)}
+                className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-10 flex flex-col-reverse justify-between gap-3 sm:flex-row">
         <Button

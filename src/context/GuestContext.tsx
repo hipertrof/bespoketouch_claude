@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
 import type {
   GuestAction,
+  GuestCrmState,
   GuestState,
   MassageType,
   PartySize,
@@ -33,6 +34,10 @@ function validateSelection(
   };
 }
 
+// Returning-guest CRM state starts empty: no phone, consent off (opt-in), not
+// prefilled. Consent is always re-collected per visit.
+const createGuestCrm = (): GuestCrmState => ({ phone: "", consent: false, prefilled: false });
+
 const createPersonalization = (): PersonalizationState => ({
   bodyGender: "female",
   zones: {},
@@ -58,6 +63,7 @@ const initialState: GuestState = {
   language: "pl",
   activeGuestIndex: 0,
   guests: [createPersonalization()],
+  guestCrm: [createGuestCrm()],
   // Seeded with the bundled offer; CatalogContext swaps in the DB offer once
   // it resolves (see GuestProvider).
   catalog: massageTypes,
@@ -128,6 +134,46 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       );
       return { ...state, guestTherapists };
     }
+    case "SET_GUEST_PHONE": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? { ...crm, phone: action.phone } : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_CONSENT": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? { ...crm, consent: action.consent } : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "APPLY_GUEST_PROFILE": {
+      // Merge the looked-up preferences + zone marks into this guest, keeping
+      // any fields the stored profile didn't carry.
+      const guests = state.guests.map((g, i) =>
+        i === action.index
+          ? {
+              ...g,
+              preferences: { ...g.preferences, ...action.preferences },
+              zones: { ...g.zones, ...action.zones },
+            }
+          : g,
+      );
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? { ...crm, prefilled: true } : crm,
+      );
+      return { ...state, guests, guestCrm };
+    }
+    case "CLEAR_GUEST_PROFILE": {
+      // After a right-to-erasure "forget": wipe this guest's personalization
+      // and CRM entry back to defaults.
+      const guests = state.guests.map((g, i) =>
+        i === action.index ? createPersonalization() : g,
+      );
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? createGuestCrm() : crm,
+      );
+      return { ...state, guests, guestCrm };
+    }
     case "SET_SEPARATE_TREATMENTS": {
       if (!action.separate) {
         // Collapsing back to shared: make every slot match the first again.
@@ -159,6 +205,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
             ? state.guestTherapists
             : [...state.guestTherapists, null]
           : [state.guestTherapists[0]];
+      const guestCrm =
+        action.partySize === 2
+          ? state.guestCrm.length === 2
+            ? state.guestCrm
+            : [...state.guestCrm, createGuestCrm()]
+          : [state.guestCrm[0]];
 
       // Growing to a couple starts the new slot as a copy of the first
       // (shared-mode default); shrinking back to one drops the second and
@@ -181,6 +233,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         guests,
         guestNames,
         guestTherapists,
+        guestCrm,
         treatmentSelections,
         separateTreatments: action.partySize === 1 ? false : state.separateTreatments,
         activeGuestIndex: 0,

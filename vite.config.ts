@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { deeplProxyPlugin } from './vite-plugins/deepl-proxy.js'
 import { membersProxyPlugin } from './vite-plugins/members-proxy.js'
+import { guestProxyPlugin } from './vite-plugins/guest-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -22,6 +23,11 @@ export default defineConfig(({ command, mode }) => {
       membersProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      }),
+      guestProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+        hashSecret: env.GUEST_HASH_SECRET ?? "",
       }),
     ],
   }
