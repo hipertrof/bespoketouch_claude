@@ -88,12 +88,11 @@ export function StaffManagement() {
     } catch (e) {
       setError(errMessage(e, "Failed to load."));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canManageLocation]);
 
   useEffect(() => {
-    if (accountId) load(accountId);
-  }, [accountId, load]);
+    if (accountId && rolesReady) load(accountId);
+  }, [accountId, rolesReady, load]);
 
   // Roles the caller may grant on this account (spec: only admin creates owners;
   // owners create manager/therapist/frontdesk; managers create therapist/frontdesk).

@@ -60,8 +60,7 @@ export function OfferCMS() {
           if (manageable.length > 0) setLocationId((prev) => prev || manageable[0].id);
         }
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, rolesReady]);
+  }, [user, rolesReady, canManageLocation]);
 
   const loadCatalog = useCallback(async (locId: string) => {
     setError(null);

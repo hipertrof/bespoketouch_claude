@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
@@ -80,14 +80,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const canManage =
     isPlatformAdmin || memberships.some((m) => m.role === "owner" || m.role === "manager");
 
-  const canManageLocation = (loc: { id: string; account_id: string }) =>
-    isPlatformAdmin ||
-    memberships.some(
-      (m) =>
-        m.account_id === loc.account_id &&
-        ((m.role === "owner" && m.location_id === null) ||
-          (m.role === "manager" && (m.location_id === null || m.location_id === loc.id))),
-    );
+  // Stable identity so consumers can safely list it in hook deps.
+  const canManageLocation = useCallback(
+    (loc: { id: string; account_id: string }) =>
+      isPlatformAdmin ||
+      memberships.some(
+        (m) =>
+          m.account_id === loc.account_id &&
+          ((m.role === "owner" && m.location_id === null) ||
+            (m.role === "manager" && (m.location_id === null || m.location_id === loc.id))),
+      ),
+    [isPlatformAdmin, memberships],
+  );
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
