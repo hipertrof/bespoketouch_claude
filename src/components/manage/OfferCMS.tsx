@@ -26,7 +26,7 @@ interface LocationLite {
 // UI language is the global staff language (defaults to Polish) so a
 // non-Polish-speaking manager can switch it from the top selector.
 export function OfferCMS() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, signOut } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -36,9 +36,13 @@ export function OfferCMS() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Route gate: must be signed in AND able to manage offers (platform admin,
+  // owner, or manager). Therapist/front-desk are sent to the therapist queue.
   useEffect(() => {
-    if (!loading && !user) navigate("/login");
-  }, [loading, user, navigate]);
+    if (loading) return;
+    if (!user) navigate("/login");
+    else if (rolesReady && !canManage) navigate("/queue");
+  }, [loading, user, rolesReady, canManage, navigate]);
 
   // Load readable locations once signed in.
   useEffect(() => {
@@ -98,8 +102,8 @@ export function OfferCMS() {
     else loadCatalog(locationId);
   }
 
-  if (loading) return <Centered>{t("loading", lang)}</Centered>;
-  if (!user) return null;
+  if (loading || !rolesReady) return <Centered>{t("loading", lang)}</Centered>;
+  if (!user || !canManage) return null;
 
   return (
     <div className="min-h-screen bg-cream px-6 py-10">

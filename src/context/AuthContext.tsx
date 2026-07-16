@@ -2,12 +2,24 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
+export interface MembershipLite {
+  role: string;
+  location_id: string | null;
+  account_id: string;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   /** Whether the signed-in user is a platform admin (from profiles.is_platform_admin). */
   isPlatformAdmin: boolean;
+  /** The signed-in user's memberships (role + scope), for client-side role gating. */
+  memberships: MembershipLite[];
+  /** True once isPlatformAdmin + memberships have been resolved for the current user. */
+  rolesReady: boolean;
+  /** Can manage offers/staff somewhere: platform admin, or an owner/manager membership. */
+  canManage: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -18,6 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [memberships, setMemberships] = useState<MembershipLite[]>([]);
+  const [rolesReady, setRolesReady] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,25 +51,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription?.unsubscribe();
   }, []);
 
-  // Load the profile flag whenever the user changes.
+  // Load the platform-admin flag + memberships whenever the user changes.
   useEffect(() => {
     if (!user) {
       setIsPlatformAdmin(false);
+      setMemberships([]);
+      setRolesReady(false);
       return;
     }
     let active = true;
-    supabase
-      .from("profiles")
-      .select("is_platform_admin")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (active) setIsPlatformAdmin(Boolean(data?.is_platform_admin));
-      });
+    setRolesReady(false);
+    Promise.all([
+      supabase.from("profiles").select("is_platform_admin").eq("user_id", user.id).maybeSingle(),
+      supabase.from("memberships").select("role, location_id, account_id").eq("user_id", user.id),
+    ]).then(([prof, mem]) => {
+      if (!active) return;
+      setIsPlatformAdmin(Boolean(prof.data?.is_platform_admin));
+      setMemberships((mem.data as MembershipLite[]) ?? []);
+      setRolesReady(true);
+    });
     return () => {
       active = false;
     };
   }, [user]);
+
+  const canManage =
+    isPlatformAdmin || memberships.some((m) => m.role === "owner" || m.role === "manager");
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -69,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, isPlatformAdmin, signIn, signOut }}
+      value={{ user, session, loading, isPlatformAdmin, memberships, rolesReady, canManage, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

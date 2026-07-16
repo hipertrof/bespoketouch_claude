@@ -37,7 +37,7 @@ const ROLE_KEYS: Record<MemberRole, string> = {
 // removing use the client under RLS. Intended for account owners / platform
 // admins — others can open it but the endpoint + RLS reject their writes.
 export function StaffManagement() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, signOut } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -47,9 +47,13 @@ export function StaffManagement() {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Route gate: signed in AND able to manage staff (platform admin, owner, or
+  // manager). Others are sent to the therapist queue.
   useEffect(() => {
-    if (!loading && !user) navigate("/login");
-  }, [loading, user, navigate]);
+    if (loading) return;
+    if (!user) navigate("/login");
+    else if (rolesReady && !canManage) navigate("/queue");
+  }, [loading, user, rolesReady, canManage, navigate]);
 
   useEffect(() => {
     if (!user) return;
@@ -99,8 +103,8 @@ export function StaffManagement() {
     }
   }
 
-  if (loading) return <Centered>{t("loading", lang)}</Centered>;
-  if (!user) return null;
+  if (loading || !rolesReady) return <Centered>{t("loading", lang)}</Centered>;
+  if (!user || !canManage) return null;
 
   return (
     <div className="min-h-screen bg-cream px-6 py-10">
