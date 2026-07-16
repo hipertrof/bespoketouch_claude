@@ -104,6 +104,13 @@ export interface TreatmentSelection {
   treatmentMinutes: number | null;
 }
 
+// Therapist the receptionist assigned to one guest (name snapshot only — the
+// queue renders it without another lookup). Null = not assigned.
+export interface TherapistAssignment {
+  id: string;
+  name: string;
+}
+
 export interface GuestState {
   step: AppStep;
   // Index-aligned with `guests` — guestNames[i] is the name of guests[i].
@@ -111,6 +118,9 @@ export interface GuestState {
   // Index-aligned with `guests`. When !separateTreatments, both entries are
   // kept mirrored to the same value by the reducer.
   treatmentSelections: TreatmentSelection[];
+  // Index-aligned with `guests` — the therapist the receptionist assigned to
+  // each person (null = none picked).
+  guestTherapists: (TherapistAssignment | null)[];
   // Only meaningful when partySize === 2.
   separateTreatments: boolean;
   partySize: PartySize;
@@ -130,6 +140,7 @@ export type GuestAction =
   | { type: "SET_GUEST_NAME"; index: number; name: string }
   | { type: "SET_TREATMENT"; index: number; treatmentId: string }
   | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
+  | { type: "SET_GUEST_THERAPIST"; index: number; therapist: TherapistAssignment | null }
   | { type: "SET_SEPARATE_TREATMENTS"; separate: boolean }
   | { type: "SET_PARTY_SIZE"; partySize: PartySize }
   | { type: "SET_LANGUAGE"; language: LangCode }

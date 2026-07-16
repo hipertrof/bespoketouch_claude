@@ -1,4 +1,9 @@
-import type { PartySize, PersonalizationState, TreatmentSelection } from "../types";
+import type {
+  PartySize,
+  PersonalizationState,
+  TherapistAssignment,
+  TreatmentSelection,
+} from "../types";
 import { supabase } from "./supabase";
 import type { CatalogService } from "./catalog";
 
@@ -29,6 +34,9 @@ export interface IntakeRow {
   guest_names: string[];
   treatment_selections: TreatmentSnapshot[];
   personalizations: PersonalizationState[];
+  // Index-aligned with guest_names; null = no therapist assigned. Absent on
+  // rows written before 0009 — treat as [].
+  therapists: (TherapistAssignment | null)[] | null;
   created_at: string;
   expires_at: string | null;
 }
@@ -80,6 +88,7 @@ export async function saveIntake(input: {
   guestNames: string[];
   treatmentSelections: TreatmentSnapshot[];
   personalizations: PersonalizationState[];
+  therapists: (TherapistAssignment | null)[];
 }): Promise<void> {
   const expiresAt = new Date(Date.now() + RETENTION_HOURS * 3600 * 1000).toISOString();
   // Insert only — no .select() back. The kiosk writes as the anon role, which
@@ -93,6 +102,7 @@ export async function saveIntake(input: {
     guest_names: input.guestNames,
     treatment_selections: input.treatmentSelections,
     personalizations: input.personalizations,
+    therapists: input.therapists,
     expires_at: expiresAt,
   });
   if (error) throw error;

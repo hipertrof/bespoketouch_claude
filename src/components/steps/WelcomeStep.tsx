@@ -22,7 +22,7 @@ const partySizeOptions: { value: PartySize; labelKey: string }[] = [
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
-  const { catalog } = useCatalog();
+  const { catalog, locationInfo, therapists } = useCatalog();
   const lang = state.language;
   // The offer, mapped to the session language (names already translated).
   const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
@@ -82,6 +82,13 @@ export function WelcomeStep() {
           <Sparkles size={12} />
           {t("checkInBadge", lang)}
         </span>
+        {locationInfo && (
+          <h1 className="font-serif text-3xl text-charcoal sm:text-4xl">
+            {tf("welcomeAt", lang, {
+              name: `${locationInfo.accountName} ${locationInfo.locationName}`,
+            })}
+          </h1>
+        )}
       </div>
 
       <div className="mb-10">
@@ -155,6 +162,32 @@ export function WelcomeStep() {
                 ))}
               </div>
             </div>
+            {therapists.length > 0 && (
+              <div>
+                <label
+                  htmlFor={`guestTherapist-${i}`}
+                  className="mb-2.5 block text-sm font-semibold text-charcoal"
+                >
+                  {t("therapistLabel", lang)}
+                </label>
+                <select
+                  id={`guestTherapist-${i}`}
+                  value={state.guestTherapists[i]?.id ?? ""}
+                  onChange={(e) => {
+                    const picked = therapists.find((tp) => tp.id === e.target.value) ?? null;
+                    dispatch({ type: "SET_GUEST_THERAPIST", index: i, therapist: picked });
+                  }}
+                  className="min-h-12 w-full max-w-md rounded-2xl border border-sand bg-white px-4 text-base text-charcoal shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+                >
+                  <option value="">{t("therapistNone", lang)}</option>
+                  {therapists.map((tp) => (
+                    <option key={tp.id} value={tp.id}>
+                      {tp.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         ))}
       </div>

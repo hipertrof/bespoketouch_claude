@@ -52,6 +52,7 @@ const initialState: GuestState = {
   step: "welcome",
   guestNames: [""],
   treatmentSelections: [{ treatmentId: null, treatmentMinutes: null }],
+  guestTherapists: [null],
   separateTreatments: false,
   partySize: 1,
   language: "pl",
@@ -121,6 +122,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       }));
       return { ...state, treatmentSelections };
     }
+    case "SET_GUEST_THERAPIST": {
+      const guestTherapists = state.guestTherapists.map((tp, i) =>
+        i === action.index ? action.therapist : tp,
+      );
+      return { ...state, guestTherapists };
+    }
     case "SET_SEPARATE_TREATMENTS": {
       if (!action.separate) {
         // Collapsing back to shared: make every slot match the first again.
@@ -146,6 +153,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
             ? state.guestNames
             : [...state.guestNames, ""]
           : [state.guestNames[0]];
+      const guestTherapists =
+        action.partySize === 2
+          ? state.guestTherapists.length === 2
+            ? state.guestTherapists
+            : [...state.guestTherapists, null]
+          : [state.guestTherapists[0]];
 
       // Growing to a couple starts the new slot as a copy of the first
       // (shared-mode default); shrinking back to one drops the second and
@@ -167,6 +180,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         partySize: action.partySize,
         guests,
         guestNames,
+        guestTherapists,
         treatmentSelections,
         separateTreatments: action.partySize === 1 ? false : state.separateTreatments,
         activeGuestIndex: 0,

@@ -33,6 +33,7 @@ export function HandoffStep() {
         catalog,
       ),
       personalizations: state.guests.slice(0, size),
+      therapists: state.guestTherapists.slice(0, size),
     }).catch((err) => {
       console.error("[intake] save failed:", err);
       savedRef.current = false; // allow a retry on the next render

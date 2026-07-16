@@ -224,6 +224,10 @@ function IntakeRowCard({
   const partySize: PartySize = row.party_size === 2 ? 2 : 1;
   const first = row.treatment_selections?.[0];
   const treatmentName = first ? pickName(first.nameI18n, lang) : "—";
+  // Assigned therapist names (deduped — a couple often shares one therapist).
+  const therapistNames = [
+    ...new Set((row.therapists ?? []).flatMap((tp) => (tp ? [tp.name] : []))),
+  ].join(", ");
   const done = row.status === "done";
   const time = new Date(row.created_at).toLocaleTimeString([], {
     hour: "2-digit",
@@ -248,6 +252,7 @@ function IntakeRowCard({
         <div className="mt-0.5 truncate text-sm text-slate-light">
           {treatmentName}
           {first?.minutes ? ` · ${first.minutes} min` : ""} · {time}
+          {therapistNames ? ` · ${therapistNames}` : ""}
         </div>
       </div>
       <div className="flex items-center gap-2">

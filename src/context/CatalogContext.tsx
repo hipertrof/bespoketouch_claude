@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { bundledCatalog, fetchCatalog, type CatalogService } from "../lib/catalog";
+import {
+  fetchLocationInfo,
+  fetchTherapists,
+  type LocationInfo,
+  type TherapistOption,
+} from "../lib/kiosk";
 
 // Where the kiosk's offer came from. "db" = live catalogue for a paired
 // location; "bundled" = the built-in Nusa catalogue (no ?location= param, or
@@ -13,6 +19,12 @@ interface CatalogContextValue {
   source: CatalogSource;
   // The resolved location id (from ?location=), or null when running bundled.
   locationId: string | null;
+  // Account + location display names (welcome headline). Null when bundled or
+  // the lookup failed — the headline is simply omitted then.
+  locationInfo: LocationInfo | null;
+  // Therapists assigned to the location, for the receptionist's per-guest
+  // assignment dropdown. Empty when bundled / none assigned.
+  therapists: TherapistOption[];
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -30,6 +42,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<CatalogService[]>(() => bundledCatalog());
   const [source, setSource] = useState<CatalogSource>("bundled");
   const [loading, setLoading] = useState<boolean>(Boolean(locationId));
+  const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
+  const [therapists, setTherapists] = useState<TherapistOption[]>([]);
 
   useEffect(() => {
     // No location paired → run on the bundled catalogue (local dev / demo).
@@ -37,6 +51,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       setCatalog(bundledCatalog());
       setSource("bundled");
       setLoading(false);
+      setLocationInfo(null);
+      setTherapists([]);
       return;
     }
 
@@ -65,13 +81,28 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setLoading(false);
       });
 
+    // Best-effort extras: the headline and the therapist dropdown just don't
+    // render if these fail — never block the intake flow on them.
+    fetchLocationInfo(locationId)
+      .then((info) => {
+        if (!cancelled) setLocationInfo(info);
+      })
+      .catch((err) => console.warn("[kiosk] location info unavailable:", err));
+    fetchTherapists(locationId)
+      .then((rows) => {
+        if (!cancelled) setTherapists(rows);
+      })
+      .catch((err) => console.warn("[kiosk] therapist list unavailable:", err));
+
     return () => {
       cancelled = true;
     };
   }, [locationId]);
 
   return (
-    <CatalogContext.Provider value={{ catalog, loading, source, locationId }}>
+    <CatalogContext.Provider
+      value={{ catalog, loading, source, locationId, locationInfo, therapists }}
+    >
       {children}
     </CatalogContext.Provider>
   );
