@@ -128,6 +128,16 @@ export async function addMember(
     }
   }
 
+  // Where the invite/recovery link sends the user to set a password. Must be in
+  // Supabase's Redirect URLs allowlist, else generate_link falls back to the
+  // project's Site URL (localhost on a fresh project).
+  const redirectTo = env.appUrl ? `${env.appUrl.replace(/\/$/, "")}/welcome` : undefined;
+  const genLink = (type: "invite" | "recovery") => {
+    const payload: Record<string, unknown> = { type, email };
+    if (redirectTo) payload.redirect_to = redirectTo;
+    return postJson(`${base}/auth/v1/admin/generate_link`, svc, payload);
+  };
+
   // 4. Resolve the target user by email, inviting a new one if needed.
   let targetUserId: string;
   let inviteLink: string | null = null;
@@ -138,13 +148,19 @@ export async function addMember(
   const existingProfileId = asArray(prof.body)[0]?.user_id;
   if (typeof existingProfileId === "string") {
     targetUserId = existingProfileId;
+    // If they were invited before but never activated (no password set yet),
+    // mint a fresh link so the manager can re-send it — the first one may be lost
+    // or expired. An already-active user just gets added; they log in normally.
+    const au = await getJson(`${base}/auth/v1/admin/users/${targetUserId}`, svc);
+    const auRec = asRecord(au.body);
+    const activated = Boolean(auRec?.email_confirmed_at ?? auRec?.last_sign_in_at);
+    if (!activated) {
+      const relink = await genLink("recovery");
+      const rb = asRecord(relink.body);
+      if (relink.ok && typeof rb?.action_link === "string") inviteLink = rb.action_link;
+    }
   } else {
-    const invitePayload: Record<string, unknown> = { type: "invite", email };
-    // Send the invited user to the app's set-password page (must be in Supabase's
-    // Redirect URLs allowlist). Without this, generate_link falls back to the
-    // project's Site URL — which is localhost on a fresh project.
-    if (env.appUrl) invitePayload.redirect_to = `${env.appUrl.replace(/\/$/, "")}/welcome`;
-    const link = await postJson(`${base}/auth/v1/admin/generate_link`, svc, invitePayload);
+    const link = await genLink("invite");
     const linkBody = asRecord(link.body);
     if (link.ok && typeof linkBody?.id === "string") {
       targetUserId = linkBody.id;
