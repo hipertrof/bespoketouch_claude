@@ -129,9 +129,9 @@ export function StaffManagement() {
           <p className="text-slate">{t("staffNoAccounts", lang)}</p>
         ) : (
           <>
-            {accounts.length > 1 && (
-              <label className="mb-6 flex max-w-sm flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
-                {t("staffAccountLabel", lang)}
+            <div className="mb-6 flex max-w-sm flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+              {t("staffAccountLabel", lang)}
+              {accounts.length > 1 ? (
                 <select
                   value={accountId}
                   onChange={(e) => setAccountId(e.target.value)}
@@ -143,8 +143,12 @@ export function StaffManagement() {
                     </option>
                   ))}
                 </select>
-              </label>
-            )}
+              ) : (
+                <span className="text-base font-normal normal-case tracking-normal text-charcoal">
+                  {accounts[0]?.name}
+                </span>
+              )}
+            </div>
 
             <InviteForm
               accountId={accountId}
