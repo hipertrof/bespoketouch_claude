@@ -130,11 +130,20 @@ export function StaffManagement() {
       ));
 
   // Visibility (spec): admin sees all; owner sees manager/therapist/frontdesk;
-  // manager sees therapist/frontdesk on their locations.
+  // manager sees therapist/frontdesk AND fellow managers on their locations
+  // (read-only for the managers — edit/remove stays ops-only).
   const visibleMembers = members.filter((m) => {
     if (isPlatformAdmin) return true;
     if (isAccountOwner) return m.role !== "owner";
-    return canEditTarget(m);
+    return (
+      m.role !== "owner" &&
+      memberships.some(
+        (mgr) =>
+          mgr.account_id === accountId &&
+          mgr.role === "manager" &&
+          (mgr.location_id === null || mgr.location_id === m.location_id),
+      )
+    );
   });
 
   const locationName = (id: string | null) =>

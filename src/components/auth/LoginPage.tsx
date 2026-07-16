@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -10,7 +10,7 @@ import { LanguageSelector } from "../LanguageSelector";
 // Staff/admin login (Supabase Auth email + password). The kiosk guest flow at
 // "/" needs no login — this gates the management dashboards only.
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { signIn, user, rolesReady, isPlatformAdmin, memberships } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -18,13 +18,26 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Land each role on its home screen: admin → /admin, owner/manager → /manage,
+  // therapist → /queue, front desk → the kiosk. Waits for roles to resolve, so
+  // it also bounces already-signed-in visitors off /login.
+  useEffect(() => {
+    if (!user || !rolesReady) return;
+    const has = (role: string) => memberships.some((m) => m.role === role);
+    if (isPlatformAdmin) navigate("/admin");
+    else if (has("owner") || has("manager")) navigate("/manage");
+    else if (has("therapist")) navigate("/queue");
+    else if (has("frontdesk")) navigate("/");
+    else navigate("/queue");
+  }, [user, rolesReady, isPlatformAdmin, memberships, navigate]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
       await signIn(email.trim(), password);
-      navigate("/admin");
+      // Redirect happens in the effect above once roles resolve.
     } catch (err) {
       setError(err instanceof Error ? err.message : t("signInFailed", lang));
     } finally {
