@@ -28,7 +28,10 @@ export function membersProxyPlugin(env: MembersEnv): Plugin {
         try {
           const raw = await readBody(req);
           const body = raw ? JSON.parse(raw) : {};
-          const result = await addMember(req.headers.authorization, body, env);
+          const origin =
+            (req.headers.origin as string | undefined) ??
+            (req.headers.host ? `http://${req.headers.host}` : undefined);
+          const result = await addMember(req.headers.authorization, body, { ...env, appUrl: origin });
           res.statusCode = result.status;
           res.end(JSON.stringify(result.json));
         } catch (err) {

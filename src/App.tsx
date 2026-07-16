@@ -13,6 +13,7 @@ import { GuestHandoffStep } from "./components/steps/GuestHandoffStep";
 import { HandoffStep } from "./components/steps/HandoffStep";
 import { MasseurDashboard } from "./components/steps/MasseurDashboard";
 import { LoginPage } from "./components/auth/LoginPage";
+import { AcceptInvite } from "./components/auth/AcceptInvite";
 import { PlatformAdminDashboard } from "./components/admin/PlatformAdminDashboard";
 import { OfferCMS } from "./components/manage/OfferCMS";
 import { TherapistQueue } from "./components/queue/TherapistQueue";
@@ -59,6 +60,7 @@ function App() {
             }
           />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/welcome" element={<AcceptInvite />} />
           <Route path="/admin" element={<PlatformAdminDashboard />} />
           <Route path="/manage" element={<OfferCMS />} />
           <Route path="/queue" element={<TherapistQueue />} />

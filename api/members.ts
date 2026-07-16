@@ -7,9 +7,13 @@ import { addMember } from "./_membersCore.js";
 // its own caller auth (see membersCore). The dev equivalent is the Vite
 // middleware in vite-plugins/members-proxy.ts.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const origin =
+    (req.headers.origin as string | undefined) ??
+    (req.headers.host ? `https://${req.headers.host}` : undefined);
   const env = {
     url: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
     serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+    appUrl: origin,
   };
 
   if (req.method !== "POST") {

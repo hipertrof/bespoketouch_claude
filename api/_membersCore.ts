@@ -18,6 +18,9 @@ type Role = (typeof ROLES)[number];
 export interface MembersEnv {
   url: string;
   serviceKey: string;
+  /** App origin (e.g. https://bespoketouch.vercel.app) — where the invite link
+   *  sends a new user to set their password. Derived per-request from Origin. */
+  appUrl?: string;
 }
 
 export interface MembersResult {
@@ -136,7 +139,12 @@ export async function addMember(
   if (typeof existingProfileId === "string") {
     targetUserId = existingProfileId;
   } else {
-    const link = await postJson(`${base}/auth/v1/admin/generate_link`, svc, { type: "invite", email });
+    const invitePayload: Record<string, unknown> = { type: "invite", email };
+    // Send the invited user to the app's set-password page (must be in Supabase's
+    // Redirect URLs allowlist). Without this, generate_link falls back to the
+    // project's Site URL — which is localhost on a fresh project.
+    if (env.appUrl) invitePayload.redirect_to = `${env.appUrl.replace(/\/$/, "")}/welcome`;
+    const link = await postJson(`${base}/auth/v1/admin/generate_link`, svc, invitePayload);
     const linkBody = asRecord(link.body);
     if (link.ok && typeof linkBody?.id === "string") {
       targetUserId = linkBody.id;
