@@ -20,6 +20,8 @@ interface AuthContextType {
   rolesReady: boolean;
   /** Can manage offers/staff somewhere: platform admin, or an owner/manager membership. */
   canManage: boolean;
+  /** Whether the user can manage a specific location (mirrors can_manage_location RLS). */
+  canManageLocation: (loc: { id: string; account_id: string }) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -78,6 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const canManage =
     isPlatformAdmin || memberships.some((m) => m.role === "owner" || m.role === "manager");
 
+  const canManageLocation = (loc: { id: string; account_id: string }) =>
+    isPlatformAdmin ||
+    memberships.some(
+      (m) =>
+        m.account_id === loc.account_id &&
+        ((m.role === "owner" && m.location_id === null) ||
+          (m.role === "manager" && (m.location_id === null || m.location_id === loc.id))),
+    );
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -90,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, isPlatformAdmin, memberships, rolesReady, canManage, signIn, signOut }}
+      value={{ user, session, loading, isPlatformAdmin, memberships, rolesReady, canManage, canManageLocation, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

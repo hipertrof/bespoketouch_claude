@@ -109,6 +109,10 @@ export async function addMember(
     svc,
   );
   const isPlatformAdmin = Boolean(asArray(admins.body)[0]?.is_platform_admin);
+  // Only a platform admin may create an owner.
+  if (role === "owner" && !isPlatformAdmin) {
+    return { status: 403, json: { error: "Only a platform admin can add an owner." } };
+  }
   if (!isPlatformAdmin) {
     const owner = await getJson(
       `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
@@ -216,6 +220,85 @@ export async function addMember(
     status: 200,
     json: { ok: true, invited: Boolean(inviteLink), alreadyMember, inviteLink },
   };
+}
+
+// Removes a membership. Authorized for platform admin, account owner, or — for a
+// therapist/frontdesk target — a manager of that membership's location.
+export async function removeMember(
+  authorization: string | undefined,
+  membershipId: string | undefined,
+  env: MembersEnv,
+): Promise<MembersResult> {
+  if (!env.url || !env.serviceKey) {
+    return { status: 500, json: { error: "Server not configured." } };
+  }
+  if (!membershipId) return { status: 400, json: { error: "Missing membership id." } };
+
+  const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { status: 401, json: { error: "Missing authorization." } };
+  const base = env.url.replace(/\/$/, "");
+  const svc: Headers = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
+
+  const caller = await getJson(`${base}/auth/v1/user`, {
+    apikey: env.serviceKey,
+    Authorization: `Bearer ${token}`,
+  });
+  const callerId = asRecord(caller.body)?.id;
+  if (!caller.ok || typeof callerId !== "string") {
+    return { status: 401, json: { error: "Invalid or expired session." } };
+  }
+
+  const target = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/memberships?select=account_id,location_id,role&id=eq.${membershipId}`,
+        svc,
+      )
+    ).body,
+  )[0];
+  if (!target) return { status: 404, json: { error: "Membership not found." } };
+  const accountId = String(target.account_id);
+  const targetRole = String(target.role);
+  const targetLoc = target.location_id ? String(target.location_id) : null;
+
+  const isPlatformAdmin = Boolean(
+    asArray(
+      (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`, svc)).body,
+    )[0]?.is_platform_admin,
+  );
+  if (!isPlatformAdmin) {
+    const isOwner =
+      asArray(
+        (
+          await getJson(
+            `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+              `&account_id=eq.${accountId}&role=eq.owner&location_id=is.null`,
+            svc,
+          )
+        ).body,
+      ).length > 0;
+    let authorized = isOwner;
+    if (!authorized && targetLoc && (targetRole === "therapist" || targetRole === "frontdesk")) {
+      authorized =
+        asArray(
+          (
+            await getJson(
+              `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+                `&account_id=eq.${accountId}&location_id=eq.${targetLoc}&role=eq.manager`,
+              svc,
+            )
+          ).body,
+        ).length > 0;
+    }
+    if (!authorized) return { status: 403, json: { error: "Not authorized to remove this member." } };
+  }
+
+  const del = await fetch(`${base}/rest/v1/memberships?id=eq.${membershipId}`, {
+    method: "DELETE",
+    headers: { ...svc, Prefer: "return=minimal" },
+  });
+  if (!del.ok) return { status: 500, json: { error: `Could not remove member (${del.status}).` } };
+  return { status: 200, json: { ok: true } };
 }
 
 // Pages through auth users to find one by email (fallback for legacy users

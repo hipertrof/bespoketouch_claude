@@ -82,9 +82,20 @@ export async function addMember(params: {
   };
 }
 
-// Removes a membership. RLS (memberships_owner_write) lets only account owners
-// and platform admins delete.
+// Removes a membership via the service-role backend, which authorizes the caller
+// (platform admin, account owner, or a manager of the target's location).
 export async function removeMember(membershipId: string): Promise<void> {
-  const { error } = await supabase.from("memberships").delete().eq("id", membershipId);
-  if (error) throw error;
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Not signed in.");
+
+  const res = await fetch("/api/members", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ membershipId }),
+  });
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error((json.error as string) ?? `Request failed (${res.status})`);
+  }
 }

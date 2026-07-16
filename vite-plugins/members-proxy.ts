@@ -1,6 +1,6 @@
 import type { Plugin } from "vite";
 import type { IncomingMessage } from "node:http";
-import { addMember, type MembersEnv } from "../api/_membersCore.js";
+import { addMember, removeMember, type MembersEnv } from "../api/_membersCore.js";
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -19,7 +19,7 @@ export function membersProxyPlugin(env: MembersEnv): Plugin {
     name: "members-invite-proxy",
     configureServer(server) {
       server.middlewares.use("/api/members", async (req, res) => {
-        if (req.method !== "POST") {
+        if (req.method !== "POST" && req.method !== "DELETE") {
           res.statusCode = 405;
           res.end("Method not allowed");
           return;
@@ -31,7 +31,10 @@ export function membersProxyPlugin(env: MembersEnv): Plugin {
           const origin =
             (req.headers.origin as string | undefined) ??
             (req.headers.host ? `http://${req.headers.host}` : undefined);
-          const result = await addMember(req.headers.authorization, body, { ...env, appUrl: origin });
+          const result =
+            req.method === "DELETE"
+              ? await removeMember(req.headers.authorization, body.membershipId, env)
+              : await addMember(req.headers.authorization, body, { ...env, appUrl: origin });
           res.statusCode = result.status;
           res.end(JSON.stringify(result.json));
         } catch (err) {

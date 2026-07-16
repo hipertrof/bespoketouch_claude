@@ -26,7 +26,7 @@ interface LocationLite {
 // UI language is the global staff language (defaults to Polish) so a
 // non-Polish-speaking manager can switch it from the top selector.
 export function OfferCMS() {
-  const { user, loading, rolesReady, canManage, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, canManageLocation, signOut } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -44,9 +44,9 @@ export function OfferCMS() {
     else if (rolesReady && !canManage) navigate("/queue");
   }, [loading, user, rolesReady, canManage, navigate]);
 
-  // Load readable locations once signed in.
+  // Load readable locations once roles are known (so the manageable filter works).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !rolesReady) return;
     supabase
       .from("locations")
       .select("id, name, account_id")
@@ -54,11 +54,14 @@ export function OfferCMS() {
       .then(({ data, error }) => {
         if (error) setError(error.message);
         else {
-          setLocations((data as LocationLite[]) ?? []);
-          if (data && data.length > 0) setLocationId((prev) => prev || data[0].id);
+          // RLS lets a manager READ sibling locations; only show ones they can MANAGE.
+          const manageable = ((data as LocationLite[]) ?? []).filter((l) => canManageLocation(l));
+          setLocations(manageable);
+          if (manageable.length > 0) setLocationId((prev) => prev || manageable[0].id);
         }
       });
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, rolesReady]);
 
   const loadCatalog = useCallback(async (locId: string) => {
     setError(null);

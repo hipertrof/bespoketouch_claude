@@ -37,7 +37,8 @@ const ROLE_KEYS: Record<MemberRole, string> = {
 // removing use the client under RLS. Intended for account owners / platform
 // admins — others can open it but the endpoint + RLS reject their writes.
 export function StaffManagement() {
-  const { user, loading, rolesReady, canManage, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, canManageLocation, memberships, isPlatformAdmin, signOut } =
+    useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -79,15 +80,45 @@ export function StaffManagement() {
       ]);
       if (locs.error) throw locs.error;
       setMembers(mem);
-      setLocations((locs.data as LocationLite[]) ?? []);
+      // Only offer locations the caller can actually manage staff for.
+      const manageable = ((locs.data as { id: string; name: string }[]) ?? [])
+        .filter((l) => canManageLocation({ id: l.id, account_id: accId }))
+        .map((l) => ({ id: l.id, name: l.name }));
+      setLocations(manageable);
     } catch (e) {
       setError(errMessage(e, "Failed to load."));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (accountId) load(accountId);
   }, [accountId, load]);
+
+  // Roles the caller may grant on this account (spec: only admin creates owners;
+  // owners create manager/therapist/frontdesk; managers create therapist/frontdesk).
+  const isAccountOwner = memberships.some(
+    (m) => m.account_id === accountId && m.role === "owner" && m.location_id === null,
+  );
+  const isAccountManager = memberships.some((m) => m.account_id === accountId && m.role === "manager");
+  const allowedRoles: MemberRole[] = isPlatformAdmin
+    ? ["owner", "manager", "therapist", "frontdesk"]
+    : isAccountOwner
+      ? ["manager", "therapist", "frontdesk"]
+      : isAccountManager
+        ? ["therapist", "frontdesk"]
+        : [];
+
+  const canRemove = (m: MemberRow) =>
+    isPlatformAdmin ||
+    isAccountOwner ||
+    ((m.role === "therapist" || m.role === "frontdesk") &&
+      memberships.some(
+        (mgr) =>
+          mgr.account_id === accountId &&
+          mgr.role === "manager" &&
+          (mgr.location_id === null || mgr.location_id === m.location_id),
+      ));
 
   const locationName = (id: string | null) =>
     id ? locations.find((l) => l.id === id)?.name ?? id : t("staffLocationAll", lang);
@@ -158,6 +189,7 @@ export function StaffManagement() {
             <InviteForm
               accountId={accountId}
               locations={locations}
+              allowedRoles={allowedRoles}
               onAdded={() => load(accountId)}
             />
 
@@ -185,7 +217,8 @@ export function StaffManagement() {
                         type="button"
                         onClick={() => handleRemove(m)}
                         aria-label={t("staffRemove", lang)}
-                        className="text-slate-light hover:text-rose-dark"
+                        disabled={!canRemove(m)}
+                        className="text-slate-light hover:text-rose-dark disabled:opacity-30 disabled:hover:text-slate-light"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -204,15 +237,17 @@ export function StaffManagement() {
 function InviteForm({
   accountId,
   locations,
+  allowedRoles,
   onAdded,
 }: {
   accountId: string;
   locations: LocationLite[];
+  allowedRoles: MemberRole[];
   onAdded: () => void;
 }) {
   const { lang } = useLanguage();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<MemberRole>("therapist");
+  const [role, setRole] = useState<MemberRole>(allowedRoles[0] ?? "therapist");
   const [locationId, setLocationId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +255,15 @@ function InviteForm({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Keep the selected role valid as allowedRoles resolves.
+  useEffect(() => {
+    if (allowedRoles.length > 0 && !allowedRoles.includes(role)) setRole(allowedRoles[0]);
+  }, [allowedRoles, role]);
+
   const needsLocation = role !== "owner";
+  // Spec: every non-owner role needs a location, so with no manageable location
+  // there is nobody to add — prompt to create one first.
+  const noLocations = needsLocation && locations.length === 0;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -280,7 +323,7 @@ function InviteForm({
         <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
           {t("staffRole", lang)}
           <select value={role} onChange={(e) => setRole(e.target.value as MemberRole)} className={inputClass}>
-            {(Object.keys(ROLE_KEYS) as MemberRole[]).map((r) => (
+            {allowedRoles.map((r) => (
               <option key={r} value={r}>
                 {t(ROLE_KEYS[r], lang)}
               </option>
@@ -303,11 +346,12 @@ function InviteForm({
             ))}
           </select>
         </label>
-        <Button type="submit" disabled={busy || !accountId}>
+        <Button type="submit" disabled={busy || !accountId || noLocations}>
           {busy ? t("staffInviting", lang) : t("staffAdd", lang)}
         </Button>
       </div>
 
+      {noLocations && <p className="mt-3 text-sm text-rose-dark">{t("staffNeedLocationFirst", lang)}</p>}
       {error && <p className="mt-3 text-sm text-rose-dark">{error}</p>}
       {notice && <p className="mt-3 text-sm text-sage-dark">{notice}</p>}
       {inviteLink && (
