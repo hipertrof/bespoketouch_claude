@@ -148,7 +148,8 @@ async function submitSurvey(
     intake_id: linkedIntake ? intakeId : null,
     therapist_id: uuidOrNull(body.therapistId),
     therapist_name: textOrNull(body.therapistName, 200),
-    treatment_name: textOrNull(body.treatmentName, 200),
+    // Column is `treatment_type` — 0001's name, kept rather than renamed.
+    treatment_type: textOrNull(body.treatmentName, 200),
     pressure_feedback: enumOrNull(body.pressureFeedback, PRESSURE),
     atmosphere_comfort: enumOrNull(body.atmosphereComfort, COMFORT),
     therapist_responsiveness: enumOrNull(body.therapistResponsiveness, COMFORT),

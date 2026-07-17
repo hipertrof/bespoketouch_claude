@@ -39,7 +39,7 @@ export interface SurveyRow {
   intake_id: string | null;
   therapist_id: string | null;
   therapist_name: string | null;
-  treatment_name: string | null;
+  treatment_type: string | null; // 0001's column name for the treatment snapshot
   pressure_feedback: PressureFeedback | null;
   atmosphere_comfort: Comfort | null;
   therapist_responsiveness: Comfort | null;
@@ -193,10 +193,10 @@ export interface TreatmentStat {
 export function computeByTreatment(rows: SurveyRow[]): TreatmentStat[] {
   const groups = new Map<string, SurveyRow[]>();
   for (const r of rows) {
-    if (!r.treatment_name) continue;
-    const list = groups.get(r.treatment_name);
+    if (!r.treatment_type) continue;
+    const list = groups.get(r.treatment_type);
     if (list) list.push(r);
-    else groups.set(r.treatment_name, [r]);
+    else groups.set(r.treatment_type, [r]);
   }
   return [...groups.entries()]
     .map(([name, list]) => {

@@ -1,68 +1,82 @@
 -- BespokeTouch — Phase 4b: post-treatment survey
 --
--- A pseudonymous feedback row written by a paired kiosk at checkout. It links to
--- the guest's earlier intake (therapist + treatment) but never to the guest:
--- no name, phone, or email — by construction, not by policy.
+-- ⚠️ `survey_responses` ALREADY EXISTS — 0001 declared the whole schema up front,
+-- including this table (see "Survey (Phase 4)" there), with RLS enabled and no
+-- policies (deny-all), 0002's grants to `authenticated`, and an index on
+-- (location_id, created_at desc). 0007 then granted service_role everything.
+--
+-- So this migration only does what 0001 deferred: fit the columns to the agreed
+-- question set, constrain the enums, and add the read policy. An earlier draft
+-- of this file re-declared the table with CREATE TABLE and aborted the whole
+-- script on 42P07 — which is why the endpoint failed with a column mismatch.
+-- Re-runnable: every statement is idempotent.
 --
 -- Visibility rule (decided with the user): therapist ratings are MANAGERS ONLY.
 -- Rather than fight Postgres column privileges (grants are per DB role —
 -- `authenticated` — not per app role), the whole table is manager-and-up: the
--- read policy is can_manage_location(). Therapists and front-desk simply get no
+-- read policy below is can_manage_location(). Therapists and front-desk get no
 -- rows, which satisfies "therapists can't see their ratings" without any
 -- column-level machinery. Revisit only if therapists ever need self-service
 -- scores — that would need a SECURITY DEFINER view exposing a column subset.
 --
 -- Writes never come from a logged-in user: the kiosk is anonymous-but-paired, so
 -- api/survey.ts inserts with the service role after resolving the device token
--- (same model as api/intake.ts — see api/_deviceAuth.ts). Hence no INSERT policy
--- for `authenticated` and no grant of any kind to `anon`.
-
--- Re-runnable: every statement below is idempotent, so applying this twice is a
--- no-op rather than "relation already exists". (Supabase's SQL editor runs the
--- whole script in one implicit transaction, so a mid-script failure rolls the
--- table back too — if the table exists, the migration committed.)
-
-create table if not exists public.survey_responses (
-  id           uuid primary key default gen_random_uuid(),
-  account_id   uuid not null references public.accounts  (id) on delete cascade,
-  location_id  uuid not null references public.locations (id) on delete cascade,
-
-  -- Pseudonymous link to the visit. Nullable + ON DELETE SET NULL so purging an
-  -- intake (48h retention) never destroys the feedback history built on it.
-  intake_id    uuid references public.intakes (id) on delete set null,
-
-  -- Therapist id for joins, plus a NAME SNAPSHOT so reporting still reads
-  -- correctly after someone leaves and their membership/profile is gone.
-  therapist_id   uuid references auth.users (id) on delete set null,
-  therapist_name text,
-
-  -- Treatment snapshot, same reasoning as intakes.treatment_selections: a later
-  -- rename in the CMS must not rewrite past feedback.
-  treatment_name text,
-
-  -- Answers. All nullable: every question is skippable by design.
-  pressure_feedback        text check (pressure_feedback        in ('too_light', 'just_right', 'too_deep')),
-  atmosphere_comfort       text check (atmosphere_comfort       in ('yes', 'mostly', 'no')),
-  therapist_responsiveness text check (therapist_responsiveness in ('yes', 'mostly', 'no')),
-  csat_stars               integer check (csat_stars between 1 and 5),
-  nps                      integer check (nps between 0 and 10),
-
-  -- Free text. A guest could type something identifying or health-related here,
-  -- so it is treated like the intake's notes: manager-visible only (the read
-  -- policy below) and a purge target for the retention job. No job yet — a
-  -- future sweep should null this out on age using created_at.
-  next_visit_note text,
-
-  lang       text,
-  created_at timestamptz not null default now()
-);
-
-alter table public.survey_responses enable row level security;
+-- (same model as api/intake.ts — see api/_deviceAuth.ts). 0002 did grant
+-- insert/update/delete to `authenticated`, but with RLS on and NO write policy
+-- those are denied anyway — deny-by-default is doing the work here.
 
 -- ---------------------------------------------------------------------------
--- Reads: managers and up only (owner / manager-of-location / platform admin).
--- can_manage_location() is the same helper the CMS + /kiosks dashboards use, so
--- the three RBAC mirrors stay consistent.
+-- 1. Columns 0001 didn't anticipate.
+-- ---------------------------------------------------------------------------
+
+-- Therapist NAME snapshot, so reporting still reads correctly after someone
+-- leaves and their membership/profile row is gone. Mirrors the intake's habit of
+-- snapshotting the treatment rather than trusting a live join.
+alter table public.survey_responses
+  add column if not exists therapist_name text;
+
+-- 0001 typed these two as integer. The agreed questions ("was the atmosphere
+-- comfortable?", "did the therapist listen?") are three-point verbal scales, not
+-- counts, and storing 'yes'/'mostly'/'no' keeps the DB self-describing instead of
+-- needing a lookup to read a report. Safe to retype: the feature has never
+-- shipped, so the table is empty — and if it somehow isn't, the USING cast plus
+-- the CHECK below will fail loudly rather than silently mangle data.
+alter table public.survey_responses
+  alter column atmosphere_comfort type text using atmosphere_comfort::text;
+alter table public.survey_responses
+  alter column therapist_responsiveness type text using therapist_responsiveness::text;
+
+-- ---------------------------------------------------------------------------
+-- 2. Constrain the answer domains. The server whitelists these too
+--    (api/_surveyCore.ts); this is the backstop, not the only guard.
+--    All columns stay NULLABLE: every question is skippable by design, so NULL
+--    is a real answer meaning "declined", not missing data.
+-- ---------------------------------------------------------------------------
+
+alter table public.survey_responses drop constraint if exists survey_pressure_chk;
+alter table public.survey_responses add  constraint survey_pressure_chk
+  check (pressure_feedback in ('too_light', 'just_right', 'too_deep'));
+
+alter table public.survey_responses drop constraint if exists survey_atmosphere_chk;
+alter table public.survey_responses add  constraint survey_atmosphere_chk
+  check (atmosphere_comfort in ('yes', 'mostly', 'no'));
+
+alter table public.survey_responses drop constraint if exists survey_responsiveness_chk;
+alter table public.survey_responses add  constraint survey_responsiveness_chk
+  check (therapist_responsiveness in ('yes', 'mostly', 'no'));
+
+alter table public.survey_responses drop constraint if exists survey_csat_chk;
+alter table public.survey_responses add  constraint survey_csat_chk
+  check (csat_stars between 1 and 5);
+
+alter table public.survey_responses drop constraint if exists survey_nps_chk;
+alter table public.survey_responses add  constraint survey_nps_chk
+  check (nps between 0 and 10);
+
+-- ---------------------------------------------------------------------------
+-- 3. Reads: managers and up only (owner / manager-of-location / platform admin).
+--    can_manage_location() is the same helper the CMS + /kiosks dashboards use,
+--    so the three RBAC mirrors stay consistent.
 -- ---------------------------------------------------------------------------
 
 drop policy if exists survey_read_manage on public.survey_responses;
@@ -71,23 +85,11 @@ create policy survey_read_manage on public.survey_responses
   using (public.can_manage_location(location_id));
 
 -- ---------------------------------------------------------------------------
--- Grants. `authenticated` needs table-level SELECT for the policy above to have
--- anything to filter. service_role is granted explicitly rather than relying on
--- 0007's default privileges — the missing-grant 42501 has bitten this project
--- before, and an explicit grant costs nothing.
+-- 4. Indexes. 0001 already covers (location_id, created_at desc) via
+--    survey_location_idx, and intakes via intakes_location_idx — the survey's
+--    "today's visits" picker rides that one. Only the per-therapist grouping
+--    for reporting is new.
 -- ---------------------------------------------------------------------------
 
-grant select on public.survey_responses to authenticated;
-grant all    on public.survey_responses to service_role;
-
--- Reporting reads by location over a time window; the FK columns are also the
--- group-by keys for per-therapist / per-treatment breakdowns.
-create index if not exists survey_responses_location_created_idx
-  on public.survey_responses (location_id, created_at desc);
 create index if not exists survey_responses_therapist_idx
   on public.survey_responses (therapist_id);
-
--- Front-desk picks the guest's earlier visit from *today's* intakes for this
--- location; api/survey.ts serves that list to the paired device.
-create index if not exists intakes_location_created_idx
-  on public.intakes (location_id, created_at desc);
