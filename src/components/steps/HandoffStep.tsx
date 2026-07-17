@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, UserCog } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
+import { useDevice } from "../../context/DeviceContext";
 import { Button } from "../Button";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
@@ -10,22 +11,24 @@ import { saveGuestProfile } from "../../lib/guestProfile";
 
 export function HandoffStep() {
   const { state, dispatch } = useGuest();
-  const { catalog, locationId, loading } = useCatalog();
+  const { catalog, loading } = useCatalog();
+  const { token } = useDevice();
   const lang = state.language;
   const isCouple = state.partySize === 2;
 
   // Persist the locked intake once, in the background. This is the "lock" point:
-  // the guest has finished and handed the tablet back. Only for a paired
-  // location (a real ?location=) — the bundled demo has nowhere to write. The
-  // ref makes it fire exactly once even under StrictMode's double-effect.
+  // the guest has finished and handed the tablet back. Only a paired device can
+  // write — the server derives the location from the token, and the bundled demo
+  // has no token and nowhere to write. The ref makes it fire exactly once even
+  // under StrictMode's double-effect.
   const savedRef = useRef(false);
   const [saveError, setSaveError] = useState(false);
   useEffect(() => {
-    if (savedRef.current || loading || !locationId) return;
+    if (savedRef.current || loading || !token) return;
     savedRef.current = true;
     const size = state.partySize;
     saveIntake({
-      locationId,
+      deviceToken: token,
       partySize: size,
       guestNames: state.guestNames.slice(0, size).map((n) => n.trim()),
       treatmentSelections: buildTreatmentSnapshots(
@@ -40,20 +43,20 @@ export function HandoffStep() {
       savedRef.current = false; // allow a retry on the next render
       setSaveError(true);
     });
-  }, [loading, locationId, catalog, state]);
+  }, [loading, token, catalog, state]);
 
   // Opt-in guest CRM: persist each consenting guest's reusable preferences under
   // an HMAC-of-phone pseudonym. Fire-once, own guard (StrictMode-safe). Skipped
-  // for the bundled demo (no locationId). Non-blocking and NOT retried on error
-  // — the upsert is idempotent and a lost preference save is only cosmetic.
+  // for the bundled demo (no token). Non-blocking and NOT retried on error — the
+  // upsert is idempotent and a lost preference save is only cosmetic.
   const crmSavedRef = useRef(false);
   useEffect(() => {
-    if (crmSavedRef.current || loading || !locationId) return;
+    if (crmSavedRef.current || loading || !token) return;
     crmSavedRef.current = true;
     const size = state.partySize;
     const saves = state.guestCrm.slice(0, size).flatMap((crm, i) => {
       if (!crm.consent || crm.phone.replace(/\D/g, "").length < 8) return [];
-      return [saveGuestProfile(locationId, crm.phone, state.guests[i])];
+      return [saveGuestProfile(token, crm.phone, state.guests[i])];
     });
     if (saves.length > 0) {
       void Promise.allSettled(saves).then((results) => {
@@ -62,7 +65,7 @@ export function HandoffStep() {
         }
       });
     }
-  }, [loading, locationId, state]);
+  }, [loading, token, state]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">

@@ -22,17 +22,18 @@ import { TherapistQueue } from "./components/queue/TherapistQueue";
 import { StaffManagement } from "./components/staff/StaffManagement";
 import { KioskManagement } from "./components/manage/KioskManagement";
 
-// Device-pairing gate for the kiosk route. Shows the activation screen when the
-// device isn't paired — UNLESS a legacy `?location=` override or a `?demo` param
-// is present (both keep working: prod tablets on ?location=, local demos on
-// ?demo / no param during dev). CatalogProvider resolves the actual location
-// from the param or the paired device.
+// Device-pairing gate for the kiosk route. An unpaired tablet gets the
+// activation screen; a paired one runs on the location its token resolves to.
+//
+// `?demo` is the one bypass, and it is not a backdoor: it runs the bundled
+// offer with no device token, so it can read a demo catalogue but cannot write
+// an intake or reach a guest profile. Phase 2 hardening retired the old
+// `?location=` override — pointing a kiosk at a spa now requires pairing it.
 function KioskGate({ children }: { children: React.ReactNode }) {
   const { status } = useDevice();
   const [searchParams] = useSearchParams();
-  const hasOverride = searchParams.has("location") || searchParams.has("demo");
 
-  if (hasOverride) return <>{children}</>;
+  if (searchParams.has("demo")) return <>{children}</>;
   if (status === "checking") {
     return <div className="flex min-h-screen items-center justify-center bg-cream text-slate">…</div>;
   }

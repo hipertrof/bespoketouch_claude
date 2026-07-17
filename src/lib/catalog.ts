@@ -63,7 +63,7 @@ export async function fetchCatalog(locationId: string): Promise<CatalogService[]
 // The bundled Nusa catalogue expressed in the DB CatalogService[] shape, so the
 // kiosk's offline/fallback path flows through the exact same toMassageTypes()
 // mapper as the DB path (one code path, no per-source branching downstream).
-// Used when there's no ?location= param, or the DB fetch fails / is empty.
+// Used when the device is unpaired (?demo), or the DB fetch fails / is empty.
 export function bundledCatalog(): CatalogService[] {
   return massageTypes.map((m, i) => ({
     id: m.id,

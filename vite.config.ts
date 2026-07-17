@@ -6,6 +6,7 @@ import { membersProxyPlugin } from './vite-plugins/members-proxy.js'
 import { guestProxyPlugin } from './vite-plugins/guest-proxy.js'
 import { deviceProxyPlugin } from './vite-plugins/device-proxy.js'
 import { pairingProxyPlugin } from './vite-plugins/pairing-proxy.js'
+import { intakeProxyPlugin } from './vite-plugins/intake-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -36,6 +37,10 @@ export default defineConfig(({ command, mode }) => {
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       }),
       pairingProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      }),
+      intakeProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       }),

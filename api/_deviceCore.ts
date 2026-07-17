@@ -9,12 +9,20 @@
 // Runs with the SERVICE ROLE key. Callers are ANONYMOUS tablets (no JWT): a
 // kiosk pairs with a 6-digit code, then stores the returned opaque token and
 // re-validates it on every load. Codes + tokens never cross an RLS client — all
-// three actions run service-side here. Phase-2 replaces the ?location= bridge.
+// three actions run service-side here.
+//
+// Token validation itself lives in _deviceAuth.ts, shared with the kiosk write
+// endpoints (_intakeCore, _guestCore) so "valid token" has one definition.
 
-export interface DeviceEnv {
-  url: string;
-  serviceKey: string;
-}
+import {
+  checkDeviceConfig,
+  resolveDevice,
+  svcHeaders,
+  touchLastSeen,
+  type DeviceAuthEnv,
+} from "./_deviceAuth.js";
+
+export type DeviceEnv = DeviceAuthEnv;
 
 export interface DeviceResult {
   status: number;
@@ -34,7 +42,7 @@ export async function handleDevice(
   body: DeviceBody | undefined,
   env: DeviceEnv,
 ): Promise<DeviceResult> {
-  const configError = checkConfig(env);
+  const configError = checkDeviceConfig(env);
   if (configError) return configError;
 
   switch (body?.action) {
@@ -107,72 +115,24 @@ async function pairDevice(body: DeviceBody, env: DeviceEnv): Promise<DeviceResul
 // Check a stored token is still live (not revoked, slot still active). Touches
 // last_seen_at on success. Returns the location so the kiosk can boot.
 async function validateDevice(body: DeviceBody, env: DeviceEnv): Promise<DeviceResult> {
-  const token = normalizeToken(body.token);
-  if (!token) return { status: 200, json: { valid: false } };
-
-  const base = env.url.replace(/\/$/, "");
-  const svc = svcHeaders(env);
-
-  const row = asArray(
-    (
-      await getJson(
-        `${base}/rest/v1/tokens?select=id,revoked_at,slot:slots(location_id,status)&id=eq.${token}`,
-        svc,
-      )
-    ).body,
-  )[0];
-  const slot = asRecord(row?.slot);
-  const valid = Boolean(row) && !row.revoked_at && slot?.status === "active";
-  if (!valid) return { status: 200, json: { valid: false } };
-
-  touchLastSeen(base, svc, token);
-  return { status: 200, json: { valid: true, locationId: slot?.location_id } };
+  const device = await resolveDevice(body.token, env);
+  if (!device) return { status: 200, json: { valid: false } };
+  touchLastSeen(env, device.tokenId);
+  return { status: 200, json: { valid: true, locationId: device.locationId } };
 }
 
-// Periodic liveness ping from a paired kiosk.
+// Periodic liveness ping from a paired kiosk. Validates first, so a revoked
+// token can't keep a dead slot looking alive on the dashboard.
 async function heartbeatDevice(body: DeviceBody, env: DeviceEnv): Promise<DeviceResult> {
-  const token = normalizeToken(body.token);
-  if (!token) return { status: 400, json: { error: "Missing token." } };
-  const base = env.url.replace(/\/$/, "");
-  touchLastSeen(base, svcHeaders(env), token);
+  const device = await resolveDevice(body.token, env);
+  if (!device) return { status: 401, json: { error: "This device is not paired." } };
+  touchLastSeen(env, device.tokenId);
   return { status: 200, json: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function checkConfig(env: DeviceEnv): DeviceResult | null {
-  if (!env.url || !env.serviceKey) {
-    return { status: 500, json: { error: "Server not configured: SUPABASE_SERVICE_ROLE_KEY is missing." } };
-  }
-  const keyRole = jwtRole(env.serviceKey);
-  const isPublicKey =
-    env.serviceKey.startsWith("sb_publishable_") || (keyRole !== null && keyRole !== "service_role");
-  if (isPublicKey) {
-    return {
-      status: 500,
-      json: {
-        error:
-          "SUPABASE_SERVICE_ROLE_KEY looks like a public key, not the secret service_role key. " +
-          "Copy the service_role / secret key from Supabase → Project Settings → API into the env.",
-      },
-    };
-  }
-  return null;
-}
-
-function svcHeaders(env: DeviceEnv): Headers {
-  return { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
-}
-
-function touchLastSeen(base: string, svc: Headers, token: string): void {
-  void fetch(`${base}/rest/v1/tokens?id=eq.${token}`, {
-    method: "PATCH",
-    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
-  }).catch(() => {});
-}
 
 // Exactly six digits. Whitespace/formatting stripped.
 function normalizeCode(raw: string | undefined): string | null {
@@ -181,34 +141,12 @@ function normalizeCode(raw: string | undefined): string | null {
   return /^\d{6}$/.test(digits) ? digits : null;
 }
 
-// A token is a UUID (tokens.id). Guard the shape so a junk value can't build a
-// malformed REST filter.
-function normalizeToken(raw: string | undefined): string | null {
-  if (typeof raw !== "string") return null;
-  const t = raw.trim();
-  return /^[0-9a-f-]{36}$/i.test(t) ? t : null;
-}
-
 function isPast(ts: unknown): boolean {
   if (typeof ts !== "string") return true;
   const ms = Date.parse(ts);
   return Number.isNaN(ms) || ms < Date.now();
 }
 
-function jwtRole(key: string): string | null {
-  const parts = key.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    return typeof payload?.role === "string" ? payload.role : null;
-  } catch {
-    return null;
-  }
-}
-
-function asRecord(v: unknown): JsonRecord | null {
-  return v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : null;
-}
 function asArray(v: unknown): JsonRecord[] {
   return Array.isArray(v) ? (v as JsonRecord[]) : [];
 }

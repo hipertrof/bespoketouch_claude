@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useDevice } from "./DeviceContext";
 import { bundledCatalog, fetchCatalog, type CatalogService } from "../lib/catalog";
 import {
@@ -10,15 +9,15 @@ import {
 } from "../lib/kiosk";
 
 // Where the kiosk's offer came from. "db" = live catalogue for a paired
-// location; "bundled" = the built-in Nusa catalogue (no ?location= param, or
-// the DB fetch failed / returned nothing — keeps local dev and demos working).
+// location; "bundled" = the built-in Nusa catalogue (unpaired ?demo run, or the
+// DB fetch failed / returned nothing — keeps local dev and demos working).
 type CatalogSource = "db" | "bundled";
 
 interface CatalogContextValue {
   catalog: CatalogService[];
   loading: boolean;
   source: CatalogSource;
-  // The resolved location id (from ?location=), or null when running bundled.
+  // The location this kiosk is paired to, or null when running bundled (?demo).
   locationId: string | null;
   // Account + location display names (welcome headline). Null when bundled or
   // the lookup failed — the headline is simply omitted then.
@@ -30,20 +29,18 @@ interface CatalogContextValue {
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
-// Loads the kiosk's offer. Location is resolved from the ?location=<id> query
-// param — a temporary Phase-3b bridge; Phase 2 replaces it with the paired
-// device token. Reads happen as the anon role via the RLS bridge (only active
-// services of active locations are visible). Always yields a usable catalogue:
-// the bundled offer is the initial value and the fallback on any failure, so
-// the kiosk UI never has to handle an empty/loading offer specially.
+// Loads the kiosk's offer. Location comes from the paired device token and
+// nothing else — Phase 2 hardening retired the `?location=<id>` query-param
+// bridge, so a tablet can no longer be pointed at an arbitrary spa by editing
+// its URL. (`?demo` still runs the bundled offer, which writes nowhere.)
+//
+// Catalogue reads still happen as the anon role via the RLS bridge (only active
+// services of active locations are visible) — a public price list, unlike the
+// writes. Always yields a usable catalogue: the bundled offer is the initial
+// value and the fallback on any failure, so the kiosk UI never has to handle an
+// empty/loading offer specially.
 export function CatalogProvider({ children }: { children: ReactNode }) {
-  const [searchParams] = useSearchParams();
-  // Location resolves from the paired device token (the normal path); a
-  // `?location=` query param still overrides it as a dev/legacy escape hatch
-  // (the live tablet ran on it before pairing existed). No token + no param =
-  // bundled demo.
-  const { locationId: deviceLocationId } = useDevice();
-  const locationId = searchParams.get("location") ?? deviceLocationId;
+  const { locationId } = useDevice();
 
   const [catalog, setCatalog] = useState<CatalogService[]>(() => bundledCatalog());
   const [source, setSource] = useState<CatalogSource>("bundled");
@@ -52,7 +49,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
 
   useEffect(() => {
-    // No location paired → run on the bundled catalogue (local dev / demo).
+    // Unpaired → run on the bundled catalogue (local dev / ?demo).
     if (!locationId) {
       setCatalog(bundledCatalog());
       setSource("bundled");

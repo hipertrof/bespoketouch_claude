@@ -7,26 +7,25 @@
 // function with FUNCTION_INVOCATION_FAILED.) Lives in /api as an underscore-
 // prefixed file so Vercel bundles it WITHOUT turning it into its own route.
 //
-// Runs with the SERVICE ROLE key. Unlike the members endpoint, callers are
-// ANONYMOUS: the kiosk has no login/JWT, only its ?location=<id>. So this
-// endpoint does not authenticate a caller — instead every action resolves the
-// location to an active account server-side (mirrors intakes_insert_anon in
-// 0005). No rate limiting: the accepted Phase-3 anon-bridge gap, closed by
-// Phase 2 device tokens.
+// Runs with the SERVICE ROLE key. The kiosk has no login/JWT, but PHASE 2
+// HARDENING made it authenticated all the same: the tablet presents its paired
+// device token and the server derives the location — and from it the account —
+// server-side. The client no longer names the location it wants to act on.
 //
-// Threat posture accepted for v1 (comfort-settings only, no PII stored):
-//   * Lookup with a known phone reveals only massage preferences — no name,
-//     phone, or free text is ever stored, so a hash collision/guess leaks
-//     nothing identifying.
-//   * Overwrite/forget by a guessed phone can only corrupt a guest's comfort
-//     settings. Low harm; deferred to Phase 2 device-token identity.
-// One cheap hardening kept: `save` requires consent === true and stamps
-// consent_version/consent_at SERVER-side (the client can't forge them).
+// That closes the Phase-3 anon-bridge gap this endpoint shipped with, where
+// anyone holding a location UUID could probe a phone number to read, overwrite,
+// or erase that guest's stored preferences. Reaching a guest profile now
+// requires a live token on an active slot, so the blast radius of a guessed
+// phone is limited to spas the caller has a paired kiosk in — and revoking the
+// slot cuts it off.
 //
-// Privacy: the raw phone exists only in the request body (HTTPS) and is hashed
-// immediately — never persisted, never logged.
+// Two guarantees kept from v1: `save` requires consent === true and stamps
+// consent_version/consent_at SERVER-side (the client can't forge them), and the
+// raw phone exists only in the request body (HTTPS) and is hashed immediately —
+// never persisted, never logged.
 
 import { createHmac } from "node:crypto";
+import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceAuth.js";
 
 // Bump when the consent wording (consentSaveBody in i18n) materially changes.
 export const CONSENT_VERSION = "2026-07-v1";
@@ -35,9 +34,7 @@ export const CONSENT_VERSION = "2026-07-v1";
 // a miss (lazy GDPR storage-limitation; a sweep job comes later).
 const EXPIRY_DAYS = 540;
 
-export interface GuestEnv {
-  url: string;
-  serviceKey: string;
+export interface GuestEnv extends DeviceAuthEnv {
   hashSecret: string;
 }
 
@@ -65,7 +62,7 @@ export interface StoredPreferencesV1 {
 
 interface GuestBody {
   action?: string;
-  locationId?: string;
+  deviceToken?: string;
   phone?: string;
   consent?: boolean;
   preferences?: unknown;
@@ -107,8 +104,9 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
 
   const base = env.url.replace(/\/$/, "");
   const svc = svcHeaders(env);
-  const accountId = await resolveAccount(base, svc, body.locationId);
-  if (!accountId) return { status: 403, json: { error: "Unknown or inactive location." } };
+  const auth = await authorizeKiosk(body, env, base, svc);
+  if (!auth.ok) return auth.result;
+  const accountId = auth.accountId;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const rows = asArray(
@@ -154,8 +152,9 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
 
   const base = env.url.replace(/\/$/, "");
   const svc = svcHeaders(env);
-  const accountId = await resolveAccount(base, svc, body.locationId);
-  if (!accountId) return { status: 403, json: { error: "Unknown or inactive location." } };
+  const auth = await authorizeKiosk(body, env, base, svc);
+  if (!auth.ok) return auth.result;
+  const accountId = auth.accountId;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const now = new Date().toISOString();
@@ -190,8 +189,9 @@ async function forgetGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
 
   const base = env.url.replace(/\/$/, "");
   const svc = svcHeaders(env);
-  const accountId = await resolveAccount(base, svc, body.locationId);
-  if (!accountId) return { status: 403, json: { error: "Unknown or inactive location." } };
+  const auth = await authorizeKiosk(body, env, base, svc);
+  if (!auth.ok) return auth.result;
+  const accountId = auth.accountId;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const del = await fetch(
@@ -210,25 +210,10 @@ async function forgetGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
 // ---------------------------------------------------------------------------
 
 function checkConfig(env: GuestEnv): GuestResult | null {
-  if (!env.url || !env.serviceKey) {
-    return { status: 500, json: { error: "Server not configured: SUPABASE_SERVICE_ROLE_KEY is missing." } };
-  }
+  const deviceError = checkDeviceConfig(env);
+  if (deviceError) return deviceError;
   if (!env.hashSecret) {
     return { status: 500, json: { error: "Server not configured: GUEST_HASH_SECRET is missing." } };
-  }
-  // Guard against pasting a PUBLIC key instead of the secret one (see members).
-  const keyRole = jwtRole(env.serviceKey);
-  const isPublicKey =
-    env.serviceKey.startsWith("sb_publishable_") || (keyRole !== null && keyRole !== "service_role");
-  if (isPublicKey) {
-    return {
-      status: 500,
-      json: {
-        error:
-          "SUPABASE_SERVICE_ROLE_KEY looks like a public key, not the secret service_role key. " +
-          "In Supabase → Project Settings → API, copy the service_role / secret key into the env.",
-      },
-    };
   }
   return null;
 }
@@ -237,9 +222,35 @@ function svcHeaders(env: GuestEnv): Headers {
   return { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
 }
 
-// Resolves a location id to its account, but ONLY for an active location — the
-// same gate the anon intake-insert bridge uses. Returns null for unknown /
-// inactive / missing input.
+type KioskAuth =
+  | { ok: true; accountId: string }
+  | { ok: false; result: GuestResult };
+
+// The authorization every action shares: prove the caller is a paired kiosk,
+// then derive the account whose guest profiles it may touch. The token is the
+// ONLY source of location — a body-supplied location is never consulted, which
+// is what stops one spa's kiosk (or a bare script) from reaching another's
+// guests.
+async function authorizeKiosk(
+  body: GuestBody,
+  env: GuestEnv,
+  base: string,
+  svc: Headers,
+): Promise<KioskAuth> {
+  const device = await resolveDevice(body.deviceToken, env);
+  if (!device) {
+    return { ok: false, result: { status: 401, json: { error: "This device is not paired." } } };
+  }
+  const accountId = await resolveAccount(base, svc, device.locationId);
+  if (!accountId) {
+    return { ok: false, result: { status: 403, json: { error: "Unknown or inactive location." } } };
+  }
+  return { ok: true, accountId };
+}
+
+// Resolves a location id to its account, but ONLY for an active location, so a
+// kiosk paired to a deactivated location stops resolving. Returns null for
+// unknown / inactive / missing input.
 export async function resolveAccount(
   base: string,
   svc: Headers,
@@ -315,19 +326,6 @@ async function deleteById(base: string, svc: Headers, id: string): Promise<void>
     method: "DELETE",
     headers: { ...svc, Prefer: "return=minimal" },
   }).catch(() => {});
-}
-
-// Reads the `role` claim from a Supabase legacy key (a JWT). Returns null for
-// non-JWT keys (the new sb_secret_… format), which pass.
-function jwtRole(key: string): string | null {
-  const parts = key.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    return typeof payload?.role === "string" ? payload.role : null;
-  } catch {
-    return null;
-  }
 }
 
 function asRecord(v: unknown): JsonRecord | null {

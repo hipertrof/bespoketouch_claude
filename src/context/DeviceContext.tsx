@@ -21,6 +21,11 @@ interface DeviceContextValue {
   status: DeviceStatus;
   // Resolved location for a paired device; null while checking/unpaired.
   locationId: string | null;
+  // The device's own token, or null when unpaired (e.g. the bundled demo). It
+  // authenticates every kiosk write — the server derives the location from it,
+  // so the write paths take this rather than a location id. Null therefore
+  // means "cannot write", which is exactly what the demo should be.
+  token: string | null;
   // Pair with a 6-digit code (throws on failure); on success flips to paired.
   pair: (code: string) => Promise<void>;
   // Forget the token and return to the activation screen.
@@ -32,20 +37,22 @@ const DeviceContext = createContext<DeviceContextValue | null>(null);
 export function DeviceProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<DeviceStatus>("checking");
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   // Validate any stored token once on mount.
   useEffect(() => {
     let cancelled = false;
-    const token = getDeviceToken();
-    if (!token) {
+    const stored = getDeviceToken();
+    if (!stored) {
       setStatus("unpaired");
       return;
     }
-    validateDevice(token)
+    validateDevice(stored)
       .then((res) => {
         if (cancelled) return;
         if (res) {
           setLocationId(res.locationId);
+          setToken(stored);
           setStatus("paired");
         } else {
           clearDeviceToken();
@@ -75,18 +82,22 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   const pair = useCallback(async (code: string) => {
     const { locationId: loc } = await pairDevice(code);
+    // pairDevice has just persisted the token; read it back so context and
+    // storage can't disagree about which token this device holds.
+    setToken(getDeviceToken());
     setLocationId(loc);
     setStatus("paired");
   }, []);
 
   const unpair = useCallback(() => {
     clearDeviceToken();
+    setToken(null);
     setLocationId(null);
     setStatus("unpaired");
   }, []);
 
   return (
-    <DeviceContext.Provider value={{ status, locationId, pair, unpair }}>
+    <DeviceContext.Provider value={{ status, locationId, token, pair, unpair }}>
       {children}
     </DeviceContext.Provider>
   );

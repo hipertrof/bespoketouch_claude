@@ -41,11 +41,6 @@ export interface IntakeRow {
   expires_at: string | null;
 }
 
-// How long a locked intake stays in the queue before the retention job may
-// purge it (no job yet — this just stamps the target). Two days covers a
-// same-day treatment plus slack for late checkout.
-const RETENTION_HOURS = 48;
-
 // ---------------------------------------------------------------------------
 // Snapshot builder — resolves each selection against the loaded catalogue into
 // a display-ready snapshot. Mirrors toMassageTypes()' price rule (couple price
@@ -79,33 +74,38 @@ export function buildTreatmentSnapshots(
 }
 
 // ---------------------------------------------------------------------------
-// Writes (kiosk, anon role — insert only per 0005 RLS)
+// Writes (kiosk → /api/intake, authenticated by the paired device token)
+//
+// Phase 2 hardening moved this off the anon RLS insert bridge (dropped in
+// migration 0012). The kiosk no longer says which location it is writing to —
+// it presents its device token and the server derives the location, pinning
+// status and expires_at server-side. An unpaired tablet simply cannot write.
 // ---------------------------------------------------------------------------
 
 export async function saveIntake(input: {
-  locationId: string;
+  deviceToken: string;
   partySize: PartySize;
   guestNames: string[];
   treatmentSelections: TreatmentSnapshot[];
   personalizations: PersonalizationState[];
   therapists: (TherapistAssignment | null)[];
 }): Promise<void> {
-  const expiresAt = new Date(Date.now() + RETENTION_HOURS * 3600 * 1000).toISOString();
-  // Insert only — no .select() back. The kiosk writes as the anon role, which
-  // has INSERT but deliberately NO SELECT on intakes (they hold guest PII). A
-  // returning-select would commit the row yet read back zero rows under RLS,
-  // throwing a false failure — and the retry that follows would duplicate it.
-  const { error } = await supabase.from("intakes").insert({
-    location_id: input.locationId,
-    status: "submitted",
-    party_size: input.partySize,
-    guest_names: input.guestNames,
-    treatment_selections: input.treatmentSelections,
-    personalizations: input.personalizations,
-    therapists: input.therapists,
-    expires_at: expiresAt,
+  const res = await fetch("/api/intake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      deviceToken: input.deviceToken,
+      partySize: input.partySize,
+      guestNames: input.guestNames,
+      treatmentSelections: input.treatmentSelections,
+      personalizations: input.personalizations,
+      therapists: input.therapists,
+    }),
   });
-  if (error) throw error;
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(json?.error ?? `Could not save the intake (${res.status}).`);
+  }
 }
 
 // ---------------------------------------------------------------------------

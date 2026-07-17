@@ -97,7 +97,10 @@ function isOneOf<T extends string>(value: unknown, allowed: T[]): value is T {
 
 // ---------------------------------------------------------------------------
 // Endpoint calls. All POST /api/guest with an { action } discriminator. The
-// kiosk is anonymous — the server authorizes via the active location, not a JWT.
+// kiosk has no login, but it is not unauthenticated: it presents its paired
+// device token and the server derives the location — and the account the
+// profile is keyed to — from it. An unpaired tablet gets 401, so the CRM is
+// unavailable in the bundled demo by design.
 // ---------------------------------------------------------------------------
 
 async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
@@ -114,14 +117,14 @@ async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
   return json;
 }
 
-// Returns the stored preferences if a profile exists for this phone at this
-// location's account, else null. Raw phone is sent over HTTPS and hashed
+// Returns the stored preferences if a profile exists for this phone at the
+// kiosk's account, else null. Raw phone is sent over HTTPS and hashed
 // server-side; it is never stored.
 export async function lookupGuestProfile(
-  locationId: string,
+  deviceToken: string,
   phone: string,
 ): Promise<StoredPreferences | null> {
-  const json = (await postGuest({ action: "lookup", locationId, phone })) as {
+  const json = (await postGuest({ action: "lookup", deviceToken, phone })) as {
     found?: boolean;
     preferences?: unknown;
   } | null;
@@ -132,13 +135,13 @@ export async function lookupGuestProfile(
 // Upsert the reusable preference subset under the phone pseudonym. Requires
 // explicit consent (the server rejects consent !== true).
 export async function saveGuestProfile(
-  locationId: string,
+  deviceToken: string,
   phone: string,
   personalization: PersonalizationState,
 ): Promise<void> {
   await postGuest({
     action: "save",
-    locationId,
+    deviceToken,
     phone,
     consent: true,
     preferences: toStoredPreferences(personalization),
@@ -146,6 +149,6 @@ export async function saveGuestProfile(
 }
 
 // Right-to-erasure: delete this guest's stored profile at this account.
-export async function forgetGuestProfile(locationId: string, phone: string): Promise<void> {
-  await postGuest({ action: "forget", locationId, phone });
+export async function forgetGuestProfile(deviceToken: string, phone: string): Promise<void> {
+  await postGuest({ action: "forget", deviceToken, phone });
 }

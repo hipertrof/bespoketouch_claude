@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
 import { useGuest, useActiveGuest } from "../../context/GuestContext";
-import { useCatalog } from "../../context/CatalogContext";
+import { useDevice } from "../../context/DeviceContext";
 import { Button } from "../Button";
 import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
@@ -40,7 +40,9 @@ const communicationOptions: { value: CommunicationStyle; subtitleKey: string; ic
 
 export function PreferencesStep() {
   const { state, dispatch } = useGuest();
-  const { locationId } = useCatalog();
+  // Only a paired kiosk can store preferences, so the consent card is hidden in
+  // the bundled demo rather than offering an opt-in that would 401 on save.
+  const { token } = useDevice();
   const lang = state.language;
   const activeGuest = useActiveGuest();
   const { preferences } = activeGuest;
@@ -209,7 +211,7 @@ export function PreferencesStep() {
         </PreferenceCard>
       </div>
 
-      {locationId && (
+      {token && (
         <div className="mt-8 rounded-2xl border border-sand bg-white p-5 shadow-soft">
           <div className="flex items-start justify-between gap-4">
             <div>

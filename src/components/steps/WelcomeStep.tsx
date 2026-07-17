@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Check, Search, Sparkles, Trash2, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
+import { useDevice } from "../../context/DeviceContext";
 import { toMassageTypes } from "../../lib/catalog";
 import {
   applyStoredPreferences,
@@ -27,7 +28,8 @@ const partySizeOptions: { value: PartySize; labelKey: string }[] = [
 
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
-  const { catalog, locationInfo, therapists, locationId } = useCatalog();
+  const { catalog, locationInfo, therapists } = useCatalog();
+  const { token } = useDevice();
   const lang = state.language;
   // The offer, mapped to the session language (names already translated).
   const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
@@ -193,7 +195,7 @@ export function WelcomeStep() {
                 </select>
               </div>
             )}
-            {locationId && <ReturningGuestBlock index={i} locationId={locationId} />}
+            {token && <ReturningGuestBlock index={i} deviceToken={token} />}
           </div>
         ))}
       </div>
@@ -332,9 +334,10 @@ export function WelcomeStep() {
 }
 
 // Returning-guest lookup for one guest. Front-desk enters the guest's phone to
-// prefill their saved preferences. Only rendered when the kiosk is paired to a
-// real location. All failures are non-blocking — the flow continues regardless.
-function ReturningGuestBlock({ index, locationId }: { index: number; locationId: string }) {
+// prefill their saved preferences. Only rendered on a paired kiosk — the device
+// token authenticates the lookup and tells the server which account's profiles
+// to search. All failures are non-blocking — the flow continues regardless.
+function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToken: string }) {
   const { state, dispatch } = useGuest();
   const lang = state.language;
   const crm = state.guestCrm[index] ?? { phone: "", consent: false, prefilled: false };
@@ -349,7 +352,7 @@ function ReturningGuestBlock({ index, locationId }: { index: number; locationId:
     setStatus("looking");
     setForgotten(false);
     try {
-      const stored = await lookupGuestProfile(locationId, crm.phone);
+      const stored = await lookupGuestProfile(deviceToken, crm.phone);
       if (!stored) {
         setStatus("missing");
         return;
@@ -378,7 +381,7 @@ function ReturningGuestBlock({ index, locationId }: { index: number; locationId:
       return;
     }
     try {
-      await forgetGuestProfile(locationId, crm.phone);
+      await forgetGuestProfile(deviceToken, crm.phone);
       dispatch({ type: "CLEAR_GUEST_PROFILE", index });
       setStatus("idle");
       setConfirmForget(false);
