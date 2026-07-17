@@ -15,6 +15,7 @@ import {
 import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
+import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 
 interface AccountLite {
   id: string;
@@ -190,6 +191,8 @@ export function StaffManagement() {
             </Button>
           </div>
         </header>
+
+        <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 

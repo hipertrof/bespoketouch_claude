@@ -14,6 +14,7 @@ import {
 import { t } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
+import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 
 // Guest-feedback reporting (/reports). Manager-and-up only — enforced twice:
 // this route gates on canManage, and RLS (0013) only returns rows to
@@ -129,6 +130,8 @@ export function SurveyReport() {
             </Button>
           </div>
         </header>
+
+        <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 

@@ -13,6 +13,7 @@ import { languages, t, tf } from "../../i18n/translations";
 import type { LangCode } from "../../types";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
+import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 
 interface LocationLite {
   id: string;
@@ -141,6 +142,8 @@ export function OfferCMS() {
             </Button>
           </div>
         </header>
+
+        <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 

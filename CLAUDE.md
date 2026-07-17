@@ -5,12 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Compact instructions
 When compacting, drop exploratory reasoning.
 
+## Project structure
+
+- `src/` — React SPA: components (organized by feature/context), contexts, i18n, static data, and client API wrappers (`lib/`). Styled with **Tailwind CSS**.
+- `src/App.tsx` — React Router setup. Kiosk flow at `/` (anonymous); all other routes require `AuthContext` (staff dashboards).
+- `api/` — Vercel serverless functions; core logic in `_*Core.ts` files (shared by prod + dev proxy). Each endpoint (`members.ts`, `guest.ts`, `device.ts`, `pairing.ts`, `intake.ts`, `survey.ts`) mirrors a dev proxy plugin.
+- `vite-plugins/` — dev proxy middlewares. When you add/change an endpoint in `api/`, update or add its corresponding proxy (e.g., `api/survey.ts` ↔ `vite-plugins/survey-proxy.ts`), registered in `vite.config.ts`.
+- `supabase/migrations/` — SQL migrations applied via Supabase dashboard/CLI (not automated).
+- `dist/` — build output (created by `npm run build`).
+
 ## Commands
 
 - `npm run dev` — Vite dev server. The dev server also serves the `/api/*` endpoints via middleware plugins (see "Serverless functions" below), so most backend work is testable locally.
-- `npm run build` — `tsc -b && vite build`. TypeScript is project-references (`tsc -b`); a type error fails the build. Do this before committing non-trivial changes.
+- `npm run build` — `tsc -b && vite build`. TypeScript is project-references (`tsc -b`); a type error fails the build. TypeScript enforces `noUnusedLocals` and `noUnusedParameters`, so remove dead code. Do this before committing non-trivial changes.
 - `npm run lint` — `oxlint` (not ESLint). Fast; run it after edits.
-- `npm run preview` — preview the production bundle.
+- `npm run preview` — preview the production bundle (use when `npm run build` succeeds).
 
 There is **no test runner configured**. `src/lib/rls-isolation.test.ts` exists but is not wired to any `test` script — do not assume `npm test` works.
 
@@ -38,7 +47,15 @@ Two authorization styles for serverless endpoints:
 - **Anonymous (kiosk-facing)** — e.g. `api/guest.ts`, `api/device.ts`: no login. They resolve an active location → account server-side and scope by that. Guarded against exposing the service key; `sb_publishable_` guard rejects wrong keys.
 
 ### Dev proxies mirror the serverless functions
-Each `api/_xCore.ts` has a matching `vite-plugins/x-proxy.ts` that imports the **same core** (`../api/_xCore.js`) and serves it as dev middleware via `configureServer`. Registered in `vite.config.ts`, fed secrets through `loadEnv`. **When you add or change a serverless endpoint, update its proxy too**, or it works in prod but 404s in `npm run dev`.
+The dev server (`npm run dev`) runs middleware plugins that import the same core logic as prod serverless functions, so `/api/*` endpoints behave identically locally. Mapping:
+- `/api/members` ← `api/_membersCore.ts` ↔ `vite-plugins/members-proxy.ts`
+- `/api/guest` ← `api/_guestCore.ts` ↔ `vite-plugins/guest-proxy.ts`
+- `/api/device` ← `api/_deviceAuth.ts` / `_deviceCore.ts` ↔ `vite-plugins/device-proxy.ts`
+- `/api/pairing` ← `api/_pairingCore.ts` ↔ `vite-plugins/pairing-proxy.ts`
+- `/api/intake` ← `api/_intakeCore.ts` ↔ `vite-plugins/intake-proxy.ts`
+- `/api/survey` ← `api/_surveyCore.ts` ↔ `vite-plugins/survey-proxy.ts`
+
+**When you add or change an endpoint in `api/`, update or add its dev proxy.** Without it, the endpoint works in prod but 404s in dev. Proxies are registered in `vite.config.ts` and receive secrets via `loadEnv`.
 
 ### Client → backend patterns
 - Authed dashboard calls: `supabase.auth.getSession()` → `Authorization: Bearer <token>` (see `src/lib/members.ts`, `src/lib/pairing.ts`).
@@ -47,6 +64,10 @@ Each `api/_xCore.ts` has a matching `vite-plugins/x-proxy.ts` that imports the *
 
 ### Device pairing / billing model
 A kiosk identifies its location **only** by a paired device token (6-digit activation → `bt_device_token` in localStorage, validated against `slots`/`tokens`/`pair_codes`). `DeviceContext` resolves it and exposes `{status, locationId, token}`; `CatalogContext` consumes `locationId` from there. `?demo` runs the bundled offer with no token (so it can read a demo catalogue but write nothing). The `?location=<uuid>` param was **retired in Phase 2 hardening** — don't reintroduce a client-supplied location. Slots are capped by `accounts.slots_paid` (set manually in `/admin` — Stripe is deferred).
+
+The enforcement split is deliberate and **must not be flattened**:
+- **Adding a new device is a HARD limit** — `/api/pairing` blocks past `accounts.slots_paid`.
+- **A payment lapse is SOFT** — paired kiosks keep running and a live guest check-in is *never* blocked. `src/lib/billing.ts` classifies `accounts.subscription_end` into `ok | endingSoon | lapsed` (14-day window), and `SubscriptionBanner` shows a reminder on the **manager dashboards only** (`/manage`, `/kiosks`, `/staff`, `/reports`). It is deliberately absent from the kiosk and `/queue`, where it would sit in front of a guest. Nothing in `billing.ts` gates a control; a failed read renders nothing rather than breaking the dashboard. `/admin` shows the same status as a chip so the operator knows who to chase. Stripe is still deferred — dates are set by hand in `/admin`.
 
 ### Kiosk writes are device-token authenticated (do not regress)
 The kiosk has no login, but it is **not unauthenticated**. Every kiosk write goes through a serverless endpoint that takes the device token and **derives the location from it** — the client never says which location it is writing to. `api/_deviceAuth.ts` is the single definition of "valid token" (exists, not revoked, slot active); `resolveDevice()` returning null MUST mean 401, never a fallback to a client-supplied location.

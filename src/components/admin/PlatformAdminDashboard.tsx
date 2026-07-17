@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
+import { subscriptionStatus } from "../../lib/billing";
 import { Button } from "../Button";
 
 interface Account {
@@ -198,7 +199,11 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
     <div className="rounded-2xl bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-40 flex-1">
-          <div className="font-serif text-lg text-charcoal">{account.name}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-serif text-lg text-charcoal">{account.name}</span>
+            {/* Reflects the saved date, not the edit box above it. */}
+            <SubscriptionChip end={account.subscription_end} />
+          </div>
           <div className="text-xs text-slate-light">{account.plan ?? "no plan"}</div>
         </div>
         <Field label="Stanowiska">
@@ -230,6 +235,24 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
       </button>
       {showLocations && <LocationsSection accountId={account.id} />}
     </div>
+  );
+}
+
+// Which accounts to chase. The client-facing reminder is soft and lives on the
+// manager dashboards (SubscriptionBanner); this is the operator's view of the
+// same subscriptionStatus() call, so the two can never disagree.
+function SubscriptionChip({ end }: { end: string | null }) {
+  const status = subscriptionStatus(end);
+  if (!status || status.state === "ok") return null;
+  const lapsed = status.state === "lapsed";
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        lapsed ? "bg-rose-tint text-rose-dark" : "bg-clay-tint text-clay-dark"
+      }`}
+    >
+      {lapsed ? "Wygasła" : "Kończy się wkrótce"}
+    </span>
   );
 }
 
