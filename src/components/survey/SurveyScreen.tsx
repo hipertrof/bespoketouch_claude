@@ -280,7 +280,15 @@ export function SurveyScreen() {
         </Question>
       </div>
 
-      {error && <p className="mt-6 text-sm text-rose-dark">{t("surveyFailed", lang)}</p>}
+      {/* Guests see the plain sentence; the technical reason is kept alongside
+          it in muted text so front-desk (and a future me) can tell "not paired"
+          apart from a server fault without opening a console on a tablet. */}
+      {error && (
+        <div className="mt-6">
+          <p className="text-sm text-rose-dark">{t("surveyFailed", lang)}</p>
+          <p className="mt-1 text-xs text-slate-light">{error}</p>
+        </div>
+      )}
 
       <Button onClick={send} disabled={sending} className="mt-8 w-full">
         {sending ? t("surveySubmitting", lang) : t("surveySubmit", lang)}
