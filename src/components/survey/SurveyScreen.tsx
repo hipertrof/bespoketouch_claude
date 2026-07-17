@@ -50,34 +50,39 @@ export function SurveyScreen() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSessions = useCallback(async () => {
     // No token (the bundled ?demo run) — there are no visits to fetch and the
     // submit would 401 anyway. Settle into the empty state instead of spinning.
     if (!token) {
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    fetchSurveySessions(token)
-      .then((rows) => !cancelled && setSessions(rows))
-      .catch((err) => {
-        console.warn("[survey] could not load today's visits:", err);
-        if (!cancelled) setSessions([]);
-      })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
+    setLoading(true);
+    try {
+      setSessions(await fetchSurveySessions(token));
+    } catch (err) {
+      console.warn("[survey] could not load today's visits:", err);
+      setSessions([]);
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
-  // Back to a clean slate for the next guest, without a reload.
+  useEffect(() => {
+    void loadSessions();
+  }, [loadSessions]);
+
+  // Back to a clean slate for the next guest, without a reload. Re-fetches the
+  // list: the visit just surveyed has to disappear, and a stale snapshot is
+  // exactly how the same guest ends up surveyed twice.
   const reset = useCallback(() => {
     setPhase("pick");
     setSelected(null);
     setAnswers(emptyAnswers);
     setLang("pl");
     setError(null);
-  }, []);
+    void loadSessions();
+  }, [loadSessions]);
 
   async function send() {
     // Unpaired (?demo): surface the failure rather than no-op on a tap.
@@ -140,8 +145,17 @@ export function SurveyScreen() {
                   className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-soft transition-all hover:shadow-md active:scale-[0.99]"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-charcoal">
-                      {s.guestNames.filter(Boolean).join(" & ") || "—"}
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-semibold text-charcoal">
+                        {s.guestNames.filter(Boolean).join(" & ") || "—"}
+                      </span>
+                      {/* Only a couple can show up part-done: one guest has
+                          answered, the other hasn't. */}
+                      {s.responseCount > 0 && (
+                        <span className="shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-xs font-semibold text-sage-dark">
+                          {s.responseCount}/{s.partySize}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 truncate text-sm text-slate-light">
                       {treatmentLabel(s, "pl")}

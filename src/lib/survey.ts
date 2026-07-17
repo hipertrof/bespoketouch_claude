@@ -15,12 +15,17 @@ import type { LangCode } from "../i18n/translations";
 export type PressureFeedback = "too_light" | "just_right" | "too_deep";
 export type Comfort = "yes" | "mostly" | "no";
 
-// One of today's visits, as offered to front-desk for attachment.
+// One of today's visits, as offered to front-desk for attachment. Fully
+// surveyed visits are filtered out server-side, so anything listed still has an
+// unanswered seat. A couple shares one intake but gets two responses, hence
+// responseCount/partySize rather than a done flag.
 export interface SurveySession {
   id: string;
   guestNames: string[];
   treatments: { nameI18n: Record<string, string> | null }[];
   therapists: ({ id: string; name: string } | null)[];
+  partySize: 1 | 2;
+  responseCount: number;
   createdAt: string;
 }
 

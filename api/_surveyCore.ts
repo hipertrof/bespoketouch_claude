@@ -90,13 +90,19 @@ export async function handleSurvey(
 // Deliberately narrow: one location (from the token), one day, and only the
 // fields needed to recognise a visit and copy its therapist/treatment onto the
 // response.
+//
+// Visits that have already been surveyed are dropped. The embed counts existing
+// responses per intake, and the quota is the party size: a couple shares one
+// intake but is two guests, so it legitimately gets two responses. Without this
+// the same guest can be surveyed over and over — the list is the only thing
+// telling front-desk what's still outstanding.
 async function listSessions(locationId: string, env: SurveyEnv): Promise<SurveyResult> {
   const base = env.url.replace(/\/$/, "");
   const since = startOfTodayIso();
 
   const res = await fetch(
     `${base}/rest/v1/intakes` +
-      `?select=id,guest_names,treatment_selections,therapists,created_at` +
+      `?select=id,guest_names,treatment_selections,therapists,party_size,created_at,survey_responses(id)` +
       `&location_id=eq.${locationId}&created_at=gte.${encodeURIComponent(since)}` +
       `&order=created_at.desc&limit=100`,
     { headers: svcHeaders(env) },
@@ -106,20 +112,24 @@ async function listSessions(locationId: string, env: SurveyEnv): Promise<SurveyR
   }
   const rows = asArray(await res.json().catch(() => null));
 
-  return {
-    status: 200,
-    json: {
-      sessions: rows.map((r) => ({
+  const sessions = rows
+    .map((r) => {
+      const partySize = r.party_size === 2 ? 2 : 1;
+      return {
         id: r.id,
         guestNames: asArray(r.guest_names),
         treatments: asArray(r.treatment_selections).map((t) => ({
           nameI18n: (t as JsonRecord)?.nameI18n ?? null,
         })),
         therapists: asArray(r.therapists),
+        partySize,
+        responseCount: asArray(r.survey_responses).length,
         createdAt: r.created_at,
-      })),
-    },
-  };
+      };
+    })
+    .filter((s) => s.responseCount < s.partySize);
+
+  return { status: 200, json: { sessions } };
 }
 
 async function submitSurvey(
@@ -139,8 +149,19 @@ async function submitSurvey(
   // A submitted intake link must belong to THIS location, or it isn't used.
   // Without this a paired kiosk could staple its feedback onto another spa's
   // visit, which is the one cross-tenant hole this endpoint could otherwise open.
+  //
+  // It must also still have room: the list hides fully-surveyed visits, but the
+  // list is a snapshot and a tablet can sit on a stale one, so the quota is
+  // re-checked here. This is what actually stops one guest being surveyed twice.
   const intakeId = uuidOrNull(body.intakeId);
-  const linkedIntake = intakeId ? await intakeAtLocation(base, svc, intakeId, locationId) : false;
+  let linkedIntake = false;
+  if (intakeId) {
+    const link = await intakeLinkState(base, svc, intakeId, locationId);
+    if (link.full) {
+      return { status: 409, json: { error: "This visit has already been surveyed." } };
+    }
+    linkedIntake = link.atLocation;
+  }
 
   const payload: JsonRecord = {
     account_id: accountId,
@@ -190,17 +211,25 @@ async function resolveAccountId(
   return typeof accountId === "string" ? accountId : null;
 }
 
-async function intakeAtLocation(
+// Is this intake ours, and does it still have an unanswered seat? `full` is only
+// meaningful when atLocation is true — an intake at another location is simply
+// not linked (intake_id null) rather than rejected, so a mis-tap can't lose the
+// guest's answers.
+async function intakeLinkState(
   base: string,
   svc: Headers,
   intakeId: string,
   locationId: string,
-): Promise<boolean> {
+): Promise<{ atLocation: boolean; full: boolean }> {
   const res = await fetch(
-    `${base}/rest/v1/intakes?select=id&id=eq.${intakeId}&location_id=eq.${locationId}`,
+    `${base}/rest/v1/intakes?select=id,party_size,survey_responses(id)` +
+      `&id=eq.${intakeId}&location_id=eq.${locationId}`,
     { headers: svc },
   );
-  return asArray(await res.json().catch(() => null)).length > 0;
+  const row = asArray(await res.json().catch(() => null))[0];
+  if (!row) return { atLocation: false, full: false };
+  const partySize = row.party_size === 2 ? 2 : 1;
+  return { atLocation: true, full: asArray(row.survey_responses).length >= partySize };
 }
 
 // Local midnight is the operator's "today". The kiosk and the spa share a
