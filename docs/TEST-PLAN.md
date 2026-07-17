@@ -62,7 +62,7 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | SEC-5 | Anon intake grant revoked | `POST $U/rest/v1/intakes` with anon key | Grant-level "permission denied" (both directions) | ✅ |
 | SEC-6 | Anon survey locked out | `GET/POST $U/rest/v1/survey_responses` with anon key | Denied | ✅ |
 | SEC-7 | Revoked token is dead | Revoke a slot, then use its old token on `/api/intake` | 401 (resolveDevice → null → 401, never a fallback) | ⬜ |
-| SEC-8 | Service key not in bundle | `curl` the prod JS bundle, grep for `service_role` / the key prefix | Absent; only `VITE_` values present | ⬜ |
+| SEC-8 | Service key not in bundle | Fetch the prod JS bundle, grep for `service_role` / `GUEST_HASH_SECRET` / `DEEPL_API_KEY` / secret-key prefixes | Absent (`sb_secret_` appears only as the Supabase SDK's own format-validation literal — expected) | ✅ 2026-07-17 |
 | SEC-9 | `?location=` stays dead | Open kiosk `/?location=<real-uuid>` unpaired | Activation screen; param ignored | ✅ |
 | SEC-10 | `?demo` writes nothing | Complete a demo intake, try survey submit in `?demo` | Reads demo catalogue; no `/api` write succeeds (no token) | ✅ |
 
@@ -73,7 +73,7 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | READ-1 | Active services readable | Anon `GET /rest/v1/services?...` for an active location | 200 (public price list) | ✅ |
 | READ-2 | `kiosk_*` RPCs readable | Anon call the 0009 RPCs | 200, therapist first names only | ✅ |
 | READ-3 | Inactive location hidden | Deactivate a location, repeat READ-1/2 | No rows for it | ⬜ |
-| READ-4 | Bridge leaks nothing else | Anon `GET` on `accounts`, `memberships`, `guest_profiles`, `slots`, `tokens`, `pair_codes`, `intakes` | All denied/empty | ⬜ (spot-checked intakes/survey only) |
+| READ-4 | Bridge leaks nothing else | Anon `GET` on `accounts`, `memberships`, `guest_profiles`, `slots`, `tokens`, `pair_codes`, `profiles`, `intakes` | All denied/empty | ✅ 2026-07-17: all 7 + intakes denied at grant level |
 
 ## 6. Guest intake flow (kiosk UI)
 
