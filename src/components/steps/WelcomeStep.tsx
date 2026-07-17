@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Search, Sparkles, Trash2, Users } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Check, ClipboardCheck, Search, Sparkles, Trash2, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -85,10 +86,25 @@ export function WelcomeStep() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       <div className="mb-10 flex flex-col items-start gap-3 sm:mb-10">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
-          <Sparkles size={12} />
-          {t("checkInBadge", lang)}
-        </span>
+        <div className="flex w-full items-start justify-between gap-4">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sage-dark">
+            <Sparkles size={12} />
+            {t("checkInBadge", lang)}
+          </span>
+          {/* Checkout mode, for front-desk. Only on a paired kiosk — the survey
+              writes need the device token, so offering it in the demo would
+              dead-end. Labelled in the staff language (pl), not the guest's:
+              this button is for the receptionist, not the person checking in. */}
+          {token && (
+            <Link
+              to="/survey"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-sage-dark hover:underline"
+            >
+              <ClipboardCheck size={15} />
+              {t("surveyStart", "pl")}
+            </Link>
+          )}
+        </div>
         {locationInfo && (
           <h1 className="font-serif text-3xl text-charcoal sm:text-4xl">
             {tf("welcomeAt", lang, {

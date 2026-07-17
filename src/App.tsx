@@ -7,6 +7,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Header } from "./components/Header";
 import { ActivationScreen } from "./components/pairing/ActivationScreen";
+import { SurveyScreen } from "./components/survey/SurveyScreen";
 import { WelcomeStep } from "./components/steps/WelcomeStep";
 import { StaffHandoffStep } from "./components/steps/StaffHandoffStep";
 import { BodyMapStep } from "./components/steps/BodyMapStep";
@@ -21,6 +22,7 @@ import { OfferCMS } from "./components/manage/OfferCMS";
 import { TherapistQueue } from "./components/queue/TherapistQueue";
 import { StaffManagement } from "./components/staff/StaffManagement";
 import { KioskManagement } from "./components/manage/KioskManagement";
+import { SurveyReport } from "./components/manage/SurveyReport";
 
 // Device-pairing gate for the kiosk route. An unpaired tablet gets the
 // activation screen; a paired one runs on the location its token resolves to.
@@ -85,6 +87,20 @@ function App() {
               </DeviceProvider>
             }
           />
+          {/* Post-treatment survey — the kiosk's second mode, same device gate.
+              A separate route (not a GuestContext step) so survey state can't
+              entangle with a half-finished check-in. Writes are token-authed,
+              so ?demo reaches the screen but cannot submit. */}
+          <Route
+            path="/survey"
+            element={
+              <DeviceProvider>
+                <KioskGate>
+                  <SurveyScreen />
+                </KioskGate>
+              </DeviceProvider>
+            }
+          />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/welcome" element={<AcceptInvite />} />
           <Route path="/admin" element={<PlatformAdminDashboard />} />
@@ -92,6 +108,7 @@ function App() {
           <Route path="/queue" element={<TherapistQueue />} />
           <Route path="/staff" element={<StaffManagement />} />
           <Route path="/kiosks" element={<KioskManagement />} />
+          <Route path="/reports" element={<SurveyReport />} />
         </Routes>
       </BrowserRouter>
       </LanguageProvider>

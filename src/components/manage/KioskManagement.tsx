@@ -105,6 +105,9 @@ export function KioskManagement() {
             <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
               {t("staffNav", lang)}
             </Link>
+            <Link to="/reports" className="text-sm font-medium text-sage-dark hover:underline">
+              {t("surveyNav", lang)}
+            </Link>
             <LanguageSelector />
             <Button variant="ghost" onClick={() => signOut()}>
               {t("signOut", lang)}
