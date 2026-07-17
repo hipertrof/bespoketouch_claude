@@ -17,7 +17,12 @@
 -- (same model as api/intake.ts — see api/_deviceAuth.ts). Hence no INSERT policy
 -- for `authenticated` and no grant of any kind to `anon`.
 
-create table public.survey_responses (
+-- Re-runnable: every statement below is idempotent, so applying this twice is a
+-- no-op rather than "relation already exists". (Supabase's SQL editor runs the
+-- whole script in one implicit transaction, so a mid-script failure rolls the
+-- table back too — if the table exists, the migration committed.)
+
+create table if not exists public.survey_responses (
   id           uuid primary key default gen_random_uuid(),
   account_id   uuid not null references public.accounts  (id) on delete cascade,
   location_id  uuid not null references public.locations (id) on delete cascade,
@@ -60,6 +65,7 @@ alter table public.survey_responses enable row level security;
 -- the three RBAC mirrors stay consistent.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists survey_read_manage on public.survey_responses;
 create policy survey_read_manage on public.survey_responses
   for select to authenticated
   using (public.can_manage_location(location_id));
@@ -76,9 +82,9 @@ grant all    on public.survey_responses to service_role;
 
 -- Reporting reads by location over a time window; the FK columns are also the
 -- group-by keys for per-therapist / per-treatment breakdowns.
-create index survey_responses_location_created_idx
+create index if not exists survey_responses_location_created_idx
   on public.survey_responses (location_id, created_at desc);
-create index survey_responses_therapist_idx
+create index if not exists survey_responses_therapist_idx
   on public.survey_responses (therapist_id);
 
 -- Front-desk picks the guest's earlier visit from *today's* intakes for this
