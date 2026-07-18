@@ -17,9 +17,9 @@ Every test case for what is built so far. Status: ✅ = already verified in prod
 |---|---|---|---|---|
 | PAIR-1 | Fresh kiosk is gated | Open `/` in a browser with no `bt_device_token` | Activation screen, no intake flow reachable | ✅ |
 | PAIR-2 | Happy path | `/kiosks` → Dodaj kiosk → enter 6-digit code on tablet | Kiosk unlocks on the right location; `/kiosks` row flips to "Sparowany" | ✅ |
-| PAIR-3 | Wrong code | Enter a made-up 6-digit code | "Nieprawidłowy lub wygasły kod", stays gated | ✅ |
+| PAIR-3 | Wrong code | Enter a made-up 6-digit code | "Nieprawidłowy lub wygasły kod", stays gated | ✅ 2026-07-18 (UI + API) |
 | PAIR-4 | Expired code | Mint a code, wait >15 min (CODE_TTL_MINUTES), enter it | 410 → same invalid-code message | ⬜ |
-| PAIR-5 | Code reuse | Pair successfully, then enter the same code on a second device | Rejected (code is single-use) | ⬜ |
+| PAIR-5 | Code reuse | Pair successfully, then enter the same code on a second device | Rejected (code is single-use) | ✅ 2026-07-18 (UI + API) |
 | PAIR-6 | Reload persistence | Pair, then reload the tab | Stays paired (token from localStorage revalidates) | ✅ |
 | PAIR-7 | Re-pair revokes old token | Re-pair the slot onto device B; reload device A | A falls back to activation screen; no extra slot consumed | ✅ |
 | PAIR-8 | Re-pair rate limit | Re-pair twice within 60 s (REPAIR_COOLDOWN_SECONDS) | 429 `re_pair_too_soon`, UI shows "Zbyt szybko…" | ✅ |
@@ -32,7 +32,7 @@ Every test case for what is built so far. Status: ✅ = already verified in prod
 |---|---|---|---|---|
 | CAP-1 | Cap blocks new slot | Account at `slots_paid` slots → Dodaj kiosk | Blocked server-side; UI shows "Osiągnięto limit…" and disables add | ✅ |
 | CAP-2 | Cap raise unlocks | `/admin`: raise Stanowiska → back to `/kiosks` | Add re-enabled, next slot creates | ⬜ |
-| CAP-3 | Cap is server-side | With account at cap, POST `/api/pairing` createSlot directly with a valid manager JWT | Rejected regardless of client state | ⬜ |
+| CAP-3 | Cap is server-side | With account at cap, POST `/api/pairing` createSlot directly with a valid manager JWT | Rejected regardless of client state | ✅ 2026-07-18: 403 slot_limit_reached |
 | CAP-4 | Revoke frees capacity | At cap, revoke one slot → add one | Succeeds | ✅ |
 
 ## 3. Billing — soft lapse (Phase 5)
@@ -64,7 +64,7 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | SEC-7 | Revoked token is dead | Revoke a slot, then use its old token on `/api/intake` | 401 (resolveDevice → null → 401, never a fallback) | ⬜ |
 | SEC-8 | Service key not in bundle | Fetch the prod JS bundle, grep for `service_role` / `GUEST_HASH_SECRET` / `DEEPL_API_KEY` / secret-key prefixes | Absent (`sb_secret_` appears only as the Supabase SDK's own format-validation literal — expected) | ✅ 2026-07-17 |
 | SEC-9 | `?location=` stays dead | Open kiosk `/?location=<real-uuid>` unpaired | Activation screen; param ignored | ✅ |
-| SEC-10 | `?demo` writes nothing | Complete a demo intake, try survey submit in `?demo` | Reads demo catalogue; no `/api` write succeeds (no token) | ✅ |
+| SEC-10 | `?demo` writes nothing | Complete a demo intake, try survey submit in `?demo` | Reads demo catalogue; no `/api` write succeeds (no token) | ✅ 2026-07-18: demo intake wrote nothing |
 
 ## 5. Anon read bridge (deliberately open)
 
@@ -82,8 +82,8 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | FLOW-1 | Full happy path | Welcome → preferences → body map → oils → handoff | Intake appears in `/queue` for the right location | ✅ |
 | FLOW-2 | All 8 languages | Switch language on welcome; walk the flow in each | Every step fully translated (spot-check pl/en/uk minimum) | ⬜ (pl/en done) |
 | FLOW-3 | Body map zones | Mark several zones front+back, add intensity; check therapist view | Zones and intensities match on `/queue` card | ✅ |
-| FLOW-4 | Party of 2 | Choose 2 guests, complete both | Both land in queue, correctly attributed | ⬜ |
-| FLOW-5 | Step back/forward | Navigate backward mid-flow, change answers, continue | No state leakage between steps; final intake reflects edits | ⬜ |
+| FLOW-4 | Party of 2 | Choose 2 guests, complete both | Both land in queue, correctly attributed | ✅ 2026-07-18 |
+| FLOW-5 | Step back/forward | Navigate backward mid-flow, change answers, continue | No state leakage between steps; final intake reflects edits | ✅ 2026-07-18 |
 | FLOW-6 | Kiosk reset after handoff | Finish an intake | Kiosk returns to welcome, previous guest's data gone from screen | ✅ |
 | FLOW-7 | Intake retention stamp | Inspect a new `intakes` row | `expires_at` ≈ now + 48 h; `status` pinned server-side | ✅ |
 | FLOW-8 | Note translation (prod) | Write a Polish free-text note; view as EN therapist | DeepL translation shows (needs DEEPL_API_KEY in Vercel) | ⬜ |
@@ -93,13 +93,14 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | ID | Test | Steps | Expected | Status |
 |---|---|---|---|---|
 | CRM-1 | Opt-in save | Complete intake with phone + consent ticked | `guest_profiles` row created; `consent_version`/`consent_at` stamped server-side | ✅ |
-| CRM-2 | No consent = no save | Same but consent unticked (or `consent:false` via curl) | 400 / no row | ✅ |
+| CRM-2 | No consent = no save | Same but consent unticked (or `consent:false` via curl) | 400 / no row | ✅ 2026-07-18 |
 | CRM-3 | Phone never raw | Inspect the row | Only HMAC hash; raw phone appears nowhere in DB | ✅ |
 | CRM-4 | **No Article 9 data** | Save with `zoneNotes` + `generalNote` filled | Stored preferences contain NEITHER — structured prefs only | ✅ |
-| CRM-5 | Lookup prefill | Return visit: same phone on the same account's kiosk | Preferences prefill | ✅ |
+| CRM-5 | Lookup prefill | Return visit: same phone on the same account's kiosk | Preferences prefill | ✅ 2026-07-18 |
 | CRM-6 | Cross-account isolation | Same phone on a DIFFERENT account's kiosk | No hit (hash is keyed per account) | ⬜ |
-| CRM-7 | Forget | Trigger forget for the phone | Row gone; next lookup misses | ✅ |
-| CRM-8 | Phone normalization | Save as `+48 601-234-567`, look up as `48601234567` | Same profile found | ⬜ |
+| CRM-7 | Forget (explicit) | Welcome-step forget button (tap-to-confirm) for the phone | Row gone; next lookup misses | ✅ 2026-07-18 |
+| CRM-8 | Phone normalization | Save as `+48 601-234-567`, look up as `48601234567` | Same profile found | ✅ 2026-07-18 |
+| CRM-9 | Consent withdrawal erases | Look up a profile (toggle shows ON + prefill), switch consent OFF (rose hint appears), finish | Stored profile erased; next lookup misses. Never-prefilled guest with consent off = no-op | ✅ 2026-07-18 (found as a gap in this test run; fixed in e17f697) |
 
 ## 8. Post-treatment survey (Phase 4b)
 
@@ -159,7 +160,7 @@ Run as a signed-in member of account A (not platform admin), via REST with their
 | ID | Test | Steps | Expected | Status |
 |---|---|---|---|---|
 | CMS-1 | CRUD service | Create, edit prices/durations, delete | Kiosk catalogue reflects changes after reload | ✅ |
-| CMS-2 | Couple pricing | Toggle "para", set couple price | Kiosk shows both prices in party-of-2 | ⬜ |
+| CMS-2 | Couple pricing | Toggle "para", set couple price | Kiosk shows both prices in party-of-2 | ✅ 2026-07-18 |
 | CMS-3 | Inactive service hidden | Untick Aktywna | Gone from kiosk, stays in CMS | ✅ |
 | CMS-4 | Translations | Add per-language names | Kiosk shows the session language's name, falls back sanely | ⬜ |
 | CMS-5 | Import default catalogue | On an empty location | Bundled offer imported | ✅ |
