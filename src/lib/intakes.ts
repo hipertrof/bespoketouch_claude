@@ -52,11 +52,20 @@ export function buildTreatmentSnapshots(
   partySize: PartySize,
   catalog: CatalogService[],
 ): TreatmentSnapshot[] {
+  // A couple price only means anything when both guests share ONE treatment —
+  // it's the package rate for that treatment done together. When the two guests
+  // pick different treatments there is no couple rate, so we show no price at
+  // all rather than a misleading (and double-countable) number.
+  const differentCoupleTreatments =
+    partySize === 2 &&
+    selections.length === 2 &&
+    selections[0]?.treatmentId !== selections[1]?.treatmentId;
+
   return selections.map((sel) => {
     const service = catalog.find((s) => s.id === sel.treatmentId);
     const duration = service?.durations.find((d) => d.minutes === sel.treatmentMinutes);
     let price: number | null = null;
-    if (duration) {
+    if (duration && !differentCoupleTreatments) {
       price =
         partySize === 1
           ? duration.price_single
