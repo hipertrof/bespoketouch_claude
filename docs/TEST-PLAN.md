@@ -106,22 +106,22 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 
 | ID | Test | Steps | Expected | Status |
 |---|---|---|---|---|
-| SUR-1 | Happy path | `/survey` on paired kiosk → front desk picks today's visit → guest answers 6 Qs | Row written, linked to therapist + treatment | ⬜ **(the open E2E)** |
-| SUR-2 | All questions skippable | Skip every question, submit | Accepted; empty answers stored as null | ⬜ |
-| SUR-3 | No repeat survey | Try to survey the same visit again | Visit absent from the picker; forced replay → 409 "already surveyed" | ✅ (409 path) ⬜ (picker hides it) |
-| SUR-4 | NPS bounds | Attempt `nps: 11` via curl with a valid token | Rejected by `survey_nps_chk` | ⬜ |
+| SUR-1 | Happy path | `/survey` on paired kiosk → front desk picks today's visit → guest answers 6 Qs | Row written, linked to therapist + treatment | ✅ 2026-07-18 — the roadmap-open E2E, closed |
+| SUR-2 | All questions skippable | Skip every question, submit | Accepted; empty answers stored as null | ✅ 2026-07-18 |
+| SUR-3 | No repeat survey | Try to survey the same visit again | Visit absent from the picker; forced replay → 409 "already surveyed" | ✅ 2026-07-18 (picker filter + API 409) |
+| SUR-4 | NPS bounds | Attempt `nps: 11` via curl with a valid token | Rejected by `survey_nps_chk` | ✅ 2026-07-18: server sanitizes out-of-range NPS to null before insert (design: sanitize, not reject) |
 | SUR-5 | 8 languages | Walk survey in each language | All translated | ⬜ (spot-check) |
-| SUR-6 | `?demo` renders, can't submit | `/survey?demo` | Screen renders; submit fails (no token) | ✅ |
+| SUR-6 | `?demo` renders, can't submit | `/survey?demo` | Screen renders; submit fails (no token) | ✅ 2026-07-18 |
 | SUR-7 | Failure shows reason | Force a submit failure (e.g. junk token) | Friendly message + technical reason underneath | ✅ |
 
 ## 9. Reports (`/reports`)
 
 | ID | Test | Steps | Expected | Status |
 |---|---|---|---|---|
-| REP-1 | Aggregates correct | Submit known answers (e.g. NPS 9, 6, 10) → check CSAT/NPS math | NPS = %promoters − %detractors; CSAT matches | ⬜ |
+| REP-1 | Aggregates correct | Submit known answers (e.g. NPS 9, 6, 10) → check CSAT/NPS math | NPS = %promoters − %detractors; CSAT matches | ✅ 2026-07-18: NPS {9,6,6,10}→0, avg {5,4,4,5}→4.5, both exact |
 | REP-2 | Per-therapist / per-treatment | Multiple surveys across two therapists/treatments | Split correctly | ⬜ |
 | REP-3 | Time windows | Toggle 7/30/90 days | Counts change accordingly | ⬜ |
-| REP-4 | **Therapist sees nothing** | Log in as a therapist → `/reports` and direct REST reads of `survey_responses` | Route redirects away AND RLS returns zero rows (whole-table `can_manage_location`) | ⬜ **(open — needs therapist login)** |
+| REP-4 | **Therapist sees nothing** | Log in as a therapist → `/reports` and direct REST reads of `survey_responses` | Route redirects away AND RLS returns zero rows (whole-table `can_manage_location`) | ✅ 2026-07-18 — route redirect + REST zero rows on therapist JWT (intakes returns rows for contrast) |
 | REP-5 | Manager location scope | Manager of location A only | Sees A's surveys, not B's | ⬜ |
 
 ## 10. Staff management & RBAC
@@ -135,7 +135,7 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | STAFF-5 | Edit role/location | Change a member therapist→frontdesk, move location | Persists; their access changes accordingly | ✅ |
 | STAFF-6 | Remove member | Trash a membership | Gone; user loses that access on next load | ✅ |
 | STAFF-7 | Role-home redirect | Log in as each role | owner/manager → manage-side; therapist → `/queue`; platform admin → `/admin` | ✅ |
-| STAFF-8 | Route gating | As therapist, open `/manage`, `/kiosks`, `/staff`, `/reports`, `/admin` directly | Redirected away from all | ⬜ (spot-checked) |
+| STAFF-8 | Route gating | As therapist, open `/manage`, `/kiosks`, `/staff`, `/reports`, `/admin` directly | Redirected away from all | ✅ 2026-07-18: all 5 manager routes deny therapist (4 redirects + /admin denial screen) |
 | STAFF-9 | Non-admin at `/admin` | Owner/manager opens `/admin` | "no platform-admin rights" screen | ✅ |
 
 ## 11. Multi-tenant isolation (RLS) — the security boundary
@@ -149,9 +149,11 @@ Run as a signed-in member of account A (not platform admin), via REST with their
 | RLS-3 | Intakes cross-tenant | Read intakes | Only A's locations' | ⬜ |
 | RLS-4 | Guest profiles | Read guest_profiles | Only A's (and only if role permits) | ⬜ |
 | RLS-5 | Slots/tokens | Read slots, tokens | Only A's; `pair_codes` denied entirely (service-role only) | ⬜ |
-| RLS-6 | Write escalation | UPDATE account A's `slots_paid`/`subscription_end` as owner | Denied (`accounts_admin_write` is platform-admin only) | ⬜ |
+| RLS-6 | Write escalation | UPDATE account A's `slots_paid`/`subscription_end` as owner | Denied (`accounts_admin_write` is platform-admin only) | ✅ 2026-07-18 (therapist role): PATCH filtered to 0 rows |
 | RLS-7 | Cross-tenant write | INSERT a service into account B's location | Denied | ⬜ |
-| RLS-8 | Membership forgery | INSERT own membership row granting owner on B | Denied | ⬜ |
+| RLS-8 | Membership forgery | INSERT own membership row granting owner on B | Denied | ✅ 2026-07-18 (therapist role): 403 RLS violation |
+
+| RLS-9 | **tokens.id is the device credential** | As therapist, `GET /rest/v1/tokens?select=*` | **FOUND LEAKING 2026-07-18**: 0011 granted whole-table SELECT and the kiosk token IS `tokens.id` → any member could impersonate a kiosk. Fix: migration `0014` (column grant excludes id + policy narrowed to `can_manage_location`). Re-probe after applying 0014: therapist → 403; manager → metadata only, no id | 🔁 apply 0014, then re-probe |
 
 `src/lib/rls-isolation.test.ts` exists but is not wired to a runner — these are manual curl checks until then.
 
