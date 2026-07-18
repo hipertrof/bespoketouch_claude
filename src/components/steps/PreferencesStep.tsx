@@ -230,6 +230,11 @@ export function PreferencesStep() {
               label={t("consentSaveTitle", lang)}
             />
           </div>
+          {crm.prefilled && !crm.consent && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentWithdrawHint", lang)}
+            </p>
+          )}
           {crm.consent && !crm.phone.trim() && (
             <div className="mt-4">
               <label

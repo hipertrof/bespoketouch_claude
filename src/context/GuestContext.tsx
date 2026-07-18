@@ -158,8 +158,11 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
             }
           : g,
       );
+      // prefilled + consent ON: the stored profile IS standing consent, and the
+      // toggle must say so. Switching it off before finishing now means
+      // withdrawal — HandoffStep erases the profile (see its forget branch).
       const guestCrm = state.guestCrm.map((crm, i) =>
-        i === action.index ? { ...crm, prefilled: true } : crm,
+        i === action.index ? { ...crm, prefilled: true, consent: true } : crm,
       );
       return { ...state, guests, guestCrm };
     }

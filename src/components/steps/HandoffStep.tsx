@@ -7,7 +7,7 @@ import { Button } from "../Button";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
-import { saveGuestProfile } from "../../lib/guestProfile";
+import { forgetGuestProfile, saveGuestProfile } from "../../lib/guestProfile";
 
 export function HandoffStep() {
   const { state, dispatch } = useGuest();
@@ -49,19 +49,27 @@ export function HandoffStep() {
   // an HMAC-of-phone pseudonym. Fire-once, own guard (StrictMode-safe). Skipped
   // for the bundled demo (no token). Non-blocking and NOT retried on error — the
   // upsert is idempotent and a lost preference save is only cosmetic.
+  //
+  // The inverse also holds: a guest whose profile WAS looked up (prefilled) but
+  // who finishes with consent switched off has withdrawn it — erase the stored
+  // profile. Withdrawal must be as effective as the grant (GDPR art. 7(3)).
+  // A never-prefilled guest with consent off stays a no-op: an unticked toggle
+  // must not delete a profile that was never loaded (shared phone, typo).
   const crmSavedRef = useRef(false);
   useEffect(() => {
     if (crmSavedRef.current || loading || !token) return;
     crmSavedRef.current = true;
     const size = state.partySize;
-    const saves = state.guestCrm.slice(0, size).flatMap((crm, i) => {
-      if (!crm.consent || crm.phone.replace(/\D/g, "").length < 8) return [];
-      return [saveGuestProfile(token, crm.phone, state.guests[i])];
+    const ops = state.guestCrm.slice(0, size).flatMap((crm, i) => {
+      if (crm.phone.replace(/\D/g, "").length < 8) return [];
+      if (crm.consent) return [saveGuestProfile(token, crm.phone, state.guests[i])];
+      if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];
+      return [];
     });
-    if (saves.length > 0) {
-      void Promise.allSettled(saves).then((results) => {
+    if (ops.length > 0) {
+      void Promise.allSettled(ops).then((results) => {
         for (const r of results) {
-          if (r.status === "rejected") console.error("[crm] save failed:", r.reason);
+          if (r.status === "rejected") console.error("[crm] save/forget failed:", r.reason);
         }
       });
     }
