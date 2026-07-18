@@ -87,8 +87,10 @@ export function bundledCatalog(): CatalogService[] {
 // flow (WelcomeStep, GuestContext, MasseurDashboard) can consume it unchanged.
 // `lang` picks the display name/description; falls back to pl then any value.
 export function toMassageTypes(catalog: CatalogService[], lang: LangCode): MassageType[] {
+  // `||` (not `??`) so a present-but-blank translation ("" — e.g. a CMS field
+  // left empty) falls back to Polish rather than rendering an empty name.
   const pick = (dict: Record<string, string>): string =>
-    dict[lang] ?? dict.pl ?? Object.values(dict)[0] ?? "";
+    dict[lang] || dict.pl || Object.values(dict).find((v) => v) || "";
   return catalog
     .filter((s) => s.active)
     .map((s) => ({

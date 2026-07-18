@@ -456,7 +456,10 @@ export function t(key: string, lang: LangCode): string {
 export function tf(key: string, lang: LangCode, vars: Record<string, string | number>): string {
   let s = t(key, lang);
   for (const [name, value] of Object.entries(vars)) {
-    s = s.replace(new RegExp(`\\{${name}\\}`, "g"), String(value));
+    // Replacement is a function, not a string, so "$" sequences in a guest-typed
+    // value (e.g. a name containing "$&" or "$'") are inserted literally instead
+    // of being interpreted as replacement patterns.
+    s = s.replace(new RegExp(`\\{${name}\\}`, "g"), () => String(value));
   }
   return s;
 }

@@ -92,14 +92,21 @@ export function SurveyScreen() {
     }
     setSending(true);
     setError(null);
-    const therapist = selected?.therapists?.find((x) => x) ?? null;
+    // Which guest of a couple this response is for. Responses aren't seat-tagged
+    // in the DB, but front-desk surveys the party in order, so the Nth response
+    // (responseCount already answered) is seat N. This attributes each guest's
+    // ratings to THEIR therapist/treatment instead of always crediting seat 0 —
+    // a null seat stays unattributed rather than being misattributed to the other
+    // guest's therapist.
+    const seat = selected ? Math.min(selected.responseCount, selected.partySize - 1) : 0;
+    const therapist = selected?.therapists?.[seat] ?? null;
     try {
       await submitSurvey({
         deviceToken: token,
         intakeId: selected?.id ?? null,
         therapistId: therapist?.id ?? null,
         therapistName: therapist?.name ?? null,
-        treatmentName: treatmentLabel(selected, "pl") || null,
+        treatmentName: treatmentLabel(selected, "pl", seat) || null,
         lang,
         answers,
       });
@@ -412,10 +419,10 @@ function NpsScale({
 
 // ---------------------------------------------------------------------------
 
-function treatmentLabel(s: SurveySession | null, lang: string): string {
-  const dict = s?.treatments?.[0]?.nameI18n;
+function treatmentLabel(s: SurveySession | null, lang: string, seat = 0): string {
+  const dict = s?.treatments?.[seat]?.nameI18n ?? s?.treatments?.[0]?.nameI18n;
   if (!dict) return "";
-  return dict[lang] ?? dict.pl ?? Object.values(dict)[0] ?? "";
+  return dict[lang] || dict.pl || Object.values(dict).find((v) => v) || "";
 }
 
 function therapistLabel(s: SurveySession): string {

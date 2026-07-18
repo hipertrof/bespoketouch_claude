@@ -80,6 +80,23 @@ export async function handleIntake(
     return { status: 401, json: { error: "This device is not paired." } };
   }
 
+  // The location must still be active. Deactivating a location is the operator's
+  // kill switch; the guest-CRM and survey cores already gate on it, and intake —
+  // the highest-volume write — must not be the one path that keeps filling a
+  // closed location's queue until every slot is individually revoked.
+  const base = env.url.replace(/\/$/, "");
+  const locRes = await fetch(
+    `${base}/rest/v1/locations?select=id&id=eq.${device.locationId}&active=is.true`,
+    { headers: svcHeaders(env) },
+  );
+  if (!locRes.ok) {
+    return { status: 502, json: { error: "Could not verify the location." } };
+  }
+  const activeRows = await locRes.json().catch(() => null);
+  if (!Array.isArray(activeRows) || activeRows.length === 0) {
+    return { status: 403, json: { error: "This location is not active." } };
+  }
+
   const partySize = body.partySize === 1 || body.partySize === 2 ? body.partySize : null;
   if (partySize === null) {
     return { status: 400, json: { error: "Invalid party size." } };
@@ -94,7 +111,6 @@ export async function handleIntake(
   const personalizations = asArray(body.personalizations).slice(0, partySize);
   const therapists = asArray(body.therapists).slice(0, partySize);
 
-  const base = env.url.replace(/\/$/, "");
   const res = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
     headers: { ...svcHeaders(env), "Content-Type": "application/json", Prefer: "return=minimal" },

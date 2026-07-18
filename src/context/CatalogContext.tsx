@@ -61,6 +61,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
     setLoading(true);
+    // Clear the previous location's headline and therapist roster up front. The
+    // extras below are best-effort and only console.warn on failure; without
+    // this reset a slow/failed refetch after a re-pair would leave spa A's name
+    // and therapist ids live under spa B — letting A's therapists be assigned to
+    // B's intakes.
+    setLocationInfo(null);
+    setTherapists([]);
     fetchCatalog(locationId)
       .then((rows) => {
         if (cancelled) return;

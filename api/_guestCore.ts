@@ -128,8 +128,12 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
     return { status: 200, json: { found: false } };
   }
 
-  // Touch last_seen_at so an active guest's row keeps living (fire-and-forget).
-  void fetch(`${base}/rest/v1/guest_profiles?id=eq.${String(row.id)}`, {
+  // Touch last_seen_at so an active guest's row keeps living. AWAITED, not
+  // fire-and-forget: this timestamp is the only thing holding the row inside the
+  // 540-day retention window, and on a serverless host an unawaited PATCH can be
+  // dropped when the instance suspends after responding — which would quietly age
+  // out and delete a still-active consented profile. A failed touch is non-fatal.
+  await fetch(`${base}/rest/v1/guest_profiles?id=eq.${String(row.id)}`, {
     method: "PATCH",
     headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
@@ -276,7 +280,12 @@ export function normalizePhone(raw: string | undefined): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   const hasPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
+  let digits = trimmed.replace(/\D/g, "");
+  // "00" is the international access code — the same number a guest might also
+  // write with a leading "+". Fold them together so the same real number hashes
+  // to one value; otherwise a save and a later lookup/forget can miss each other
+  // and a GDPR erasure silently deletes nothing.
+  if (digits.startsWith("00")) digits = digits.slice(2);
   if (digits.length < 8) return null;
   if (hasPlus) return `+${digits}`;
   if (digits.length === 9) return `+48${digits}`; // bare Polish mobile/landline

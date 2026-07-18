@@ -51,12 +51,15 @@ interface IntakePanelProps {
   actions?: (lang: LangCode) => ReactNode;
   // Small centered line under the card (kiosk: "locked by guest").
   footerNote?: (lang: LangCode) => ReactNode;
+  // Kiosk therapist panel passes its paired device token so note translation can
+  // authorize without a login. Staff (queue) omit it and use the session JWT.
+  deviceToken?: string | null;
 }
 
 const pickName = (dict: Record<string, string> | null, lang: LangCode): string =>
   dict?.[lang] ?? dict?.pl ?? Object.values(dict ?? {})[0] ?? "";
 
-export function IntakePanel({ view, initialLang, actions, footerNote }: IntakePanelProps) {
+export function IntakePanel({ view, initialLang, actions, footerNote, deviceToken }: IntakePanelProps) {
   // Seed from the given language, but keep it independently switchable here (an
   // Indonesian-speaking therapist can read an English guest's summary).
   const [lang, setLang] = useState<LangCode>(initialLang);
@@ -232,13 +235,21 @@ export function IntakePanel({ view, initialLang, actions, footerNote }: IntakePa
               <div className="flex flex-col gap-2.5">
                 {activeGuest.generalNote.trim().length > 0 && (
                   <GuestNoteCard
+                    key={`general:${selectedGuestIndex}`}
                     title={t("additionalNotes", lang)}
                     note={activeGuest.generalNote}
                     lang={lang}
+                    deviceToken={deviceToken}
                   />
                 )}
                 {zoneNoteEntries.map(([zoneId, note]) => (
-                  <GuestNoteCard key={zoneId} zoneId={zoneId} note={note} lang={lang} />
+                  <GuestNoteCard
+                    key={`${selectedGuestIndex}:${zoneId}`}
+                    zoneId={zoneId}
+                    note={note}
+                    lang={lang}
+                    deviceToken={deviceToken}
+                  />
                 ))}
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { CheckCircle2, RotateCcw } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
+import { useDevice } from "../../context/DeviceContext";
 import { Button } from "../Button";
 import { IntakePanel, type IntakePanelView } from "../IntakePanel";
 import { buildTreatmentSnapshots } from "../../lib/intakes";
@@ -12,6 +13,7 @@ import { t } from "../../i18n/translations";
 export function MasseurDashboard() {
   const { state, dispatch } = useGuest();
   const { catalog } = useCatalog();
+  const { token } = useDevice();
 
   const view: IntakePanelView = {
     partySize: state.partySize,
@@ -25,6 +27,7 @@ export function MasseurDashboard() {
     <IntakePanel
       view={view}
       initialLang={state.language}
+      deviceToken={token}
       actions={(lang) => (
         <Button
           variant="secondary"

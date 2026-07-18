@@ -8,11 +8,16 @@ export function GuestNoteCard({
   title,
   note,
   lang,
+  deviceToken,
 }: {
   zoneId?: string;
   title?: string;
   note: string;
   lang: LangCode;
+  // Kiosk therapist panel passes its paired token so the endpoint can authorize
+  // an anonymous (no-login) caller; staff dashboards leave it undefined and rely
+  // on the signed-in JWT.
+  deviceToken?: string | null;
 }) {
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -26,7 +31,7 @@ export function GuestNoteCard({
     setLoading(true);
     setError(null);
     try {
-      const result = await translateNote(note, lang);
+      const result = await translateNote(note, lang, { deviceToken });
       setTranslations((prev) => ({ ...prev, [cacheKey]: result }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Translation failed.");

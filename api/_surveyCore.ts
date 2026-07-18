@@ -163,11 +163,21 @@ async function submitSurvey(
     linkedIntake = link.atLocation;
   }
 
+  // A therapist rating may only be attributed to a real member of THIS account.
+  // Without this a paired token could staple 1-star responses onto any UUID —
+  // including another tenant's staff — polluting the manager-only per-therapist
+  // ratings /reports groups by therapist_id. A stray/foreign id is dropped to
+  // null (the response still counts, just unattributed).
+  let therapistId = uuidOrNull(body.therapistId);
+  if (therapistId && !(await therapistBelongs(base, svc, therapistId, accountId, locationId))) {
+    therapistId = null;
+  }
+
   const payload: JsonRecord = {
     account_id: accountId,
     location_id: locationId,
     intake_id: linkedIntake ? intakeId : null,
-    therapist_id: uuidOrNull(body.therapistId),
+    therapist_id: therapistId,
     therapist_name: textOrNull(body.therapistName, 200),
     // Column is `treatment_type` — 0001's name, kept rather than renamed.
     treatment_type: textOrNull(body.treatmentName, 200),
@@ -196,6 +206,25 @@ async function submitSurvey(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// True iff therapistId is a membership in this account (account-wide or at this
+// location). Any role counts — the survey attributes a rating to whoever gave
+// the treatment, and a location's roster is small.
+async function therapistBelongs(
+  base: string,
+  svc: Headers,
+  therapistId: string,
+  accountId: string,
+  locationId: string,
+): Promise<boolean> {
+  const res = await fetch(
+    `${base}/rest/v1/memberships?select=id&user_id=eq.${therapistId}` +
+      `&account_id=eq.${accountId}&or=(location_id.is.null,location_id.eq.${locationId})`,
+    { headers: svc },
+  );
+  if (!res.ok) return false;
+  return asArray(await res.json().catch(() => null)).length > 0;
+}
 
 async function resolveAccountId(
   base: string,

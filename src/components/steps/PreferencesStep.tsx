@@ -235,7 +235,7 @@ export function PreferencesStep() {
               {t("consentWithdrawHint", lang)}
             </p>
           )}
-          {crm.consent && !crm.phone.trim() && (
+          {crm.consent && !crm.prefilled && (
             <div className="mt-4">
               <label
                 htmlFor="consentPhone"

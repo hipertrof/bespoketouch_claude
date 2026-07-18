@@ -135,8 +135,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       return { ...state, guestTherapists };
     }
     case "SET_GUEST_PHONE": {
+      // Editing the number invalidates a prior lookup: the standing consent and
+      // the "forget" affordance belonged to the OLD phone. Clearing prefilled
+      // stops HandoffStep's withdrawal branch (and the Forget button) from
+      // erasing a different guest's profile that was never looked up.
       const guestCrm = state.guestCrm.map((crm, i) =>
-        i === action.index ? { ...crm, phone: action.phone } : crm,
+        i === action.index ? { ...crm, phone: action.phone, prefilled: false } : crm,
       );
       return { ...state, guestCrm };
     }

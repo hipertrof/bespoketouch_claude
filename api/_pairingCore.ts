@@ -8,6 +8,8 @@
 // manager). Enforces the HARD CAP (active slots <= accounts.slots_paid) and the
 // re-pair RATE LIMIT — the billing guardrails from the monetization model.
 
+import { randomInt } from "node:crypto";
+
 // How long a freshly minted 6-digit code stays valid.
 const CODE_TTL_MINUTES = 15;
 // Minimum gap between re-pairs of one slot (anti-abuse: stops one paid slot
@@ -274,8 +276,12 @@ async function mintCode(
   return null;
 }
 
+// A pairing code is a bearer credential: whoever presents it gets a device
+// token that can write intakes and probe guest profiles for the slot. Math.random
+// is predictable and would let an attacker sweep/guess the 15-minute window, so
+// use a CSPRNG across the full 6-digit space.
 function randomSixDigits(): string {
-  return String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+  return String(randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
 function checkConfig(env: PairingEnv): PairingResult | null {

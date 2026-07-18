@@ -54,6 +54,14 @@ export async function resolveDevice(
     `${base}/rest/v1/tokens?select=id,revoked_at,slot:slots(id,location_id,status)&id=eq.${token}`,
     { headers: svcHeaders(env) },
   );
+  // Only a successful lookup can prove a token invalid. A transport/HTTP error
+  // (5xx, network) is NOT "unknown token" — collapsing the two would let a brief
+  // Supabase blip read as a bad token and, via validateDevice, make every paired
+  // kiosk wipe its own token. Throw so callers surface a transient error (5xx),
+  // not a 401 / {valid:false}.
+  if (!res.ok) {
+    throw new Error(`Device token lookup failed (${res.status}).`);
+  }
   const body = await res.json().catch(() => null);
   const row = Array.isArray(body) ? (body[0] as Record<string, unknown> | undefined) : undefined;
   if (!row || row.revoked_at) return null;

@@ -23,7 +23,11 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      deeplProxyPlugin(env.DEEPL_API_KEY),
+      deeplProxyPlugin({
+        deeplKey: env.DEEPL_API_KEY ?? "",
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      }),
       membersProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",

@@ -131,12 +131,16 @@ export async function addMember(
     );
     let authorized = asArray(owner.body).length > 0;
 
-    // A location manager may add operational staff to the location they manage
-    // (not owners or other managers — those need an account owner).
+    // A manager may add operational staff to a location they manage — either a
+    // manager scoped to that location OR an account-wide manager (location_id
+    // null). This matches can_manage_location, AuthContext.canManageLocation, and
+    // updateMember; requiring the exact location here (as it once did) 403s an
+    // account-wide manager whom the UI had already shown the button to.
     if (!authorized && locationId && (role === "therapist" || role === "frontdesk")) {
       const mgr = await getJson(
         `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
-          `&account_id=eq.${accountId}&location_id=eq.${locationId}&role=eq.manager`,
+          `&account_id=eq.${accountId}&role=eq.manager` +
+          `&or=(location_id.is.null,location_id.eq.${locationId})`,
         svc,
       );
       authorized = asArray(mgr.body).length > 0;
@@ -185,9 +189,21 @@ export async function addMember(
     const auRec = asRecord(au.body);
     const activated = Boolean(auRec?.email_confirmed_at ?? auRec?.last_sign_in_at);
     if (!activated) {
-      const relink = await genLink("recovery");
-      const rb = asRecord(relink.body);
-      if (relink.ok && typeof rb?.action_link === "string") inviteLink = rb.action_link;
+      // But NEVER hand a password-setting link to a caller for a user who already
+      // belongs to a DIFFERENT account. auth.users is global: a recovery link sets
+      // the user's one password, so returning it would let this account's manager
+      // seize a pending-invite identity that another account owns. Only re-mint
+      // when this account is the user's sole (pending) home.
+      const elsewhere = await getJson(
+        `${base}/rest/v1/memberships?select=id&user_id=eq.${targetUserId}&account_id=neq.${accountId}`,
+        svc,
+      );
+      const belongsElsewhere = asArray(elsewhere.body).length > 0;
+      if (!belongsElsewhere) {
+        const relink = await genLink("recovery");
+        const rb = asRecord(relink.body);
+        if (relink.ok && typeof rb?.action_link === "string") inviteLink = rb.action_link;
+      }
     }
   } else {
     const link = await genLink("invite");
@@ -280,6 +296,12 @@ export async function removeMember(
       (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`, svc)).body,
     )[0]?.is_platform_admin,
   );
+  // Owners are platform-admin territory on every other path (add/update reserve
+  // owner changes for platform admins); removal must match, or a co-owner could
+  // delete another owner — or the account's last ownership — here.
+  if (targetRole === "owner" && !isPlatformAdmin) {
+    return { status: 403, json: { error: "Only a platform admin can remove an owner." } };
+  }
   if (!isPlatformAdmin) {
     const isOwner =
       asArray(
@@ -298,7 +320,8 @@ export async function removeMember(
           (
             await getJson(
               `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
-                `&account_id=eq.${accountId}&location_id=eq.${targetLoc}&role=eq.manager`,
+                `&account_id=eq.${accountId}&role=eq.manager` +
+                `&or=(location_id.is.null,location_id.eq.${targetLoc})`,
               svc,
             )
           ).body,

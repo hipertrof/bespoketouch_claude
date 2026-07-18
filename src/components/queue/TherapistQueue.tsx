@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RotateCcw, RefreshCw, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -72,15 +72,22 @@ export function TherapistQueue() {
       });
   }, [user]);
 
+  // Latest-wins: only the most recent load may apply its result, so switching
+  // the location selector while a fetch is in flight can't leave the previous
+  // location's intakes (guest names, health-relevant notes) rendered under the
+  // new location's name — or let a therapist mark the wrong location's visit done.
+  const loadReqRef = useRef(0);
   const loadIntakes = useCallback(async (locId: string) => {
+    const reqId = ++loadReqRef.current;
     setError(null);
     setBusy(true);
     try {
-      setIntakes(await fetchIntakes(locId));
+      const rows = await fetchIntakes(locId);
+      if (loadReqRef.current === reqId) setIntakes(rows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("queueError", "en"));
+      if (loadReqRef.current === reqId) setError(e instanceof Error ? e.message : t("queueError", "en"));
     } finally {
-      setBusy(false);
+      if (loadReqRef.current === reqId) setBusy(false);
     }
   }, []);
 

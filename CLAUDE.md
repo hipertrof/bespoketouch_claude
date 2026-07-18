@@ -21,7 +21,7 @@ When compacting, drop exploratory reasoning.
 - `npm run lint` — `oxlint` (not ESLint). Fast; run it after edits.
 - `npm run preview` — preview the production bundle (use when `npm run build` succeeds).
 
-There is **no test runner configured**. `src/lib/rls-isolation.test.ts` exists but is not wired to any `test` script — do not assume `npm test` works.
+There is **no test runner configured**. `src/lib/rls-isolation.test.ts` exists but is not wired to any `test` script — do not assume `npm test` works. Manual test procedures live in `docs/TEST-PLAN.md` and `docs/TEST-SCRIPT.md`.
 
 ## What this is
 
@@ -54,6 +54,7 @@ The dev server (`npm run dev`) runs middleware plugins that import the same core
 - `/api/pairing` ← `api/_pairingCore.ts` ↔ `vite-plugins/pairing-proxy.ts`
 - `/api/intake` ← `api/_intakeCore.ts` ↔ `vite-plugins/intake-proxy.ts`
 - `/api/survey` ← `api/_surveyCore.ts` ↔ `vite-plugins/survey-proxy.ts`
+- `/api/translate` ← `api/_translateCore.ts` (DeepL) ↔ `vite-plugins/deepl-proxy.ts`
 
 **When you add or change an endpoint in `api/`, update or add its dev proxy.** Without it, the endpoint works in prod but 404s in dev. Proxies are registered in `vite.config.ts` and receive secrets via `loadEnv`.
 
