@@ -18,7 +18,7 @@ Every test case for what is built so far. Status: ✅ = already verified in prod
 | PAIR-1 | Fresh kiosk is gated | Open `/` in a browser with no `bt_device_token` | Activation screen, no intake flow reachable | ✅ |
 | PAIR-2 | Happy path | `/kiosks` → Dodaj kiosk → enter 6-digit code on tablet | Kiosk unlocks on the right location; `/kiosks` row flips to "Sparowany" | ✅ |
 | PAIR-3 | Wrong code | Enter a made-up 6-digit code | "Nieprawidłowy lub wygasły kod", stays gated | ✅ 2026-07-18 (UI + API) |
-| PAIR-4 | Expired code | Mint a code, wait >15 min (CODE_TTL_MINUTES), enter it | 410 → same invalid-code message | ⬜ |
+| PAIR-4 | Expired code | Mint a code, wait >15 min (CODE_TTL_MINUTES), enter it | 410 → same invalid-code message | ✅ 2026-07-18: API 410 'Code expired' + UI rejection |
 | PAIR-5 | Code reuse | Pair successfully, then enter the same code on a second device | Rejected (code is single-use) | ✅ 2026-07-18 (UI + API) |
 | PAIR-6 | Reload persistence | Pair, then reload the tab | Stays paired (token from localStorage revalidates) | ✅ |
 | PAIR-7 | Re-pair revokes old token | Re-pair the slot onto device B; reload device A | A falls back to activation screen; no extra slot consumed | ✅ |
@@ -61,7 +61,7 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 | SEC-4 | Location smuggling | Valid token + a `locationId` for a DIFFERENT location in the body | Server ignores it — row lands on the token's location | ✅ |
 | SEC-5 | Anon intake grant revoked | `POST $U/rest/v1/intakes` with anon key | Grant-level "permission denied" (both directions) | ✅ |
 | SEC-6 | Anon survey locked out | `GET/POST $U/rest/v1/survey_responses` with anon key | Denied | ✅ |
-| SEC-7 | Revoked token is dead | Revoke a slot, then use its old token on `/api/intake` | 401 (resolveDevice → null → 401, never a fallback) | ⬜ |
+| SEC-7 | Revoked token is dead | Revoke a slot, then use its old token on `/api/intake` | 401 (resolveDevice → null → 401, never a fallback) | ✅ 2026-07-18: revoked token → validate false, intake 401, guest 401 — instant, no fallback |
 | SEC-8 | Service key not in bundle | Fetch the prod JS bundle, grep for `service_role` / `GUEST_HASH_SECRET` / `DEEPL_API_KEY` / secret-key prefixes | Absent (`sb_secret_` appears only as the Supabase SDK's own format-validation literal — expected) | ✅ 2026-07-17 |
 | SEC-9 | `?location=` stays dead | Open kiosk `/?location=<real-uuid>` unpaired | Activation screen; param ignored | ✅ |
 | SEC-10 | `?demo` writes nothing | Complete a demo intake, try survey submit in `?demo` | Reads demo catalogue; no `/api` write succeeds (no token) | ✅ 2026-07-18: demo intake wrote nothing |
@@ -205,10 +205,15 @@ Run as a signed-in member of account A (not platform admin), via REST with their
 
 ---
 
-## Priority order for the open items
+## Remaining open items (post 2026-07-18 pass — none blocking)
 
-1. **SUR-1 + REP-1/REP-4** — the one E2E explicitly left open: real survey → `/reports`, and a therapist login proving they see nothing. Needs a real kiosk + a therapist account.
-2. **RLS-1…8** — the security boundary has never had a systematic pass; one afternoon with two test users and curl.
-3. **SEC-7, SEC-8** — cheap curl probes closing the token-revocation and bundle-leak gaps.
-4. **CRM-6, CRM-8** — cross-account hash isolation and phone normalization.
-5. The rest are UX-level and can ride along with normal use.
+Sessions 1–6 of TEST-SCRIPT.md are complete. Two findings were fixed and verified
+during the pass: consent-withdrawal erasure (e17f697) and the tokens.id
+credential leak (migration 0014, applied). Still open, all low-priority:
+CAP-2, SOFT-3 (kiosk visual) / SOFT-4 (live check-in while lapsed) / SOFT-6
+(new-tab) / SOFT-8 / SOFT-9, READ-3, FLOW-2 (5 langs) / FLOW-8 (DeepL),
+CRM-6 (needs a second paired account), SUR-5, REP-2 (2nd therapist/treatment)
+/ REP-3 / REP-5, QUE-3/QUE-4, CMS-4, STAFF-1 (fresh-invite path re-run),
+I18N-3/I18N-4. Test fixtures kept for reuse: +manager and +therapist logins,
+ZZZ Test (1 slot, end 2026-09-16), service "Masaż testowy" 60 min 200/350 zł,
+no paired kiosks, all test data deleted.
