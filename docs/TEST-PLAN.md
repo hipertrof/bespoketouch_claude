@@ -130,8 +130,8 @@ curl probes; `$U` = Supabase URL, `$A` = prod app origin.
 |---|---|---|---|---|
 | STAFF-1 | Invite new user | Add member with a fresh email | Invite link generated; user sets password via `/welcome`; membership exists | ✅ |
 | STAFF-2 | Attach existing user | Add member with an existing user's email | Attached, no re-invite (used for Phase 5 testing) | ✅ |
-| STAFF-3 | Duplicate add | Add the same member twice | `alreadyMember`, no duplicate row | ⬜ |
-| STAFF-4 | Only platform admin creates owners | As manager, try to add role=owner | Rejected server-side | ⬜ |
+| STAFF-3 | Duplicate add | Add the same member twice | `alreadyMember`, no duplicate row | ✅ 2026-07-18: alreadyMember, no duplicate row |
+| STAFF-4 | Only platform admin creates owners | As manager, try to add role=owner | Rejected server-side | ✅ 2026-07-18: 403 'Only a platform admin can add an owner' |
 | STAFF-5 | Edit role/location | Change a member therapist→frontdesk, move location | Persists; their access changes accordingly | ✅ |
 | STAFF-6 | Remove member | Trash a membership | Gone; user loses that access on next load | ✅ |
 | STAFF-7 | Role-home redirect | Log in as each role | owner/manager → manage-side; therapist → `/queue`; platform admin → `/admin` | ✅ |
@@ -144,16 +144,16 @@ Run as a signed-in member of account A (not platform admin), via REST with their
 
 | ID | Test | Steps | Expected | Status |
 |---|---|---|---|---|
-| RLS-1 | Accounts | `GET /rest/v1/accounts` | Only account A | ⬜ |
-| RLS-2 | Locations/services | List both | Only A's | ⬜ |
-| RLS-3 | Intakes cross-tenant | Read intakes | Only A's locations' | ⬜ |
-| RLS-4 | Guest profiles | Read guest_profiles | Only A's (and only if role permits) | ⬜ |
-| RLS-5 | Slots/tokens | Read slots, tokens | Only A's; `pair_codes` denied entirely (service-role only) | ⬜ |
-| RLS-6 | Write escalation | UPDATE account A's `slots_paid`/`subscription_end` as owner | Denied (`accounts_admin_write` is platform-admin only) | ✅ 2026-07-18 (therapist role): PATCH filtered to 0 rows |
-| RLS-7 | Cross-tenant write | INSERT a service into account B's location | Denied | ⬜ |
-| RLS-8 | Membership forgery | INSERT own membership row granting owner on B | Denied | ✅ 2026-07-18 (therapist role): 403 RLS violation |
+| RLS-1 | Accounts | `GET /rest/v1/accounts` | Only account A | ✅ 2026-07-18: manager sees ZZZ Test only |
+| RLS-2 | Locations/services | List both | Only A's | ✅ 2026-07-18: 1 location, 1 service, all ZZZ |
+| RLS-3 | Intakes cross-tenant | Read intakes | Only A's locations' | ✅ 2026-07-18: 5 intakes, all ZZZ location |
+| RLS-4 | Guest profiles | Read guest_profiles | Only A's (and only if role permits) | ✅ 2026-07-18 — stricter than spec: direct read 403 even for manager (CRM is server-endpoint-only) |
+| RLS-5 | Slots/tokens | Read slots, tokens | Only A's; `pair_codes` denied entirely (service-role only) | ✅ 2026-07-18: slots ZZZ-scoped; pair_codes 403; tokens metadata manager-only post-0014 |
+| RLS-6 | Write escalation | UPDATE account A's `slots_paid`/`subscription_end` as owner | Denied (`accounts_admin_write` is platform-admin only) | ✅ 2026-07-18: PATCH matched 0 rows (both manager + therapist roles) |
+| RLS-7 | Cross-tenant write | INSERT a service into account B's location | Denied | ✅ 2026-07-18: 403 RLS violation |
+| RLS-8 | Membership forgery | INSERT own membership row granting owner on B | Denied | ✅ 2026-07-18: 403 (probed as both manager and therapist) |
 
-| RLS-9 | **tokens.id is the device credential** | As therapist, `GET /rest/v1/tokens?select=*` | **FOUND LEAKING 2026-07-18**: 0011 granted whole-table SELECT and the kiosk token IS `tokens.id` → any member could impersonate a kiosk. Fix: migration `0014` (column grant excludes id + policy narrowed to `can_manage_location`). Re-probe after applying 0014: therapist → 403; manager → metadata only, no id | 🔁 apply 0014, then re-probe |
+| RLS-9 | **tokens.id is the device credential** | As therapist, `GET /rest/v1/tokens?select=*` | **FOUND LEAKING 2026-07-18**: 0011 granted whole-table SELECT and the kiosk token IS `tokens.id` → any member could impersonate a kiosk. Fix: migration `0014` (column grant excludes id + policy narrowed to `can_manage_location`). Re-probe after applying 0014: therapist → 403; manager → metadata only, no id | ✅ FIXED + VERIFIED 2026-07-18: 0014 applied; id column 403 for all client roles, metadata 200-empty for therapist / rows for manager, kiosk validate unaffected |
 
 `src/lib/rls-isolation.test.ts` exists but is not wired to a runner — these are manual curl checks until then.
 
