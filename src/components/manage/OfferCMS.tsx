@@ -14,6 +14,7 @@ import type { LangCode } from "../../types";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
+import { BrandingEditor } from "./BrandingEditor";
 
 interface LocationLite {
   id: string;
@@ -165,6 +166,8 @@ export function OfferCMS() {
                 ))}
               </select>
             </label>
+
+            {locationId && <BrandingEditor locationId={locationId} />}
 
             {catalog.length === 0 ? (
               <div className="rounded-3xl bg-white p-8 text-center shadow-soft">

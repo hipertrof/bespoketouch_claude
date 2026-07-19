@@ -2,6 +2,7 @@ import { Globe } from "lucide-react";
 import { Logo } from "./Logo";
 import { StepIndicator } from "./StepIndicator";
 import { useGuest } from "../context/GuestContext";
+import { useCatalog } from "../context/CatalogContext";
 import { languages, t } from "../i18n/translations";
 import type { AppStep, LangCode } from "../types";
 
@@ -36,6 +37,7 @@ function LanguageSelect() {
 
 export function Header({ step }: { step: AppStep }) {
   const { state } = useGuest();
+  const { branding } = useCatalog();
   const showProgress = ["welcome", "staffHandoff", "bodyMap", "preferences", "handoff"].includes(
     step,
   );
@@ -43,7 +45,11 @@ export function Header({ step }: { step: AppStep }) {
   return (
     <header className="sticky top-0 z-40 border-b border-sand/70 bg-cream/90 backdrop-blur-md">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-4 sm:h-24 sm:px-6 lg:px-8">
-        <Logo compact={step === "masseur"} lang={state.language} />
+        <Logo
+          compact={step === "masseur"}
+          lang={state.language}
+          logoUrl={branding?.logoUrl ?? null}
+        />
         {showProgress && <StepIndicator current={step} lang={state.language} />}
         <div className="flex items-center gap-3">
           {step === "masseur" && (

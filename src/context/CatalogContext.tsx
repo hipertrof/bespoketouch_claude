@@ -7,6 +7,7 @@ import {
   type LocationInfo,
   type TherapistOption,
 } from "../lib/kiosk";
+import { fetchBranding, type LocationBranding } from "../lib/branding";
 
 // Where the kiosk's offer came from. "db" = live catalogue for a paired
 // location; "bundled" = the built-in Nusa catalogue (unpaired ?demo run, or the
@@ -25,6 +26,9 @@ interface CatalogContextValue {
   // Therapists assigned to the location, for the receptionist's per-guest
   // assignment dropdown. Empty when bundled / none assigned.
   therapists: TherapistOption[];
+  // Per-location kiosk branding (logo + accent colors). Null = stock look
+  // (bundled/?demo run, nothing configured, or the lookup failed).
+  branding: LocationBranding | null;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -47,6 +51,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(Boolean(locationId));
   const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
+  const [branding, setBranding] = useState<LocationBranding | null>(null);
 
   useEffect(() => {
     // Unpaired → run on the bundled catalogue (local dev / ?demo).
@@ -56,6 +61,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       setLocationInfo(null);
       setTherapists([]);
+      setBranding(null);
       return;
     }
 
@@ -68,6 +74,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     // B's intakes.
     setLocationInfo(null);
     setTherapists([]);
+    setBranding(null);
     fetchCatalog(locationId)
       .then((rows) => {
         if (cancelled) return;
@@ -103,6 +110,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setTherapists(rows);
       })
       .catch((err) => console.warn("[kiosk] therapist list unavailable:", err));
+    fetchBranding(locationId)
+      .then((b) => {
+        if (!cancelled) setBranding(b);
+      })
+      .catch((err) => console.warn("[kiosk] branding unavailable:", err));
 
     return () => {
       cancelled = true;
@@ -111,7 +123,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   return (
     <CatalogContext.Provider
-      value={{ catalog, loading, source, locationId, locationInfo, therapists }}
+      value={{ catalog, loading, source, locationId, locationInfo, therapists, branding }}
     >
       {children}
     </CatalogContext.Provider>

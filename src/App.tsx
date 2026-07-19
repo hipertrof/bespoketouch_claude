@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, useSearchParams } from "react-router-dom";
 import { GuestProvider, useGuest } from "./context/GuestContext";
-import { CatalogProvider } from "./context/CatalogContext";
+import { CatalogProvider, useCatalog } from "./context/CatalogContext";
+import { brandCssVars } from "./lib/branding";
 import { DeviceProvider, useDevice } from "./context/DeviceContext";
 import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./context/LanguageContext";
@@ -46,13 +47,17 @@ function KioskGate({ children }: { children: React.ReactNode }) {
 // The kiosk guest-intake flow (state machine, no login). Lives at "/".
 function KioskScreen() {
   const { state } = useGuest();
+  const { branding } = useCatalog();
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [state.step]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-cream">
+    // Per-location branding: overriding the @theme color vars here re-themes
+    // every Tailwind accent utility for kiosk descendants only — dashboards
+    // render outside this div and keep the stock :root palette.
+    <div className="flex min-h-screen flex-col bg-cream" style={brandCssVars(branding)}>
       <Header step={state.step} />
       <main className="flex-1">
         {state.step === "welcome" && <WelcomeStep />}
