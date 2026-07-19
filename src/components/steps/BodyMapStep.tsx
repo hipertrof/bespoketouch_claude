@@ -211,7 +211,7 @@ export function BodyMapStep() {
               }
               placeholder={t("generalNotePlaceholder", lang)}
               rows={4}
-              className="w-full resize-none rounded-xl border border-sand bg-cream/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
+              className="w-full resize-none rounded-xl border border-sand bg-(--color-cream)/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
             />
           </div>
         </div>

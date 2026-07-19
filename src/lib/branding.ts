@@ -1,23 +1,22 @@
 import { supabase } from "./supabase";
 
 // Per-location kiosk branding, stored in location_settings.branding (jsonb).
-// {} / null = stock BespokeTouch look. Only the two accent families (clay =
-// primary, sage = secondary) are re-themed; neutrals (cream/charcoal/slate/
-// sand/rose) stay stock, which is what keeps arbitrary client colors readable.
+// {} / null = stock BespokeTouch look. Only the page background (the cream
+// neutral) is re-themed; text colors, accents, and everything else stay stock,
+// which is what keeps arbitrary client colors readable.
 export interface LocationBranding {
   version?: number;
-  // #rrggbb accent bases; shade variants are derived, never stored.
-  primary?: string;
-  secondary?: string;
+  // #rrggbb page background, replacing --color-cream. Lightness-clamped on
+  // application so charcoal text always reads.
+  background?: string;
   // Storage path inside the "branding" bucket (kept so a re-upload/removal can
   // delete the old object) + its public URL, which is what the kiosk renders.
   logoPath?: string;
   logoUrl?: string;
 }
 
-// Stock accent bases from src/index.css @theme — editor defaults.
-export const STOCK_PRIMARY = "#c99a6a"; // clay
-export const STOCK_SECONDARY = "#5f6b52"; // sage
+// Stock background from src/index.css @theme — the editor default.
+export const STOCK_BACKGROUND = "#f9f6ef"; // cream
 
 // --- hex <-> HSL (h in [0,360), s/l in [0,1]) ---
 
@@ -64,23 +63,13 @@ function hslToHex(h: number, s: number, l: number): string {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// Derive the -light/-dark/-tint family from a base accent, mirroring the stock
-// clay ratios. The lightness clamps are the readability guardrail: base stays
-// mid-range, dark stays dark enough for cream/white text (~4.5:1), tint stays a
-// near-white wash so charcoal text always reads.
-export function deriveShades(
-  hex: string,
-): { base: string; light: string; dark: string; tint: string } | null {
+// Readability guardrail for the page background: keep it light enough for
+// charcoal text (stock cream is L≈0.96) and calm enough not to swallow the
+// UI's whites and sand borders.
+export function normalizeBackground(hex: string): string | null {
   const hsl = hexToHsl(hex);
   if (!hsl) return null;
-  const { h, s } = hsl;
-  const L = clamp(hsl.l, 0.28, 0.62);
-  return {
-    base: hslToHex(h, s, L),
-    light: hslToHex(h, s * 0.85, clamp(L + 0.16, 0, 0.8)),
-    dark: hslToHex(h, s, clamp(L - 0.14, 0.18, 0.4)),
-    tint: hslToHex(h, clamp(s * 0.45, 0, 0.35), 0.92),
-  };
+  return hslToHex(hsl.h, clamp(hsl.s, 0, 0.5), clamp(hsl.l, 0.85, 0.99));
 }
 
 // Map branding onto the Tailwind v4 @theme custom properties (src/index.css).
@@ -90,20 +79,8 @@ export function deriveShades(
 export function brandCssVars(branding: LocationBranding | null): Record<string, string> {
   const vars: Record<string, string> = {};
   if (!branding) return vars;
-  const primary = branding.primary ? deriveShades(branding.primary) : null;
-  if (primary) {
-    vars["--color-clay"] = primary.base;
-    vars["--color-clay-light"] = primary.light;
-    vars["--color-clay-dark"] = primary.dark;
-    vars["--color-clay-tint"] = primary.tint;
-  }
-  const secondary = branding.secondary ? deriveShades(branding.secondary) : null;
-  if (secondary) {
-    vars["--color-sage"] = secondary.base;
-    vars["--color-sage-light"] = secondary.light;
-    vars["--color-sage-dark"] = secondary.dark;
-    vars["--color-sage-tint"] = secondary.tint;
-  }
+  const background = branding.background ? normalizeBackground(branding.background) : null;
+  if (background) vars["--color-cream"] = background;
   return vars;
 }
 

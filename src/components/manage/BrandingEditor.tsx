@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import {
-  brandCssVars,
-  STOCK_PRIMARY,
-  STOCK_SECONDARY,
-  type LocationBranding,
-} from "../../lib/branding";
+import { brandCssVars, STOCK_BACKGROUND, type LocationBranding } from "../../lib/branding";
 import { useLanguage } from "../../context/LanguageContext";
 import { t } from "../../i18n/translations";
 import { Button } from "../Button";
@@ -19,7 +14,7 @@ const ALLOWED_TYPES: Record<string, string> = {
 };
 const MAX_BYTES = 1_048_576; // mirrors the bucket's server-side cap
 
-// Per-location kiosk branding editor (logo + two accent colors), mounted in
+// Per-location kiosk branding editor (logo + page background color), mounted in
 // /manage under the location picker. Reads/writes location_settings.branding
 // directly under RLS (can_manage_location); the logo goes to the public
 // "branding" Storage bucket at <location_id>/logo-<ts>.<ext> — a fresh
@@ -121,9 +116,10 @@ export function BrandingEditor({ locationId }: { locationId: string }) {
     const branding: LocationBranding = { ...draft, version: 1 };
     // Stock-valued colors are omitted rather than stored, so "back to default"
     // needs no special casing on the kiosk.
-    if (!branding.primary || branding.primary.toLowerCase() === STOCK_PRIMARY) delete branding.primary;
-    if (!branding.secondary || branding.secondary.toLowerCase() === STOCK_SECONDARY) delete branding.secondary;
-    if (!branding.primary && !branding.secondary && !branding.logoUrl) {
+    if (!branding.background || branding.background.toLowerCase() === STOCK_BACKGROUND) {
+      delete branding.background;
+    }
+    if (!branding.background && !branding.logoUrl) {
       await persist({});
       setDraft({});
       return;
@@ -149,20 +145,11 @@ export function BrandingEditor({ locationId }: { locationId: string }) {
 
       <div className="flex flex-wrap items-start gap-6">
         <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
-          {t("brandingPrimary", lang)}
+          {t("brandingBackground", lang)}
           <input
             type="color"
-            value={draft.primary ?? STOCK_PRIMARY}
-            onChange={(e) => update({ primary: e.target.value })}
-            className="h-11 w-20 cursor-pointer rounded-xl border border-sand bg-cream"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light">
-          {t("brandingSecondary", lang)}
-          <input
-            type="color"
-            value={draft.secondary ?? STOCK_SECONDARY}
-            onChange={(e) => update({ secondary: e.target.value })}
+            value={draft.background ?? STOCK_BACKGROUND}
+            onChange={(e) => update({ background: e.target.value })}
             className="h-11 w-20 cursor-pointer rounded-xl border border-sand bg-cream"
           />
         </label>
@@ -214,11 +201,8 @@ export function BrandingEditor({ locationId }: { locationId: string }) {
           className="flex flex-wrap items-center gap-4 rounded-2xl border border-sand bg-cream p-4"
         >
           <Logo logoUrl={draft.logoUrl ?? null} lang={lang} />
-          <span className="rounded-full bg-clay-tint px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-clay-dark">
-            {t("brandingPrimary", lang)}
-          </span>
-          <span className="inline-flex min-h-11 items-center rounded-full bg-sage-dark px-5 text-sm font-semibold text-cream">
-            {t("brandingSecondary", lang)}
+          <span className="inline-flex min-h-11 items-center rounded-full bg-clay px-5 text-sm font-semibold text-white shadow-soft">
+            {t("brandingPreview", lang)}
           </span>
         </div>
       </div>

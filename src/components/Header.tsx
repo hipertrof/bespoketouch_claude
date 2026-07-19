@@ -43,7 +43,7 @@ export function Header({ step }: { step: AppStep }) {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-sand/70 bg-cream/90 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-sand/70 bg-(--color-cream)/90 backdrop-blur-md">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-4 sm:h-24 sm:px-6 lg:px-8">
         <Logo
           compact={step === "masseur"}
