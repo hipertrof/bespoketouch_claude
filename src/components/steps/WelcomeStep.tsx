@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, ClipboardCheck, Search, Sparkles, Trash2, Users } from "lucide-react";
+import { ArrowRight, Check, ClipboardCheck, Clock, Hand, HeartHandshake, Search, Sparkles, Trash2, UserRound, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -142,7 +142,12 @@ export function WelcomeStep() {
         )}
       </div>
 
-      <div className="mb-10 flex flex-wrap gap-8">
+      <div className="mb-10">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <UserRound size={16} className="text-slate-light" />
+          {t("guestDetails", lang)}
+        </h2>
+        <div className="flex flex-wrap gap-8">
         {Array.from({ length: state.partySize }).map((_, i) => (
           <div key={i} className="flex flex-col gap-3">
             <div>
@@ -189,8 +194,9 @@ export function WelcomeStep() {
               <div>
                 <label
                   htmlFor={`guestTherapist-${i}`}
-                  className="mb-2.5 block text-sm font-semibold text-charcoal"
+                  className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-charcoal"
                 >
+                  <HeartHandshake size={16} className="text-slate-light" />
                   {t("therapistLabel", lang)}
                 </label>
                 <select
@@ -214,6 +220,7 @@ export function WelcomeStep() {
             {token && <ReturningGuestBlock index={i} deviceToken={token} />}
           </div>
         ))}
+        </div>
       </div>
 
       {isCouple && (
@@ -237,7 +244,8 @@ export function WelcomeStep() {
       )}
 
       <div className="mb-10">
-        <h2 className="mb-1 text-sm font-semibold text-charcoal">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <Clock size={16} className="text-slate-light" />
           {t("durationHeading", lang)}
         </h2>
         <p className="mb-4 text-xs text-slate-light">
@@ -267,7 +275,8 @@ export function WelcomeStep() {
       </div>
 
       <div className="mb-10">
-        <h2 className="mb-4 text-sm font-semibold text-charcoal">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <Hand size={16} className="text-slate-light" />
           {t("massageChoiceHeading", lang)}
         </h2>
 
