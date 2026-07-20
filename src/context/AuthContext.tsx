@@ -22,6 +22,11 @@ interface AuthContextType {
   canManage: boolean;
   /** Whether the user can manage a specific location (mirrors can_manage_location RLS). */
   canManageLocation: (loc: { id: string; account_id: string }) => boolean;
+  /** Whether the user has any staff access to a location (mirrors has_location_access RLS). */
+  canAccessLocation: (loc: { id: string; account_id: string }) => boolean;
+  /** Whether the user may see EVERY intake at a location, not just ones assigned
+   *  to them (mirrors can_view_all_intakes RLS: owner / manager / front-desk / admin). */
+  canViewAllIntakes: (loc: { id: string; account_id: string }) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -93,6 +98,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [isPlatformAdmin, memberships],
   );
 
+  // Any staff access to the location (therapist/front-desk see only their own
+  // location; owner/manager account-wide see all). Mirrors has_location_access.
+  const canAccessLocation = useCallback(
+    (loc: { id: string; account_id: string }) =>
+      isPlatformAdmin ||
+      memberships.some(
+        (m) =>
+          m.account_id === loc.account_id &&
+          ((m.location_id === null && (m.role === "owner" || m.role === "manager")) ||
+            m.location_id === loc.id),
+      ),
+    [isPlatformAdmin, memberships],
+  );
+
+  // Full-queue visibility: everyone with location access EXCEPT a pure therapist,
+  // who is scoped to intakes assigned to them. Mirrors can_view_all_intakes.
+  const canViewAllIntakes = useCallback(
+    (loc: { id: string; account_id: string }) =>
+      isPlatformAdmin ||
+      memberships.some(
+        (m) =>
+          m.account_id === loc.account_id &&
+          ((m.role === "owner" && m.location_id === null) ||
+            ((m.role === "manager" || m.role === "frontdesk") &&
+              (m.location_id === null || m.location_id === loc.id))),
+      ),
+    [isPlatformAdmin, memberships],
+  );
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -105,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, isPlatformAdmin, memberships, rolesReady, canManage, canManageLocation, signIn, signOut }}
+      value={{ user, session, loading, isPlatformAdmin, memberships, rolesReady, canManage, canManageLocation, canAccessLocation, canViewAllIntakes, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>

@@ -15,6 +15,7 @@ import { IntakePanel, type IntakePanelView } from "../IntakePanel";
 interface LocationLite {
   id: string;
   name: string;
+  account_id: string;
 }
 
 const pickName = (dict: Record<string, string> | null, lang: LangCode): string =>
@@ -42,7 +43,7 @@ function toView(row: IntakeRow): IntakePanelView {
 // the signed-in user (therapist / manager / owner) belongs to. UI language is
 // the global staff language.
 export function TherapistQueue() {
-  const { user, loading, canManage, signOut } = useAuth();
+  const { user, loading, rolesReady, canAccessLocation, canViewAllIntakes, signOut, canManage } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -57,20 +58,25 @@ export function TherapistQueue() {
     if (!loading && !user) navigate("/login");
   }, [loading, user, navigate]);
 
+  // Load locations once roles are known, then keep only the ones the signed-in
+  // user actually has staff access to. RLS lets an account member READ sibling
+  // location names, so without this filter a therapist scoped to one location
+  // would still see every location in the account in the picker.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !rolesReady) return;
     supabase
       .from("locations")
-      .select("id, name")
+      .select("id, name, account_id")
       .order("name", { ascending: true })
       .then(({ data, error }) => {
         if (error) setError(error.message);
         else {
-          setLocations((data as LocationLite[]) ?? []);
-          if (data && data.length > 0) setLocationId((prev) => prev || data[0].id);
+          const accessible = ((data as LocationLite[]) ?? []).filter((l) => canAccessLocation(l));
+          setLocations(accessible);
+          if (accessible.length > 0) setLocationId((prev) => prev || accessible[0].id);
         }
       });
-  }, [user]);
+  }, [user, rolesReady, canAccessLocation]);
 
   // Latest-wins: only the most recent load may apply its result, so switching
   // the location selector while a fetch is in flight can't leave the previous
@@ -107,6 +113,16 @@ export function TherapistQueue() {
 
   if (loading) return <Centered>{t("loading", lang)}</Centered>;
   if (!user) return null;
+
+  // A pure therapist may only see the visits assigned to them; owners, managers,
+  // and front-desk see the whole location queue. RLS enforces the same split
+  // server-side (migration 0017) — this mirrors it so the UI never shows a row
+  // the therapist has no business seeing.
+  const selectedLoc = locations.find((l) => l.id === locationId) ?? null;
+  const seeAll = selectedLoc ? canViewAllIntakes(selectedLoc) : false;
+  const visibleIntakes = seeAll
+    ? intakes
+    : intakes.filter((row) => (row.therapists ?? []).some((tp) => tp?.id === user.id));
 
   // Detail view: the selected intake, rendered by the shared panel.
   if (selected) {
@@ -208,13 +224,13 @@ export function TherapistQueue() {
               </Button>
             </div>
 
-            {intakes.length === 0 ? (
+            {visibleIntakes.length === 0 ? (
               <p className="rounded-2xl bg-white p-8 text-center text-slate shadow-soft">
                 {t("queueEmpty", lang)}
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
-                {intakes.map((row) => (
+                {visibleIntakes.map((row) => (
                   <IntakeRowCard
                     key={row.id}
                     row={row}

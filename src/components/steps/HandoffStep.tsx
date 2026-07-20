@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, UserCog } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
-import { Button } from "../Button";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
 import { forgetGuestProfile, saveGuestProfile } from "../../lib/guestProfile";
 
 export function HandoffStep() {
-  const { state, dispatch } = useGuest();
+  const { state } = useGuest();
   const { catalog, loading } = useCatalog();
   const { token } = useDevice();
   const lang = state.language;
@@ -87,15 +86,6 @@ export function HandoffStep() {
         {isCouple ? t("prefsSavedCouple", lang) : t("prefsSavedSingle", lang)}{" "}
         {t("passTablet", lang)}
       </p>
-
-      <Button
-        variant="secondary"
-        onClick={() => dispatch({ type: "SET_STEP", step: "masseur" })}
-        className="mt-16"
-      >
-        <UserCog size={18} />
-        {t("therapistPanel", lang)}
-      </Button>
 
       {saveError && (
         <p className="mt-6 max-w-md text-sm text-rose-dark">{t("intakeSaveFailed", lang)}</p>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Hand } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -168,6 +169,16 @@ export function OfferCMS() {
             </label>
 
             {locationId && <BrandingEditor locationId={locationId} />}
+
+            {/* Section break: the branding editor above is one white card; without
+                a heading the service cards below read as more of the same. */}
+            <div className="mt-10 mb-4 border-t border-sand pt-8">
+              <h2 className="flex items-center gap-2 font-serif text-xl text-charcoal">
+                <Hand size={18} className="text-slate-light" />
+                {t("cmsServicesHeading", lang)}
+              </h2>
+              <p className="mt-1 text-sm text-slate">{t("cmsServicesHint", lang)}</p>
+            </div>
 
             {catalog.length === 0 ? (
               <div className="rounded-3xl bg-white p-8 text-center shadow-soft">
