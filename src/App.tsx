@@ -24,6 +24,7 @@ import { TherapistQueue } from "./components/queue/TherapistQueue";
 import { StaffManagement } from "./components/staff/StaffManagement";
 import { KioskManagement } from "./components/manage/KioskManagement";
 import { SurveyReport } from "./components/manage/SurveyReport";
+import { DesignLab } from "./components/designlab/DesignLab";
 
 // Device-pairing gate for the kiosk route. An unpaired tablet gets the
 // activation screen; a paired one runs on the location its token resolves to.
@@ -114,6 +115,8 @@ function App() {
           <Route path="/staff" element={<StaffManagement />} />
           <Route path="/kiosks" element={<KioskManagement />} />
           <Route path="/reports" element={<SurveyReport />} />
+          {/* Internal visual lab — static mockups, no data access. */}
+          <Route path="/design-lab" element={<DesignLab />} />
         </Routes>
       </BrowserRouter>
       </LanguageProvider>
