@@ -11,7 +11,7 @@ import {
   fetchSurveyResponses,
   type SurveyRow,
 } from "../../lib/survey";
-import { t } from "../../i18n/translations";
+import { t, type LangCode } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
@@ -49,6 +49,7 @@ export function SurveyReport() {
   const [rows, setRows] = useState<SurveyRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SurveyRow | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate("/login");
@@ -264,10 +265,116 @@ export function SurveyReport() {
                     </ul>
                   )}
                 </Section>
+
+                <Section title={t("surveyAllResponses", lang)}>
+                  <ul className="flex flex-col gap-2">
+                    {rows.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(r)}
+                          className="flex w-full flex-wrap items-center gap-3 rounded-xl bg-oatmeal px-4 py-3 text-left transition-colors hover:bg-sand"
+                        >
+                          <span className="text-xs text-slate-light">
+                            {new Date(r.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-charcoal">
+                            {r.treatment_type ?? "—"}
+                            {r.therapist_name ? ` · ${r.therapist_name}` : ""}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-sm text-charcoal">
+                            <Star size={14} className="text-clay" fill="currentColor" />
+                            {r.csat_stars !== null ? r.csat_stars : "—"}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
               </>
             )}
           </>
         )}
+      </div>
+
+      {selected && (
+        <ResponseDetail lang={lang} row={selected} onClose={() => setSelected(null)} />
+      )}
+    </div>
+  );
+}
+
+const PRESSURE_KEY: Record<string, string> = {
+  too_light: "surveyPressureLight",
+  just_right: "surveyPressureRight",
+  too_deep: "surveyPressureDeep",
+};
+const COMFORT_KEY: Record<string, string> = {
+  yes: "surveyComfortYes",
+  mostly: "surveyComfortMostly",
+  no: "surveyComfortNo",
+};
+
+function ResponseDetail({
+  lang,
+  row,
+  onClose,
+}: {
+  lang: LangCode;
+  row: SurveyRow;
+  onClose: () => void;
+}) {
+  const skipped = t("surveyNoAnswer", lang);
+  const rows: { q: string; a: string }[] = [
+    {
+      q: t("surveyQPressure", lang),
+      a: row.pressure_feedback ? t(PRESSURE_KEY[row.pressure_feedback], lang) : skipped,
+    },
+    {
+      q: t("surveyQAtmosphere", lang),
+      a: row.atmosphere_comfort ? t(COMFORT_KEY[row.atmosphere_comfort], lang) : skipped,
+    },
+    {
+      q: t("surveyQTherapist", lang),
+      a: row.therapist_responsiveness ? t(COMFORT_KEY[row.therapist_responsiveness], lang) : skipped,
+    },
+    { q: t("surveyQCsat", lang), a: row.csat_stars !== null ? `${row.csat_stars} / 5` : skipped },
+    { q: t("surveyQNps", lang), a: row.nps !== null ? `${row.nps} / 10` : skipped },
+    { q: t("surveyQNote", lang), a: row.next_visit_note?.trim() || skipped },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-cream p-6 shadow-soft"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-serif text-xl text-charcoal">{t("surveyDetailTitle", lang)}</h3>
+            <p className="mt-1 text-xs text-slate-light">
+              {new Date(row.created_at).toLocaleString()}
+              {row.treatment_type ? ` · ${row.treatment_type}` : ""}
+              {row.therapist_name ? ` · ${row.therapist_name}` : ""}
+            </p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>
+            {t("close", lang)}
+          </Button>
+        </div>
+        <dl className="flex flex-col gap-4">
+          {rows.map((item, i) => (
+            <div key={i} className="rounded-xl bg-white p-4 shadow-soft">
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-light">
+                {item.q}
+              </dt>
+              <dd className="mt-1 text-sm text-charcoal">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </div>
   );
