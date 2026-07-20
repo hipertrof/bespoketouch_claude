@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -9,7 +9,7 @@ import { createSlot, repairSlot, revokeSlot } from "../../lib/pairing";
 import { t, tf } from "../../i18n/translations";
 import type { LangCode } from "../../types";
 import { Button } from "../Button";
-import { LanguageSelector } from "../LanguageSelector";
+import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 
 interface LocationLite {
@@ -23,7 +23,7 @@ interface LocationLite {
 // service-role /api/pairing endpoint (hard cap + rate limit enforced there);
 // reads are client RLS. Mirrors the OfferCMS/StaffManagement shell.
 export function KioskManagement() {
-  const { user, loading, rolesReady, canManage, canManageLocation, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, canManageLocation } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -89,34 +89,8 @@ export function KioskManagement() {
   if (!user || !canManage) return null;
 
   return (
-    <div className="min-h-screen bg-cream px-6 py-10">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-3xl text-charcoal">{t("kiosksTitle", lang)}</h1>
-            <p className="text-sm text-slate">{user.email}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("offer", lang)}
-            </Link>
-            <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("queueNav", lang)}
-            </Link>
-            <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("staffNav", lang)}
-            </Link>
-            <Link to="/reports" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("surveyNav", lang)}
-            </Link>
-            <LanguageSelector />
-            <Button variant="ghost" onClick={() => signOut()}>
-              {t("signOut", lang)}
-            </Button>
-          </div>
-        </header>
-
-        <SubscriptionBanner />
+    <DashboardShell title={t("kiosksTitle", lang)} width="max-w-4xl">
+      <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
@@ -169,8 +143,7 @@ export function KioskManagement() {
             </section>
           </>
         )}
-      </div>
-    </div>
+    </DashboardShell>
   );
 }
 

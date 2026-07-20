@@ -10,6 +10,7 @@ import type { PartySize } from "../../types";
 import { guestDisplayName } from "../../utils/guestName";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
+import { DashboardShell } from "../DashboardShell";
 import { IntakePanel, type IntakePanelView } from "../IntakePanel";
 
 interface LocationLite {
@@ -43,7 +44,7 @@ function toView(row: IntakeRow): IntakePanelView {
 // the signed-in user (therapist / manager / owner) belongs to. UI language is
 // the global staff language.
 export function TherapistQueue() {
-  const { user, loading, rolesReady, canAccessLocation, canViewAllIntakes, signOut, canManage } = useAuth();
+  const { user, loading, rolesReady, canAccessLocation, canViewAllIntakes } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -155,37 +156,7 @@ export function TherapistQueue() {
   }
 
   return (
-    <div className="min-h-screen bg-cream px-6 py-10">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-3xl text-charcoal">{t("queueTitle", lang)}</h1>
-            <p className="text-sm text-slate">{user.email}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {canManage && (
-              <>
-                <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
-                  {t("offer", lang)}
-                </Link>
-                <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
-                  {t("staffNav", lang)}
-                </Link>
-                <Link to="/kiosks" className="text-sm font-medium text-sage-dark hover:underline">
-                  {t("kiosksNav", lang)}
-                </Link>
-                <Link to="/reports" className="text-sm font-medium text-sage-dark hover:underline">
-                  {t("surveyNav", lang)}
-                </Link>
-              </>
-            )}
-            <LanguageSelector />
-            <Button variant="ghost" onClick={() => signOut()}>
-              {t("signOut", lang)}
-            </Button>
-          </div>
-        </header>
-
+    <DashboardShell title={t("queueTitle", lang)} width="max-w-4xl">
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
         <Link
@@ -245,8 +216,7 @@ export function TherapistQueue() {
             )}
           </>
         )}
-      </div>
-    </div>
+    </DashboardShell>
   );
 }
 

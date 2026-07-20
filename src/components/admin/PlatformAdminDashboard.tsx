@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { subscriptionStatus } from "../../lib/billing";
 import { Button } from "../Button";
+import { DashboardShell } from "../DashboardShell";
 
 interface Account {
   id: string;
@@ -61,37 +62,25 @@ export function PlatformAdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-cream px-6 py-10">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="font-serif text-3xl text-charcoal">Administrator Platformy</h1>
-            <p className="text-sm text-slate">{user.email}</p>
+    <DashboardShell title="Administrator Platformy">
+      <CreateAccountForm onCreated={load} />
+
+      <section className="mt-10">
+        <h2 className="mb-3 font-serif text-xl text-charcoal">Konta</h2>
+        {listError && <p className="text-sm text-rose-dark">{listError}</p>}
+        {fetching ? (
+          <p className="text-slate">Ładowanie kont…</p>
+        ) : accounts.length === 0 ? (
+          <p className="text-slate">Brak kont. Utwórz jedno powyżej.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {accounts.map((a) => (
+              <AccountRow key={a.id} account={a} onSaved={load} />
+            ))}
           </div>
-          <Button variant="ghost" onClick={() => signOut()}>
-            Wyloguj się
-          </Button>
-        </header>
-
-        <CreateAccountForm onCreated={load} />
-
-        <section className="mt-10">
-          <h2 className="mb-3 font-serif text-xl text-charcoal">Konta</h2>
-          {listError && <p className="text-sm text-rose-dark">{listError}</p>}
-          {fetching ? (
-            <p className="text-slate">Ładowanie kont…</p>
-          ) : accounts.length === 0 ? (
-            <p className="text-slate">Brak kont. Utwórz jedno powyżej.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {accounts.map((a) => (
-                <AccountRow key={a.id} account={a} onSaved={load} />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
+        )}
+      </section>
+    </DashboardShell>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Copy, Check, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -14,7 +14,7 @@ import {
 } from "../../lib/members";
 import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
-import { LanguageSelector } from "../LanguageSelector";
+import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 
 interface AccountLite {
@@ -39,7 +39,7 @@ const ROLE_KEYS: Record<MemberRole, string> = {
 // removing use the client under RLS. Intended for account owners / platform
 // admins — others can open it but the endpoint + RLS reject their writes.
 export function StaffManagement() {
-  const { user, loading, rolesReady, canManage, canManageLocation, memberships, isPlatformAdmin, signOut } =
+  const { user, loading, rolesReady, canManage, canManageLocation, memberships, isPlatformAdmin } =
     useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
@@ -165,34 +165,8 @@ export function StaffManagement() {
   if (!user || !canManage) return null;
 
   return (
-    <div className="min-h-screen bg-cream px-6 py-10">
-      <div className="mx-auto max-w-3xl">
-        <header className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-3xl text-charcoal">{t("staffTitle", lang)}</h1>
-            <p className="text-sm text-slate">{user.email}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/manage" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("offer", lang)}
-            </Link>
-            <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("queueNav", lang)}
-            </Link>
-            <Link to="/kiosks" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("kiosksNav", lang)}
-            </Link>
-            <Link to="/reports" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("surveyNav", lang)}
-            </Link>
-            <LanguageSelector />
-            <Button variant="ghost" onClick={() => signOut()}>
-              {t("signOut", lang)}
-            </Button>
-          </div>
-        </header>
-
-        <SubscriptionBanner />
+    <DashboardShell title={t("staffTitle", lang)} width="max-w-3xl">
+      <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
@@ -294,8 +268,7 @@ export function StaffManagement() {
             </section>
           </>
         )}
-      </div>
-    </div>
+    </DashboardShell>
   );
 }
 

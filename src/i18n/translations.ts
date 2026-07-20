@@ -224,6 +224,7 @@ export const ui: Record<string, Dict> = {
   signingIn: { pl: "Logowanie…", en: "Signing in…", uk: "Вхід…", it: "Accesso…", fr: "Connexion…", de: "Anmeldung…", es: "Iniciando sesión…", id: "Masuk…" },
   signInFailed: { pl: "Logowanie nie powiodło się.", en: "Sign-in failed.", uk: "Не вдалося увійти.", it: "Accesso non riuscito.", fr: "Échec de la connexion.", de: "Anmeldung fehlgeschlagen.", es: "Error al iniciar sesión.", id: "Gagal masuk." },
   signOut: { pl: "Wyloguj się", en: "Sign out", uk: "Вийти", it: "Esci", fr: "Se déconnecter", de: "Abmelden", es: "Cerrar sesión", id: "Keluar" },
+  adminNav: { pl: "Admin", en: "Admin", uk: "Адмін", it: "Admin", fr: "Admin", de: "Admin", es: "Admin", id: "Admin" },
   save: { pl: "Zapisz", en: "Save", uk: "Зберегти", it: "Salva", fr: "Enregistrer", de: "Speichern", es: "Guardar", id: "Simpan" },
   saving: { pl: "Zapisywanie…", en: "Saving…", uk: "Збереження…", it: "Salvataggio…", fr: "Enregistrement…", de: "Speichern…", es: "Guardando…", id: "Menyimpan…" },
   loading: { pl: "Ładowanie…", en: "Loading…", uk: "Завантаження…", it: "Caricamento…", fr: "Chargement…", de: "Laden…", es: "Cargando…", id: "Memuat…" },
@@ -263,6 +264,7 @@ export const ui: Record<string, Dict> = {
   brandingReset: { pl: "Przywróć domyślne", en: "Reset to default", uk: "Відновити типові", it: "Ripristina predefiniti", fr: "Rétablir par défaut", de: "Auf Standard zurücksetzen", es: "Restablecer valores predeterminados", id: "Kembalikan ke bawaan" },
   brandingSaved: { pl: "Zapisano branding.", en: "Branding saved.", uk: "Брендинг збережено.", it: "Branding salvato.", fr: "Image de marque enregistrée.", de: "Branding gespeichert.", es: "Marca guardada.", id: "Branding disimpan." },
   cmsActive: { pl: "Aktywna", en: "Active", uk: "Активна", it: "Attiva", fr: "Actif", de: "Aktiv", es: "Activo", id: "Aktif" },
+  cmsInactive: { pl: "Nieaktywna", en: "Inactive", uk: "Неактивна", it: "Inattiva", fr: "Inactif", de: "Inaktiv", es: "Inactivo", id: "Nonaktif" },
   cmsDelete: { pl: "Usuń", en: "Delete", uk: "Видалити", it: "Elimina", fr: "Supprimer", de: "Löschen", es: "Eliminar", id: "Hapus" },
   cmsDeleteConfirm: { pl: "Usunąć '{name}'? Tej operacji nie można cofnąć.", en: "Delete '{name}'? This cannot be undone.", uk: "Видалити '{name}'? Цю дію не можна скасувати.", it: "Eliminare '{name}'? L'operazione non può essere annullata.", fr: "Supprimer '{name}' ? Cette action est irréversible.", de: "'{name}' löschen? Dies kann nicht rückgängig gemacht werden.", es: "¿Eliminar '{name}'? Esto no se puede deshacer.", id: "Hapus '{name}'? Ini tidak dapat dibatalkan." },
 

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Hand } from "lucide-react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronDown, Hand, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -13,7 +13,7 @@ import {
 import { languages, t, tf } from "../../i18n/translations";
 import type { LangCode } from "../../types";
 import { Button } from "../Button";
-import { LanguageSelector } from "../LanguageSelector";
+import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 import { BrandingEditor } from "./BrandingEditor";
 
@@ -29,7 +29,7 @@ interface LocationLite {
 // UI language is the global staff language (defaults to Polish) so a
 // non-Polish-speaking manager can switch it from the top selector.
 export function OfferCMS() {
-  const { user, loading, rolesReady, canManage, canManageLocation, signOut } = useAuth();
+  const { user, loading, rolesReady, canManage, canManageLocation } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
   // Deep link from the admin dashboard: /manage?location=<id> preselects it.
@@ -118,34 +118,8 @@ export function OfferCMS() {
   if (!user || !canManage) return null;
 
   return (
-    <div className="min-h-screen bg-cream px-6 py-10">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-3xl text-charcoal">{t("offer", lang)}</h1>
-            <p className="text-sm text-slate">{user.email}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link to="/queue" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("queueNav", lang)}
-            </Link>
-            <Link to="/staff" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("staffNav", lang)}
-            </Link>
-            <Link to="/kiosks" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("kiosksNav", lang)}
-            </Link>
-            <Link to="/reports" className="text-sm font-medium text-sage-dark hover:underline">
-              {t("surveyNav", lang)}
-            </Link>
-            <LanguageSelector />
-            <Button variant="ghost" onClick={() => signOut()}>
-              {t("signOut", lang)}
-            </Button>
-          </div>
-        </header>
-
-        <SubscriptionBanner />
+    <DashboardShell title={t("offer", lang)} width="max-w-4xl">
+      <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
@@ -204,8 +178,7 @@ export function OfferCMS() {
             )}
           </>
         )}
-      </div>
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -231,6 +204,10 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   const [durations, setDurations] = useState<ServiceDurationRow[]>(service.durations);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Collapsed by default so the offer reads as a scannable list of services;
+  // the editing form (name, translations, durations, prices) only appears once
+  // the manager opens a service. A freshly added service starts collapsed too.
+  const [expanded, setExpanded] = useState(false);
 
   const setName = (code: string, value: string) =>
     setNames((prev) => ({ ...prev, [code]: value }));
@@ -306,13 +283,57 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
     setDurations((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
   }
 
+  // Collapsed-header summary: the durations and the lowest single price, so a
+  // manager can scan the offer without opening each service.
+  const pricedSingles = durations
+    .map((d) => d.price_single)
+    .filter((p): p is number => p != null);
+  const summary =
+    durations.length === 0
+      ? "—"
+      : [
+          `${durations.map((d) => d.minutes).join(", ")} min`,
+          pricedSingles.length
+            ? tf("priceFrom", lang, { price: `${Math.min(...pricedSingles)} zł` })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
   return (
-    <div className={`rounded-2xl bg-white p-5 shadow-soft ${active ? "" : "opacity-60"}`}>
+    <div className={`overflow-hidden rounded-2xl bg-white shadow-soft ${active ? "" : "opacity-60"}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 p-5 text-left"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-serif text-lg text-charcoal">
+            {names.pl?.trim() || t("cmsName", lang)}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-slate-light">{summary}</div>
+        </div>
+        {!active && (
+          <span className="shrink-0 rounded-full bg-oatmeal px-2.5 py-0.5 text-xs font-medium text-slate-light">
+            {t("cmsInactive", lang)}
+          </span>
+        )}
+        <ChevronDown
+          size={18}
+          className={`shrink-0 text-slate-light transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-sand px-5 pb-5 pt-4">
       <Field label={`${t("cmsName", lang)} (PL)`}>
         <input
           required
           value={names.pl ?? ""}
           onChange={(e) => setName("pl", e.target.value)}
+          // Same font as the duration/price fields below it, so every input in
+          // the editing form reads consistently.
           className={inputClass}
         />
       </Field>
@@ -341,76 +362,110 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
         </div>
       )}
 
-      <div className="mt-4">
+      <div className="mt-5">
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-light">
           {t("cmsDurations", lang)}
         </div>
-        <div className="flex flex-col gap-2">
-          {durations.map((d, i) => (
-            <div key={d.id ?? `new-${i}`} className="flex flex-wrap items-end gap-2">
-              <MiniField label={t("cmsMin", lang)}>
-                <input
-                  type="number"
-                  value={d.minutes}
-                  onChange={(e) => updateDuration(i, { minutes: Number(e.target.value) })}
-                  className={`${inputClass} w-20`}
-                />
-              </MiniField>
-              <MiniField label={t("cmsPriceSingle", lang)}>
-                <input
-                  type="number"
-                  value={d.price_single ?? ""}
-                  onChange={(e) =>
-                    updateDuration(i, {
-                      price_single: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                  className={`${inputClass} w-24`}
-                />
-              </MiniField>
-              <MiniField label={t("cmsPriceCouple", lang)}>
-                <input
-                  type="number"
-                  value={d.price_couple ?? ""}
-                  disabled={!d.couple_available}
-                  onChange={(e) =>
-                    updateDuration(i, {
-                      price_couple: e.target.value === "" ? null : Number(e.target.value),
-                    })
-                  }
-                  className={`${inputClass} w-24 disabled:opacity-40`}
-                />
-              </MiniField>
-              <label className="flex items-center gap-1 pb-3 text-xs text-slate">
-                <input
-                  type="checkbox"
-                  checked={d.couple_available}
-                  onChange={(e) => updateDuration(i, { couple_available: e.target.checked })}
-                />
-                {t("cmsCoupleShort", lang)}
-              </label>
-              <button
-                type="button"
-                onClick={() => removeDuration(d, i)}
-                className="pb-3 text-xs text-rose-dark hover:underline"
-              >
-                {t("cmsRemove", lang)}
-              </button>
+
+        {durations.length > 0 && (
+          <div className="overflow-x-auto">
+            {/* An aligned grid table: the column headers are shown once at the top
+                instead of being repeated on every duration row (the old layout
+                stamped MIN / price / couple labels onto each line, which read as
+                clutter once a service had several durations). */}
+            <div className="grid min-w-[26rem] grid-cols-[5.5rem_1fr_3.25rem_1fr_1.75rem] items-center gap-x-3 gap-y-2">
+              <HeadCell>{t("cmsMin", lang)}</HeadCell>
+              <HeadCell>{t("cmsPriceSingle", lang)}</HeadCell>
+              <HeadCell className="text-center">{t("cmsCoupleShort", lang)}</HeadCell>
+              <HeadCell>{t("cmsPriceCouple", lang)}</HeadCell>
+              <span />
+
+              {durations.map((d, i) => (
+                <Fragment key={d.id ?? `new-${i}`}>
+                  <input
+                    type="number"
+                    min={1}
+                    value={d.minutes}
+                    aria-label={t("cmsMin", lang)}
+                    onChange={(e) =>
+                      updateDuration(i, {
+                        minutes: Math.max(0, Math.round(Number(e.target.value) || 0)),
+                      })
+                    }
+                    className={`${inputClass} tabular-nums`}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    placeholder="—"
+                    value={d.price_single ?? ""}
+                    aria-label={t("cmsPriceSingle", lang)}
+                    onChange={(e) =>
+                      updateDuration(i, {
+                        price_single:
+                          e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      })
+                    }
+                    className={`${inputClass} tabular-nums`}
+                  />
+                  <label className="flex justify-center">
+                    <input
+                      type="checkbox"
+                      checked={d.couple_available}
+                      aria-label={t("cmsCoupleShort", lang)}
+                      // Clearing the couple price when couples are turned off keeps a
+                      // stale (and now hidden) price from being saved to the row.
+                      onChange={(e) =>
+                        updateDuration(i, {
+                          couple_available: e.target.checked,
+                          price_couple: e.target.checked ? d.price_couple : null,
+                        })
+                      }
+                    />
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={d.price_couple ?? ""}
+                    disabled={!d.couple_available}
+                    aria-label={t("cmsPriceCouple", lang)}
+                    onChange={(e) =>
+                      updateDuration(i, {
+                        price_couple:
+                          e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      })
+                    }
+                    className={`${inputClass} tabular-nums disabled:opacity-40`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeDuration(d, i)}
+                    aria-label={t("cmsRemove", lang)}
+                    className="flex justify-center text-slate-light transition-colors hover:text-rose-dark"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </Fragment>
+              ))}
             </div>
-          ))}
-          <button
-            type="button"
-            onClick={() =>
-              setDurations((prev) => [
-                ...prev,
-                { id: "", service_id: service.id, minutes: 60, price_single: null, price_couple: null, couple_available: false },
-              ])
-            }
-            className="self-start text-xs text-sage-dark hover:underline"
-          >
-            + {t("cmsAddDuration", lang)}
-          </button>
-        </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() =>
+            setDurations((prev) => [
+              ...prev,
+              { id: "", service_id: service.id, minutes: 60, price_single: null, price_couple: null, couple_available: false },
+            ])
+          }
+          className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-sage-dark hover:underline"
+        >
+          <Plus size={13} />
+          {t("cmsAddDuration", lang)}
+        </button>
       </div>
 
       {error && <p className="mt-3 text-sm text-rose-dark">{error}</p>}
@@ -428,6 +483,8 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
           {busy ? t("saving", lang) : t("save", lang)}
         </Button>
       </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -445,18 +502,23 @@ function Field({
   className?: string;
 }) {
   return (
-    <label className={`flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-light ${className}`}>
-      {label}
+    // The caption's text-xs/uppercase styling lives on its own span rather than
+    // the wrapping label, so it doesn't cascade into the input (an input has no
+    // font-size of its own, so it was inheriting the 12px caption size — making
+    // the name field read smaller than the duration/price inputs beside it).
+    <label className={`flex flex-col gap-1 ${className}`}>
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-light">{label}</span>
       {children}
     </label>
   );
 }
 
-function MiniField({ label, children }: { label: string; children: React.ReactNode }) {
+// Column header for the duration/price grid — one row of labels shared by every
+// duration below it.
+function HeadCell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <label className="flex flex-col gap-1 text-[10px] font-medium uppercase tracking-wide text-slate-light">
-      {label}
+    <span className={`text-[10px] font-medium uppercase tracking-wide text-slate-light ${className}`}>
       {children}
-    </label>
+    </span>
   );
 }
