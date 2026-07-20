@@ -54,7 +54,11 @@ export function WelcomeStep() {
   const treatmentsFilled = state.treatmentSelections
     .slice(0, state.partySize)
     .every((sel) => sel.treatmentId !== null && sel.treatmentMinutes !== null);
-  const canContinue = namesFilled && treatmentsFilled;
+  // Therapist choice is mandatory whenever the location has therapists to pick.
+  const therapistsFilled =
+    therapists.length === 0 ||
+    state.guestTherapists.slice(0, state.partySize).every((tp) => tp?.id);
+  const canContinue = namesFilled && treatmentsFilled && therapistsFilled;
 
   const handleContinue = () => {
     state.guestNames.slice(0, state.partySize).forEach((n, i) => {
@@ -208,7 +212,7 @@ export function WelcomeStep() {
                   }}
                   className="min-h-12 w-full max-w-md rounded-2xl border border-sand bg-white px-4 text-base text-charcoal shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
                 >
-                  <option value="">{t("therapistNone", lang)}</option>
+                  <option value="">{t("therapistChoose", lang)}</option>
                   {therapists.map((tp) => (
                     <option key={tp.id} value={tp.id}>
                       {tp.name}

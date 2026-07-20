@@ -109,6 +109,7 @@ export const ui: Record<string, Dict> = {
   welcomeAt: { pl: "Witaj w {name}", en: "Welcome to {name}", uk: "Вітаємо в {name}", it: "Benvenuti da {name}", fr: "Bienvenue à {name}", de: "Willkommen bei {name}", es: "Bienvenido a {name}", id: "Selamat datang di {name}" },
   therapistLabel: { pl: "Terapeuta", en: "Therapist", uk: "Терапевт", it: "Terapeuta", fr: "Thérapeute", de: "Therapeut(in)", es: "Terapeuta", id: "Terapis" },
   therapistNone: { pl: "Nie przypisano", en: "Not assigned", uk: "Не призначено", it: "Non assegnato", fr: "Non assigné", de: "Nicht zugewiesen", es: "Sin asignar", id: "Belum ditetapkan" },
+  therapistChoose: { pl: "Wybierz terapeutę…", en: "Choose a therapist…", uk: "Оберіть терапевта…", it: "Scegli un terapeuta…", fr: "Choisissez un thérapeute…", de: "Therapeut(in) wählen…", es: "Elige un terapeuta…", id: "Pilih terapis…" },
   // Returning-guest CRM (opt-in preference memory)
   returningGuest: { pl: "Stały gość?", en: "Returning guest?", uk: "Постійний гість?", it: "Ospite abituale?", fr: "Client fidèle ?", de: "Stammgast?", es: "¿Cliente habitual?", id: "Tamu langganan?" },
   guestPhoneLabel: { pl: "Numer telefonu", en: "Phone number", uk: "Номер телефону", it: "Numero di telefono", fr: "Numéro de téléphone", de: "Telefonnummer", es: "Número de teléfono", id: "Nomor telepon" },
