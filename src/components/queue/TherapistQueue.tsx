@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { RotateCcw, RefreshCw, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { RotateCcw, RefreshCw, ArrowLeft, ArrowRight, CheckCircle2, MonitorSmartphone } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -171,6 +171,17 @@ export function TherapistQueue() {
         </header>
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
+
+        <Link
+          to="/"
+          className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-sage-dark px-5 py-4 text-cream shadow-soft transition-all duration-200 hover:bg-sage-dark/90 active:scale-[0.99]"
+        >
+          <span className="flex items-center gap-2.5 text-base font-semibold">
+            <MonitorSmartphone size={20} />
+            {t("queueOpenKiosk", lang)}
+          </span>
+          <ArrowRight size={20} />
+        </Link>
 
         {locations.length === 0 ? (
           <p className="text-slate">{t("cmsNoLocations", lang)}</p>

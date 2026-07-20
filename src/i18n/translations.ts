@@ -93,6 +93,7 @@ export const ui: Record<string, Dict> = {
   kioskLastSeen: { pl: "Ostatnio aktywny: {time}", en: "Last seen: {time}", uk: "Востаннє активний: {time}", it: "Ultima attività: {time}", fr: "Vu pour la dernière fois : {time}", de: "Zuletzt gesehen: {time}", es: "Visto por última vez: {time}", id: "Terakhir aktif: {time}" },
   kioskNever: { pl: "nigdy", en: "never", uk: "ніколи", it: "mai", fr: "jamais", de: "nie", es: "nunca", id: "belum pernah" },
   noKiosks: { pl: "Brak kiosków dla tej lokalizacji.", en: "No kiosks for this location yet.", uk: "Для цієї локації ще немає кіосків.", it: "Nessun chiosco per questa sede.", fr: "Aucune borne pour ce lieu.", de: "Noch keine Kioske für diesen Standort.", es: "Aún no hay quioscos para esta ubicación.", id: "Belum ada kios untuk lokasi ini." },
+  queueOpenKiosk: { pl: "Otwórz kiosk zameldowania", en: "Open check-in kiosk", uk: "Відкрити кіоск реєстрації", it: "Apri il chiosco di check-in", fr: "Ouvrir la borne d'enregistrement", de: "Check-in-Kiosk öffnen", es: "Abrir quiosco de registro", id: "Buka kios check-in" },
 
   // Billing — soft payment-lapse reminders (manager dashboards only).
   // Phrased with the end date rather than a day count: a "{days} days" template
