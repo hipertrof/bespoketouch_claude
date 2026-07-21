@@ -1,5 +1,6 @@
 export type AppStep =
   | "welcome"
+  | "treatment"
   | "staffHandoff"
   | "bodyMap"
   | "preferences"

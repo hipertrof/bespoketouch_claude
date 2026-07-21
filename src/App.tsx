@@ -10,6 +10,7 @@ import { Header } from "./components/Header";
 import { ActivationScreen } from "./components/pairing/ActivationScreen";
 import { SurveyScreen } from "./components/survey/SurveyScreen";
 import { WelcomeStep } from "./components/steps/WelcomeStep";
+import { TreatmentStep } from "./components/steps/TreatmentStep";
 import { StaffHandoffStep } from "./components/steps/StaffHandoffStep";
 import { BodyMapStep } from "./components/steps/BodyMapStep";
 import { PreferencesStep } from "./components/steps/PreferencesStep";
@@ -62,6 +63,7 @@ function KioskScreen() {
       <Header step={state.step} />
       <main className="flex-1">
         {state.step === "welcome" && <WelcomeStep />}
+        {state.step === "treatment" && <TreatmentStep />}
         {state.step === "staffHandoff" && <StaffHandoffStep />}
         {state.step === "bodyMap" && <BodyMapStep />}
         {state.step === "preferences" && <PreferencesStep />}

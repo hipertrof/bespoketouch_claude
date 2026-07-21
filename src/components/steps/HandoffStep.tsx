@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, MapPin } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
+import { toMassageTypes } from "../../lib/catalog";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
@@ -14,6 +15,8 @@ export function HandoffStep() {
   const { token } = useDevice();
   const lang = state.language;
   const isCouple = state.partySize === 2;
+  // Offer mapped to the session language, so the recap can name each treatment.
+  const massages = useMemo(() => toMassageTypes(catalog, lang), [catalog, lang]);
 
   // Persist the locked intake once, in the background. This is the "lock" point:
   // the guest has finished and handed the tablet back. Only a paired device can
@@ -86,6 +89,42 @@ export function HandoffStep() {
         {isCouple ? t("prefsSavedCouple", lang) : t("prefsSavedSingle", lang)}{" "}
         {t("passTablet", lang)}
       </p>
+
+      {/* Recap of what was captured — the step is named "Podsumowanie" but only
+          showed a thank-you; this lets guest and front-desk confirm the picks
+          before the tablet changes hands. */}
+      <div className="mt-8 w-full max-w-md rounded-2xl border border-sand bg-white/70 p-5 text-left shadow-soft">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-light">
+          {t("stepSummary", lang)}
+        </p>
+        <ul className="flex flex-col gap-3">
+          {Array.from({ length: state.partySize }).map((_, i) => {
+            const sel = state.treatmentSelections[i];
+            const treatment = massages.find((m) => m.id === sel?.treatmentId);
+            const minutes = sel?.treatmentMinutes;
+            const zoneCount = Object.values(state.guests[i]?.zones ?? {}).filter(Boolean).length;
+            return (
+              <li key={i} className="flex flex-col gap-0.5">
+                {isCouple && (
+                  <span className="text-sm font-semibold text-charcoal">
+                    {state.guestNames[i]?.trim() || `${t("person", lang)} ${i + 1}`}
+                  </span>
+                )}
+                <span className="text-sm text-charcoal">
+                  {treatment?.name ?? "—"}
+                  {minutes ? ` · ${minutes} min` : ""}
+                </span>
+                {zoneCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-light">
+                    <MapPin size={13} />
+                    {zoneCount}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
 
       {saveError && (
         <p className="mt-6 max-w-md text-sm text-rose-dark">{t("intakeSaveFailed", lang)}</p>

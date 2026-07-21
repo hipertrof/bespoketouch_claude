@@ -38,7 +38,7 @@ function LanguageSelect() {
 export function Header({ step }: { step: AppStep }) {
   const { state } = useGuest();
   const { branding } = useCatalog();
-  const showProgress = ["welcome", "staffHandoff", "bodyMap", "preferences", "handoff"].includes(
+  const showProgress = ["welcome", "treatment", "staffHandoff", "bodyMap", "preferences", "handoff"].includes(
     step,
   );
 

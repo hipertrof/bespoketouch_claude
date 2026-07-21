@@ -172,6 +172,7 @@ export const ui: Record<string, Dict> = {
   generalNotePlaceholder: { pl: "Np. proszę o mocniejszy masaż karku, mam alergię na olejki cytrusowe…", en: "E.g. please massage the neck more firmly, I'm allergic to citrus oils…", uk: "Напр. будь ласка, сильніше масажуйте шию, у мене алергія на цитрусові олії…", it: "Es. per favore massaggia il collo più intensamente, sono allergico agli oli di agrumi…", fr: "Ex. massez la nuque plus fermement, je suis allergique aux huiles d'agrumes…", de: "Z. B. bitte den Nacken kräftiger massieren, ich bin allergisch gegen Zitrusöle…", es: "P. ej. masajee el cuello con más fuerza, soy alérgico a los aceites cítricos…", id: "Mis. tolong pijat leher lebih kuat, saya alergi minyak jeruk…" },
   backButton: { pl: "Wstecz", en: "Back", uk: "Назад", it: "Indietro", fr: "Retour", de: "Zurück", es: "Atrás", id: "Kembali" },
   saveContinue: { pl: "Zapisz i kontynuuj", en: "Save and continue", uk: "Зберегти та продовжити", it: "Salva e continua", fr: "Enregistrer et continuer", de: "Speichern und fortfahren", es: "Guardar y continuar", id: "Simpan dan lanjutkan" },
+  next: { pl: "Dalej", en: "Next", uk: "Далі", it: "Avanti", fr: "Suivant", de: "Weiter", es: "Siguiente", id: "Lanjut" },
 
   // ZonePopover
   zonePriority: { pl: "Obszar priorytetowy", en: "Priority area", uk: "Пріоритетна зона", it: "Area prioritaria", fr: "Zone prioritaire", de: "Prioritärer Bereich", es: "Área prioritaria", id: "Area prioritas" },

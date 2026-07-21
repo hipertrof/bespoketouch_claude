@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Check, Copy } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { subscriptionStatus } from "../../lib/billing";
@@ -89,6 +90,28 @@ function Centered({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen items-center justify-center bg-cream px-6 text-slate">
       {children}
     </div>
+  );
+}
+
+// Location UUIDs are only needed occasionally (support, SQL). Showing the raw
+// hex inline made every row noisy, so it's tucked behind a copy button that
+// exposes the full id on hover and copies it on click.
+function CopyId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={id}
+      onClick={() => {
+        void navigator.clipboard?.writeText(id);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-slate-light transition-colors hover:bg-sand/60 hover:text-slate"
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? "Skopiowano" : "ID"}
+    </button>
   );
 }
 
@@ -297,7 +320,7 @@ function LocationsSection({ accountId }: { accountId: string }) {
             <li key={l.id} className="flex flex-wrap items-center gap-2">
               <span>{l.name}</span>
               {!l.active && <span className="text-xs text-slate-light">(nieaktywna)</span>}
-              <span className="font-mono text-[10px] text-slate-light">{l.id}</span>
+              <CopyId id={l.id} />
               <span className="ml-auto flex gap-3">
                 <Link
                   to={`/manage?location=${l.id}`}

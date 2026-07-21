@@ -12,6 +12,7 @@ import {
   type SurveySession,
 } from "../../lib/survey";
 import { Button } from "../Button";
+import { Logo } from "../Logo";
 import { SegmentedControl } from "../SegmentedControl";
 
 // Post-treatment survey — a separate kiosk mode from the intake flow, reached
@@ -322,8 +323,16 @@ export function SurveyScreen() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-cream px-4 py-10 sm:px-6">
-      <div className="mx-auto max-w-xl">{children}</div>
+    <div className="min-h-screen bg-cream">
+      {/* Brand header — the survey is a standalone kiosk mode outside the guest
+          step machine, so it doesn't get the intake Header; give it the logo so
+          it doesn't render as an unbranded bare page. */}
+      <header className="border-b border-sand/70">
+        <div className="mx-auto flex h-20 max-w-xl items-center px-4 sm:h-24 sm:px-6">
+          <Logo />
+        </div>
+      </header>
+      <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">{children}</div>
     </div>
   );
 }
