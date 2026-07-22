@@ -69,11 +69,11 @@ export function DashboardShell({
   return (
     <div className="min-h-screen bg-cream">
       <header className="sticky top-0 z-40 border-b border-sand/70 bg-(--color-cream)/90 backdrop-blur-md">
-        <div className="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-20 max-w-6xl items-center gap-4 px-4 sm:px-6 lg:px-8">
           <Link to="/queue" className="shrink-0" aria-label="BespokeTouch">
             <Logo compact lang={lang} />
           </Link>
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden ml-auto items-center gap-1 md:flex">
             {items.map((item) => navLink(item.to, t(item.labelKey, lang)))}
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
