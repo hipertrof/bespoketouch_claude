@@ -9,7 +9,7 @@ When compacting, drop exploratory reasoning.
 
 - `src/` — React SPA: components (organized by feature/context), contexts, i18n, static data, and client API wrappers (`lib/`). Styled with **Tailwind CSS**.
 - `src/App.tsx` — React Router setup. Kiosk flow at `/` (anonymous); all other routes require `AuthContext` (staff dashboards).
-- `api/` — Vercel serverless functions; core logic in `_*Core.ts` files (shared by prod + dev proxy). Each endpoint (`members.ts`, `guest.ts`, `device.ts`, `pairing.ts`, `intake.ts`, `survey.ts`) mirrors a dev proxy plugin.
+- `api/` — Vercel serverless functions; core logic in `_*Core.ts` files (shared by prod + dev proxy). Each endpoint (`members.ts`, `guest.ts`, `device.ts`, `pairing.ts`, `intake.ts`, `survey.ts`, `checkin.ts`) mirrors a dev proxy plugin.
 - `vite-plugins/` — dev proxy middlewares. When you add/change an endpoint in `api/`, update or add its corresponding proxy (e.g., `api/survey.ts` ↔ `vite-plugins/survey-proxy.ts`), registered in `vite.config.ts`.
 - `supabase/migrations/` — SQL migrations applied via Supabase dashboard/CLI (not automated).
 - `dist/` — build output (created by `npm run build`).
@@ -27,9 +27,13 @@ There is **no test runner configured**. `src/lib/rls-isolation.test.ts` exists b
 
 **BespokeTouch** — a multi-tenant SaaS spa product with two faces:
 1. A **guest-intake kiosk** (route `/`) — an anonymous, no-login, multi-step, multi-language state machine a spa guest fills in on a tablet (preferences, body-map pain zones, oil choices) that hands off to a therapist.
-2. **Staff dashboards** (all other routes) — login-gated, role-scoped React screens: platform admin, offer CMS, therapist queue, staff management, kiosk/device management.
+2. **Staff dashboards** (all other routes) — login-gated, role-scoped React screens: platform admin, offer CMS, therapist queue, staff management, kiosk/device management. Six of these share `DashboardShell.tsx` for header/nav chrome.
 
 Backend is **Supabase** (Postgres + Auth + REST). There is no custom app server — privileged operations run as **Vercel serverless functions** in `api/`. Everything else is a client-side SPA talking to Supabase REST under Row-Level Security.
+
+`/design-lab` is a third category: a static internal mockup sandbox (no data access, no RLS/RBAC) for exploring dashboard redesigns. Don't treat it as a real dashboard route or wire it to live data.
+
+`/checkin` is a fourth: an anonymous page the *guest's own phone* reaches by scanning a QR the kiosk shows (not the kiosk itself). It has no `DeviceProvider`/`AuthProvider` — its only credential is the short-lived one-time code in the URL. See "QR self-check-in" below.
 
 ## Architecture
 
@@ -42,9 +46,10 @@ These run on Vercel as **ESM without bundling** (`"type": "module"`). Three rule
 - **Underscore-prefixed files (`_guestCore.ts`, `_membersCore.ts`, …) are shared helpers, NOT routes.** Vercel treats every other `api/*.ts` as an HTTP endpoint.
 - **No Supabase SDK in serverless functions.** The SDK crashed them with `FUNCTION_INVOCATION_FAILED`. Use dependency-free plain `fetch` against Supabase REST (`/rest/v1`) and Auth (`/auth/v1`). Copy the established pattern in `api/_membersCore.ts` / `api/_guestCore.ts`.
 
-Two authorization styles for serverless endpoints:
+Three authorization styles for serverless endpoints:
 - **Authed (manager-facing)** — e.g. `api/members.ts`, `api/pairing.ts`: take the caller's JWT, resolve identity via `GET /auth/v1/user`, then self-authorize with REST queries. Runs with the service-role key (bypasses RLS), so the endpoint must enforce access itself.
-- **Anonymous (kiosk-facing)** — e.g. `api/guest.ts`, `api/device.ts`: no login. They resolve an active location → account server-side and scope by that. Guarded against exposing the service key; `sb_publishable_` guard rejects wrong keys.
+- **Anonymous, device-token (kiosk-facing)** — e.g. `api/guest.ts`, `api/device.ts`, `api/intake.ts`: no login. They resolve an active location → account server-side from the paired kiosk's device token and scope by that. Guarded against exposing the service key; `sb_publishable_` guard rejects wrong keys.
+- **Anonymous, one-time-code (guest's-own-phone-facing)** — `api/checkin.ts` only so far: the kiosk mints a short-lived code (itself device-token-authed); the guest's phone then authenticates with just that code, no device token and no login. See "QR self-check-in" below for the trust model — reach for this pattern (not a new bespoke scheme) if a future feature needs to hand a guest's own device a capability.
 
 ### Dev proxies mirror the serverless functions
 The dev server (`npm run dev`) runs middleware plugins that import the same core logic as prod serverless functions, so `/api/*` endpoints behave identically locally. Mapping:
@@ -54,6 +59,7 @@ The dev server (`npm run dev`) runs middleware plugins that import the same core
 - `/api/pairing` ← `api/_pairingCore.ts` ↔ `vite-plugins/pairing-proxy.ts`
 - `/api/intake` ← `api/_intakeCore.ts` ↔ `vite-plugins/intake-proxy.ts`
 - `/api/survey` ← `api/_surveyCore.ts` ↔ `vite-plugins/survey-proxy.ts`
+- `/api/checkin` ← `api/_checkinCore.ts` ↔ `vite-plugins/checkin-proxy.ts`
 - `/api/translate` ← `api/_translateCore.ts` (DeepL) ↔ `vite-plugins/deepl-proxy.ts`
 
 **When you add or change an endpoint in `api/`, update or add its dev proxy.** Without it, the endpoint works in prod but 404s in dev. Proxies are registered in `vite.config.ts` and receive secrets via `loadEnv`.
@@ -78,17 +84,20 @@ The kiosk has no login, but it is **not unauthenticated**. Every kiosk write goe
 
 The anon **read** bridge deliberately stays (0003 services, 0009 `kiosk_*` RPCs): an active location's price list is a public menu. Reads leak a price list and therapist first names; writes were the real hole.
 
+### QR self-check-in (`/checkin`, `checkin_codes`)
+Lets a guest use their *own* phone instead of the kiosk (e.g. to avoid saying a phone number aloud). The kiosk's welcome step mints a code (`api/_checkinCore.ts`'s `mint`, device-token-authed like any other kiosk write) and shows it as a QR encoding `/checkin?c=<code>`. From there the guest's phone is anonymous but not uncredentialed: `checkin_codes` (migration `0019`) is a `pair_codes`-style secrets table (hash-only storage, no grant, no policy — service-role only), and the code is short-lived (15 min), lookup-capped, and dies the instant `save` succeeds. `save` only ever **updates an existing** `guest_profiles` row — it never originates a new consented one, so consent capture stays kiosk-only — and it creates an `intakes` row with `status: 'incomplete'` (missing guest name/therapist/treatment) rather than a normal `'submitted'` one. Reception fills the rest in from `/queue` via `completeIntake()` (`src/lib/intakes.ts`), a plain RLS-gated update — no serverless endpoint needed, since `intakes_update_auth` already covers it.
+
 ### GDPR / privacy constraints (do not regress)
 - Guest phone numbers are **never stored raw** — only as `HMAC-SHA256(normalized_phone, GUEST_HASH_SECRET + account_id)`. Rotating `GUEST_HASH_SECRET` orphans all `guest_profiles` rows.
 - The guest CRM (`guest_profiles.preferences`) stores a versioned blob. **v1** = structured comfort prefs + zone marks. **v2** (current) **also** stores the free-text notes (`zoneNotes`, `generalNote`) — treated as Article 9 health data, storable *only* because `CONSENT_VERSION` in `api/_guestCore.ts` names this explicitly in the kiosk consent copy (`consentSaveBody`, i18n) before the guest can opt in. `toStoredPreferences()` / `applyStoredPreferences()` in `src/lib/guestProfile.ts` are the client (de)serializer; `sanitizePreferences()` in `api/_guestCore.ts` is the server-side whitelist + length cap — keep both in sync on any shape change.
 - CRM is opt-in: `save` requires `consent === true` and stamps `consent_version`/`consent_at` server-side.
-- **Intake rows are the *other* place health data lives, and they are scrubbed, not exempt.** `intakes.personalizations` carries the same `zoneNotes`/`generalNote`/`zones` for the therapist handoff. Migration `0018_intake_lifecycle.sql` adds a trigger that blanks those three keys (to `{}`/`""`, not deleted — `IntakePanel` reads them as required fields with no null-guards) the moment `status` flips to `'done'`, plus an hourly `pg_cron` job that auto-flips (and thus scrubs) any intake still not done after 24h. `api/_surveyCore.ts`'s `submitSurvey` also flips an intake to `done` on its linked visit's first survey response — so "done" now has three triggers (manual /queue button, survey submission, 24h timeout), all funneled through the one trigger function. `/queue` (`TherapistQueue.tsx`) splits Active (`status !== 'done'`) vs Archive (`status === 'done'`) tabs; archived rows are expected to have blank notes/zones.
+- **Intake rows are the *other* place health data lives, and they are scrubbed, not exempt.** `intakes.personalizations` carries the same `zoneNotes`/`generalNote`/`zones` for the therapist handoff. Migration `0018_intake_lifecycle.sql` adds a trigger that blanks those three keys (to `{}`/`""`, not deleted — `IntakePanel` reads them as required fields with no null-guards) the moment `status` flips to `'done'`, plus an hourly `pg_cron` job that auto-flips (and thus scrubs) any intake still not done after 24h. `api/_surveyCore.ts`'s `submitSurvey` also flips an intake to `done` on its linked visit's first survey response — so "done" now has three triggers (manual /queue button, survey submission, 24h timeout), all funneled through the one trigger function. `/queue` (`TherapistQueue.tsx`) splits Active (`status !== 'done'`) vs Archive (`status === 'done'`) tabs; archived rows are expected to have blank notes/zones. `status` has a third value, `'incomplete'` (QR self-check-in — see above), which is also `!== 'done'` so it lands on the Active tab and goes through the same scrub/24h-timeout path as any other intake.
 
 ### i18n
 Eight languages (`pl/en/uk/it/fr/de/es/id`) in `src/i18n/translations.ts` as `ui: Record<string, Record<LangCode, string>>` — the type is compiler-enforced, so **every new key needs all 8 translations** or `tsc -b` fails. Use `t(key, lang)` / `tf(key, lang, vars)`. Kiosk language is per-session; staff dashboards use the persistent `LanguageContext`.
 
 ## Database migrations
-SQL migrations live in `supabase/migrations/NNNN_name.sql`, applied in order via the Supabase dashboard/CLI (not automated by this repo). Each phase adds its own feature-table RLS policies. When adding a table, enable RLS and add policies in the same migration; secrets tables (e.g. `pair_codes`) stay service-role-only (no grant, no policy).
+SQL migrations live in `supabase/migrations/NNNN_name.sql`, applied in order via the Supabase dashboard/CLI (not automated by this repo). Each phase adds its own feature-table RLS policies. When adding a table, enable RLS and add policies in the same migration; secrets tables (e.g. `pair_codes`, `checkin_codes`) stay service-role-only (no grant, no policy).
 
 ## Environment
 See `.env.example`. `VITE_`-prefixed vars ship to the client (Supabase URL + anon key — safe, RLS is the boundary). Server-only secrets (`SUPABASE_SERVICE_ROLE_KEY`, `GUEST_HASH_SECRET`, `DEEPL_API_KEY`) must **never** be prefixed `VITE_` or imported into client code; they're read by the serverless functions (prod) and the Vite proxies (dev).
