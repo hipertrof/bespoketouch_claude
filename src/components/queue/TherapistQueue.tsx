@@ -103,11 +103,19 @@ export function TherapistQueue() {
     if (locationId) loadIntakes(locationId);
   }, [locationId, loadIntakes]);
 
+  // Refetches after a status flip rather than merging { ...row, status } onto
+  // the in-memory row: a flip to 'done' scrubs personalizations server-side
+  // (migration 0018's trigger), and an optimistic merge would keep showing the
+  // guest's pre-scrub health notes for the rest of this browser session.
   async function setStatus(row: IntakeRow, status: string) {
     try {
       await updateIntakeStatus(row.id, status);
-      setIntakes((prev) => prev.map((r) => (r.id === row.id ? { ...r, status } : r)));
-      setSelected((prev) => (prev && prev.id === row.id ? { ...prev, status } : prev));
+      const reqId = ++loadReqRef.current;
+      const rows = await fetchIntakes(locationId);
+      if (loadReqRef.current !== reqId) return; // superseded by a concurrent location switch
+      setIntakes(rows);
+      const fresh = rows.find((r) => r.id === row.id) ?? null;
+      setSelected((prev) => (prev && prev.id === row.id ? fresh : prev));
     } catch (e) {
       setError(e instanceof Error ? e.message : t("queueError", lang));
     }
