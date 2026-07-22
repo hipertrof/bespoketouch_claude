@@ -176,7 +176,7 @@ export const ui: Record<string, Dict> = {
 
   // ZonePopover
   zonePriority: { pl: "Obszar priorytetowy", en: "Priority area", uk: "Пріоритетна зона", it: "Area prioritaria", fr: "Zone prioritaire", de: "Prioritärer Bereich", es: "Área prioritaria", id: "Area prioritas" },
-  zoneStandard: { pl: "Standardowa uwaga", en: "Standard attention", uk: "Стандартна увага", it: "Attenzione standard", fr: "Attention standard", de: "Standardbehandlung", es: "Atención estándar", id: "Perhatian standar" },
+  zoneStandard: { pl: "Domyślnie", en: "Default", uk: "За замовчуванням", it: "Predefinito", fr: "Par défaut", de: "Standard", es: "Predeterminado", id: "Default" },
   close: { pl: "Zamknij", en: "Close", uk: "Закрити", it: "Chiudi", fr: "Fermer", de: "Schließen", es: "Cerrar", id: "Tutup" },
   notes: { pl: "Uwagi", en: "Notes", uk: "Нотатки", it: "Note", fr: "Remarques", de: "Hinweise", es: "Notas", id: "Catatan" },
   zoneNotePlaceholder: { pl: "np. blizna, wrażliwa skóra…", en: "e.g. scar, sensitive skin…", uk: "напр. шрам, чутлива шкіра…", it: "es. cicatrice, pelle sensibile…", fr: "ex. cicatrice, peau sensible…", de: "z. B. Narbe, empfindliche Haut…", es: "p. ej. cicatriz, piel sensible…", id: "mis. bekas luka, kulit sensitif…" },
