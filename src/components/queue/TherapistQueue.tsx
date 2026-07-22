@@ -12,6 +12,7 @@ import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
 import { DashboardShell } from "../DashboardShell";
 import { IntakePanel, type IntakePanelView } from "../IntakePanel";
+import { CompleteIntakeModal } from "./CompleteIntakeModal";
 
 interface LocationLite {
   id: string;
@@ -52,6 +53,9 @@ export function TherapistQueue() {
   const [locationId, setLocationId] = useState<string>("");
   const [intakes, setIntakes] = useState<IntakeRow[]>([]);
   const [selected, setSelected] = useState<IntakeRow | null>(null);
+  // A QR self-check-in ("incomplete") being filled in by reception — separate
+  // from `selected` because it opens an editor, not the read-only IntakePanel.
+  const [completing, setCompleting] = useState<IntakeRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"active" | "archive">("active");
@@ -237,7 +241,9 @@ export function TherapistQueue() {
                     key={row.id}
                     row={row}
                     lang={lang}
-                    onOpen={() => setSelected(row)}
+                    onOpen={() =>
+                      row.status === "incomplete" ? setCompleting(row) : setSelected(row)
+                    }
                     onToggleDone={() =>
                       setStatus(row, row.status === "done" ? "submitted" : "done")
                     }
@@ -246,6 +252,17 @@ export function TherapistQueue() {
               </ul>
             )}
           </>
+        )}
+
+        {completing && (
+          <CompleteIntakeModal
+            row={completing}
+            onClose={() => setCompleting(null)}
+            onSaved={(updated) => {
+              setIntakes((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+              setCompleting(null);
+            }}
+          />
         )}
     </DashboardShell>
   );
@@ -263,8 +280,9 @@ function IntakeRowCard({
   onToggleDone: () => void;
 }) {
   const partySize: PartySize = row.party_size === 2 ? 2 : 1;
+  const incomplete = row.status === "incomplete";
   const first = row.treatment_selections?.[0];
-  const treatmentName = first ? pickName(first.nameI18n, lang) : "—";
+  const treatmentName = first?.treatmentId ? pickName(first.nameI18n, lang) : "—";
   // Assigned therapist names (deduped — a couple often shares one therapist).
   const therapistNames = [
     ...new Set((row.therapists ?? []).flatMap((tp) => (tp ? [tp.name] : []))),
@@ -280,14 +298,22 @@ function IntakeRowCard({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-base font-semibold text-charcoal">
-            {guestDisplayName(row.guest_names ?? [], partySize)}
+            {guestDisplayName(row.guest_names ?? [], partySize, lang)}
           </span>
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${
-              done ? "bg-sage-tint text-sage-dark" : "bg-clay-tint text-clay-dark"
+              done
+                ? "bg-sage-tint text-sage-dark"
+                : incomplete
+                  ? "bg-rose-tint text-rose-dark"
+                  : "bg-clay-tint text-clay-dark"
             }`}
           >
-            {done ? t("queueStatusDone", lang) : t("queueStatusSubmitted", lang)}
+            {done
+              ? t("queueStatusDone", lang)
+              : incomplete
+                ? t("checkinIncompleteBadge", lang)
+                : t("queueStatusSubmitted", lang)}
           </span>
         </div>
         <div className="mt-0.5 truncate text-sm text-slate-light">
@@ -297,15 +323,17 @@ function IntakeRowCard({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggleDone}
-          className="text-sm font-medium text-sage-dark hover:underline"
-        >
-          {done ? t("queueReopen", lang) : t("queueMarkDone", lang)}
-        </button>
+        {!incomplete && (
+          <button
+            type="button"
+            onClick={onToggleDone}
+            className="text-sm font-medium text-sage-dark hover:underline"
+          >
+            {done ? t("queueReopen", lang) : t("queueMarkDone", lang)}
+          </button>
+        )}
         <Button variant="secondary" onClick={onOpen}>
-          {t("queueOpen", lang)}
+          {incomplete ? t("completeIntakeTitle", lang) : t("queueOpen", lang)}
         </Button>
       </div>
     </li>

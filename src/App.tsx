@@ -26,6 +26,7 @@ import { StaffManagement } from "./components/staff/StaffManagement";
 import { KioskManagement } from "./components/manage/KioskManagement";
 import { SurveyReport } from "./components/manage/SurveyReport";
 import { DesignLab } from "./components/designlab/DesignLab";
+import { CheckinPage } from "./components/checkin/CheckinPage";
 
 // Device-pairing gate for the kiosk route. An unpaired tablet gets the
 // activation screen; a paired one runs on the location its token resolves to.
@@ -109,6 +110,10 @@ function App() {
               </DeviceProvider>
             }
           />
+          {/* QR self-check-in — reached by the GUEST'S OWN phone after scanning
+              the code the kiosk shows. Anonymous, no device/auth provider: its
+              only credential is the short-lived `c` code in the URL. */}
+          <Route path="/checkin" element={<CheckinPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/welcome" element={<AcceptInvite />} />
           <Route path="/admin" element={<PlatformAdminDashboard />} />

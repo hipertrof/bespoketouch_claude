@@ -26,6 +26,10 @@ export interface TreatmentSnapshot {
   price: number | null;
 }
 
+// status is free text, no DB constraint. Known values: "submitted" (normal
+// kiosk handoff), "done" (archived, Article-9-scrubbed by 0018), and
+// "incomplete" (QR self-check-in — api/_checkinCore.ts — missing guest name /
+// therapist / treatment until reception fills them in via completeIntake).
 export interface IntakeRow {
   id: string;
   location_id: string;
@@ -135,5 +139,31 @@ export async function fetchIntakes(locationId: string): Promise<IntakeRow[]> {
 
 export async function updateIntakeStatus(id: string, status: string): Promise<void> {
   const { error } = await supabase.from("intakes").update({ status }).eq("id", id);
+  if (error) throw error;
+}
+
+// Turns a QR self-check-in ("incomplete") into a normal visit: reception
+// supplies the pieces the guest's phone couldn't — name, therapist, treatment
+// — and the row flips to "submitted" so it renders exactly like a kiosk
+// handoff from then on. Direct client write (not a serverless endpoint): RLS's
+// intakes_update_auth (has_location_access + can_view_all_intakes, migration
+// 0017) already permits any owner/manager/front-desk to update the row.
+export async function completeIntake(
+  id: string,
+  fields: {
+    guestNames: string[];
+    treatmentSelections: TreatmentSnapshot[];
+    therapists: (TherapistAssignment | null)[];
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .from("intakes")
+    .update({
+      guest_names: fields.guestNames,
+      treatment_selections: fields.treatmentSelections,
+      therapists: fields.therapists,
+      status: "submitted",
+    })
+    .eq("id", id);
   if (error) throw error;
 }

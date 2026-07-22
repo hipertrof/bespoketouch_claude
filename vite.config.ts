@@ -8,6 +8,7 @@ import { deviceProxyPlugin } from './vite-plugins/device-proxy.js'
 import { pairingProxyPlugin } from './vite-plugins/pairing-proxy.js'
 import { intakeProxyPlugin } from './vite-plugins/intake-proxy.js'
 import { surveyProxyPlugin } from './vite-plugins/survey-proxy.js'
+import { checkinProxyPlugin } from './vite-plugins/checkin-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -52,6 +53,11 @@ export default defineConfig(({ command, mode }) => {
       surveyProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      }),
+      checkinProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+        hashSecret: env.GUEST_HASH_SECRET ?? "",
       }),
     ],
   }

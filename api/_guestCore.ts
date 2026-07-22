@@ -321,7 +321,11 @@ export function phoneHash(phone: string, accountId: string, secret: string): str
 // rejected the request if consent !== true — this function has no consent
 // awareness of its own, so never call it from a path that skips that check.
 // Returns null only if the payload isn't an object at all.
-function sanitizePreferences(input: unknown): StoredPreferencesV1 | null {
+//
+// Exported for api/_checkinCore.ts: the QR check-in save path edits an
+// EXISTING (already-consented) profile and needs the same structural
+// whitelist without re-running guestCore's own consent-gated saveGuest.
+export function sanitizePreferences(input: unknown): StoredPreferencesV1 | null {
   const rec = asRecord(input);
   if (!rec) return null;
 

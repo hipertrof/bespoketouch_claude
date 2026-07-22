@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, ClipboardCheck, HeartHandshake, Search, Sparkles, Trash2, UserRound, Users } from "lucide-react";
+import { ArrowRight, Check, ClipboardCheck, HeartHandshake, QrCode, Search, Sparkles, Trash2, UserRound, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -12,6 +12,7 @@ import {
 import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
 import { Toggle } from "../Toggle";
+import { CheckinQrModal } from "./CheckinQrModal";
 import type { BodyGender, PartySize } from "../../types";
 
 const partySizeOptions: { value: PartySize; labelKey: string }[] = [
@@ -231,6 +232,11 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
   const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "failed">("idle");
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgotten, setForgotten] = useState(false);
+  // The QR alternative: the receptionist hands the guest their own phone
+  // instead of asking for the number aloud. Independent of the lookup status
+  // above — a scanned check-in lands as a fresh "incomplete" intake in /queue
+  // rather than prefilling this session, so there's nothing to reconcile here.
+  const [showQr, setShowQr] = useState(false);
 
   const phoneValid = crm.phone.replace(/\D/g, "").length >= 8;
 
@@ -313,7 +319,20 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
           <Search size={15} />
           {status === "looking" ? t("guestLooking", lang) : t("guestLookup", lang)}
         </button>
+        {/* Alternative to speaking the number aloud: the guest scans this on
+            their own phone and types it themselves (api/_checkinCore.ts). */}
+        <button
+          type="button"
+          onClick={() => setShowQr(true)}
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-sand bg-white px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40"
+        >
+          <QrCode size={15} />
+          {t("checkinShowQr", lang)}
+        </button>
       </div>
+      {showQr && (
+        <CheckinQrModal deviceToken={deviceToken} lang={lang} onClose={() => setShowQr(false)} />
+      )}
       {status === "found" && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-sage-dark">
           <Check size={14} strokeWidth={3} />
