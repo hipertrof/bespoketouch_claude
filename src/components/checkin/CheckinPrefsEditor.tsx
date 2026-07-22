@@ -193,18 +193,21 @@ export function CheckinPrefsEditor({
           {zoneDefinitions.map((zone) => {
             const mark = value.zones?.[zone.id] ?? "standard";
             return (
-              <li
-                key={zone.id}
-                className="flex flex-col gap-2 rounded-xl border border-sand bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <span className="text-sm font-medium text-charcoal">{tZone(zone.id, lang)}</span>
-                <div className="inline-flex self-start rounded-full border border-sand bg-oatmeal/40 p-1 sm:self-auto">
+              <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">
+                <span className="mb-2 block text-sm font-medium text-charcoal">
+                  {tZone(zone.id, lang)}
+                </span>
+                {/* Grid, not a single-row pill: the "Nie masować (strefa
+                    wykluczona)" label is too long to fit three across on a
+                    phone without wrapping — a fixed-width row overflowed the
+                    card and got clipped by the viewport edge. */}
+                <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-sand bg-oatmeal/40 p-1">
                   {zoneMarkOrder.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
                       onClick={() => setZone(zone.id, opt.value)}
-                      className={`min-h-9 rounded-full px-3 text-xs font-semibold transition-all duration-300 ${
+                      className={`min-h-11 rounded-lg px-1.5 text-center text-[11px] font-semibold leading-tight transition-all duration-300 ${
                         mark === opt.value
                           ? "bg-clay text-white shadow-soft"
                           : "text-slate hover:bg-white"
