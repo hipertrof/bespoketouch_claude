@@ -164,7 +164,15 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   const row = rows[0];
   if (!row) return { status: 200, json: { found: false } };
 
-  return { status: 200, json: { found: true, preferences: row.preferences ?? null } };
+  // Strip free-text health notes before returning to this anonymous, phone-
+  // facing caller: the editor never renders them, and the code is only a bearer
+  // credential, so whoever holds it must not receive Art. 9 data in the payload.
+  const prefs = asRecord(row.preferences);
+  if (prefs) {
+    delete prefs.zoneNotes;
+    delete prefs.generalNote;
+  }
+  return { status: 200, json: { found: true, preferences: prefs ?? null } };
 }
 
 // ---------------------------------------------------------------------------
@@ -176,13 +184,26 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   const phone = normalizePhone(body.phone);
   if (!phone) return { status: 400, json: { error: "Invalid phone number." } };
 
-  const preferences = sanitizePreferences(body.preferences);
-  if (!preferences) return { status: 400, json: { error: "Invalid preferences payload." } };
+  const sanitized = sanitizePreferences(body.preferences);
+  if (!sanitized) return { status: 400, json: { error: "Invalid preferences payload." } };
+
+  // This path is anonymous (code-authed) and has NO consent gate — consent
+  // capture is kiosk-only. sanitizePreferences passes zoneNotes/generalNote
+  // (free-text GDPR Art. 9 health data) straight through because it assumes the
+  // caller already enforced consent; this path never did. Drop any the client
+  // sent so a phone can never ORIGINATE health notes on a profile. Existing,
+  // kiosk-consented notes are carried forward from the stored profile below.
+  delete sanitized.zoneNotes;
+  delete sanitized.generalNote;
+  const preferences = sanitized;
 
   const base = env.url.replace(/\/$/, "");
   const svc = svcHeaders(env);
 
-  const resolved = await resolveCode(body.code, base, svc, { bumpLookup: false });
+  // bumpLookup: true — a "save" also reveals whether a phone matches a profile
+  // (found vs. found:false), so it must count against the per-code lookup cap;
+  // otherwise it is an uncapped phone-probing oracle that "lookup" is not.
+  const resolved = await resolveCode(body.code, base, svc, { bumpLookup: true });
   if (!resolved.ok) return resolved.result;
   const { id: codeId, locationId } = resolved;
 
@@ -209,7 +230,8 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   // it never surfaces zoneNotes/generalNote (free-text, GDPR Art. 9 health
   // data). `preferences` is a full-column replace on write, so without this
   // merge a phone-only edit would silently erase any notes the guest gave
-  // consent for at the kiosk. Carry them forward untouched.
+  // consent for at the kiosk. Carry the existing consented notes forward
+  // untouched (client-supplied notes were already stripped above).
   const existingPrefs = asRecord((existingRow as JsonRecord).preferences);
   const merged: StoredPreferencesV1 = {
     ...preferences,
@@ -230,6 +252,29 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     return { status: 500, json: { error: `Could not update preferences (${patch.status}).` } };
   }
 
+  // Single-use: atomically claim the code (set used_at only while it is still
+  // null) BEFORE creating the intake. If a concurrent save/retry already claimed
+  // it, PostgREST returns zero rows and we stop here — so a double-tap can never
+  // create two intakes for one visit. This replaces the old fire-and-forget
+  // "mark used" that reported ok:true even when the write silently failed.
+  const claim = await fetch(
+    `${base}/rest/v1/checkin_codes?id=eq.${codeId}&used_at=is.null`,
+    {
+      method: "PATCH",
+      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ used_at: now }),
+    },
+  );
+  if (!claim.ok) {
+    return { status: 500, json: { error: `Could not complete the check-in (${claim.status}).` } };
+  }
+  if (asArray(await claim.json().catch(() => null)).length === 0) {
+    return { status: 410, json: { error: "This code has already been used." } };
+  }
+
+  // Handoff carries the merged prefs (structured fields from the phone + the
+  // guest's existing consented notes), matching what the profile now holds — and
+  // never the raw client payload, whose notes were stripped.
   const intakeInsert = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
     headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
@@ -239,7 +284,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       party_size: 1,
       guest_names: [""],
       treatment_selections: [{ treatmentId: null, minutes: null, nameI18n: null, price: null }],
-      personalizations: [toPersonalizationState(preferences)],
+      personalizations: [toPersonalizationState(merged)],
       therapists: [null],
       expires_at: new Date(Date.now() + INTAKE_RETENTION_HOURS * 3600 * 1000).toISOString(),
     }),
@@ -247,13 +292,6 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   if (!intakeInsert.ok) {
     return { status: 502, json: { error: `Could not create the check-in (${intakeInsert.status}).` } };
   }
-
-  // Single-use: dead the moment a save succeeds, regardless of remaining TTL.
-  await fetch(`${base}/rest/v1/checkin_codes?id=eq.${codeId}`, {
-    method: "PATCH",
-    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ used_at: now }),
-  }).catch(() => {});
 
   return { status: 200, json: { ok: true } };
 }
