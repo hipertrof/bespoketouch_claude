@@ -175,7 +175,7 @@ export const ui: Record<string, Dict> = {
   next: { pl: "Dalej", en: "Next", uk: "Далі", it: "Avanti", fr: "Suivant", de: "Weiter", es: "Siguiente", id: "Lanjut" },
 
   // ZonePopover
-  zonePriority: { pl: "Obszar priorytetowy", en: "Priority area", uk: "Пріоритетна зона", it: "Area prioritaria", fr: "Zone prioritaire", de: "Prioritärer Bereich", es: "Área prioritaria", id: "Area prioritas" },
+  zonePriority: { pl: "Priorytet", en: "Priority", uk: "Пріоритет", it: "Priorità", fr: "Priorité", de: "Priorität", es: "Prioridad", id: "Prioritas" },
   zoneStandard: { pl: "Domyślnie", en: "Default", uk: "За замовчуванням", it: "Predefinito", fr: "Par défaut", de: "Standard", es: "Predeterminado", id: "Default" },
   close: { pl: "Zamknij", en: "Close", uk: "Закрити", it: "Chiudi", fr: "Fermer", de: "Schließen", es: "Cerrar", id: "Tutup" },
   notes: { pl: "Uwagi", en: "Notes", uk: "Нотатки", it: "Note", fr: "Remarques", de: "Hinweise", es: "Notas", id: "Catatan" },
