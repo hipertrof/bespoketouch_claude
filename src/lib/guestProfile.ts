@@ -14,17 +14,26 @@ import { oils } from "../data/oils";
 // the (de)serializer between a guest's in-session PersonalizationState and the
 // versioned `preferences` blob stored under an HMAC-of-phone pseudonym.
 //
-// STRUCTURED comfort settings only. Free-text notes (zoneNotes, generalNote)
-// are health-adjacent (GDPR Article 9) and are NEVER serialized here — they
-// stay on the ephemeral intake. The server re-validates the same whitelist.
+// v1 blobs: structured comfort settings + zone marks only.
+// v2 blobs: ALSO include the free-text notes (zoneNotes, generalNote). Those
+// are health-adjacent (GDPR Article 9) and are only ever serialized when the
+// guest gave EXPLICIT consent to that — the kiosk's consent copy
+// (consentSaveBody, i18n) discloses this in plain language before the toggle
+// can be switched on. Without consent, notes stay on the ephemeral intake and
+// are scrubbed there at done/24h (see supabase/migrations/0018). The server
+// re-validates the same whitelist + length caps (api/_guestCore.ts).
 // ---------------------------------------------------------------------------
 
-export const STORED_PREFS_VERSION = 1;
+export const STORED_PREFS_VERSION = 2;
 
-// Mirror of api/_guestCore.ts StoredPreferencesV1 (the TS type is canonical
-// here; the server validates structurally).
+// Mirrors of api/_guestCore.ts's StoredPreferences shape (the TS type here is
+// canonical; the server validates structurally). v1 rows saved before this
+// change lack zoneNotes/generalNote — applyStoredPreferences below reads both.
+const MAX_ZONE_NOTE_CHARS = 500;
+const MAX_GENERAL_NOTE_CHARS = 1000;
+
 export interface StoredPreferences {
-  v: 1;
+  v: 1 | 2;
   pressure?: PressureLevel;
   oilId?: string;
   tableWarming?: boolean;
@@ -32,18 +41,23 @@ export interface StoredPreferences {
   music?: MusicPreference;
   communication?: CommunicationStyle;
   zones?: Partial<Record<ZoneId, Extract<ZoneMark, "priority" | "blocked">>>;
+  zoneNotes?: Partial<Record<ZoneId, string>>;
+  generalNote?: string;
 }
 
-// Serialize the reusable subset of a guest's personalization. Reads ONLY the
-// structured preference fields + priority/blocked zone marks; never touches
-// zoneNotes or generalNote.
+// Serialize the reusable subset of a guest's personalization: structured
+// preference fields, priority/blocked zone marks, and — this is the v2
+// change — the free-text notes, length-capped. Only reachable once the guest
+// has given explicit v2 consent (saveGuestProfile is gated on consent===true
+// server-side); toStoredPreferences itself has no consent branch because a
+// prefilled-but-withdrawn guest never reaches save (see HandoffStep).
 export function toStoredPreferences(p: PersonalizationState): StoredPreferences {
   const zones: Partial<Record<ZoneId, "priority" | "blocked">> = {};
   for (const [zoneId, mark] of Object.entries(p.zones)) {
     if (mark === "priority" || mark === "blocked") zones[zoneId as ZoneId] = mark;
   }
   const stored: StoredPreferences = {
-    v: 1,
+    v: 2,
     pressure: p.preferences.pressure,
     oilId: p.preferences.oilId,
     tableWarming: p.preferences.tableWarming,
@@ -52,6 +66,17 @@ export function toStoredPreferences(p: PersonalizationState): StoredPreferences 
     communication: p.preferences.communication,
   };
   if (Object.keys(zones).length > 0) stored.zones = zones;
+
+  const zoneNotes: Partial<Record<ZoneId, string>> = {};
+  for (const [zoneId, note] of Object.entries(p.zoneNotes)) {
+    const trimmed = note?.trim();
+    if (trimmed) zoneNotes[zoneId as ZoneId] = trimmed.slice(0, MAX_ZONE_NOTE_CHARS);
+  }
+  if (Object.keys(zoneNotes).length > 0) stored.zoneNotes = zoneNotes;
+
+  const generalNote = p.generalNote?.trim();
+  if (generalNote) stored.generalNote = generalNote.slice(0, MAX_GENERAL_NOTE_CHARS);
+
   return stored;
 }
 
@@ -60,17 +85,20 @@ const MUSIC_VALUES: MusicPreference[] = ["nature", "ambient", "silence"];
 const COMMUNICATION_VALUES: CommunicationStyle[] = ["silent", "guided"];
 const PILLOW_VALUES: Preferences["headrestPillow"][] = ["Standardowa", "Ultra-miękka"];
 
-// Validate a stored blob back into a partial preference set + zone marks to
-// merge into a guest. Unknown/removed enum values and unknown oils/zones are
-// dropped so a corrupt or version-mismatched row can't poison state. Returns
-// null for anything that isn't a v1 blob.
+// Validate a stored blob back into a partial preference set + zone marks (+
+// notes, on a v2 blob) to merge into a guest. Unknown/removed enum values and
+// unknown oils/zones are dropped so a corrupt or version-mismatched row can't
+// poison state. Returns null for anything that isn't a v1 or v2 blob. A v1
+// row (saved before notes existed) simply yields no zoneNotes/generalNote.
 export function applyStoredPreferences(stored: unknown): {
   preferences: Partial<Preferences>;
   zones: Partial<Record<ZoneId, ZoneMark>>;
+  zoneNotes: Partial<Record<ZoneId, string>>;
+  generalNote?: string;
 } | null {
   if (!stored || typeof stored !== "object") return null;
   const s = stored as Record<string, unknown>;
-  if (s.v !== 1) return null;
+  if (s.v !== 1 && s.v !== 2) return null;
 
   const preferences: Partial<Preferences> = {};
   if (isOneOf(s.pressure, PRESSURE_VALUES)) preferences.pressure = s.pressure;
@@ -88,7 +116,21 @@ export function applyStoredPreferences(stored: unknown): {
       if (mark === "priority" || mark === "blocked") zones[zoneId as ZoneId] = mark;
     }
   }
-  return { preferences, zones };
+
+  const zoneNotes: Partial<Record<ZoneId, string>> = {};
+  if (s.zoneNotes && typeof s.zoneNotes === "object") {
+    for (const [zoneId, note] of Object.entries(s.zoneNotes as Record<string, unknown>)) {
+      if (typeof note === "string" && note.trim().length > 0) {
+        zoneNotes[zoneId as ZoneId] = note.slice(0, MAX_ZONE_NOTE_CHARS);
+      }
+    }
+  }
+  const generalNote =
+    typeof s.generalNote === "string" && s.generalNote.trim().length > 0
+      ? s.generalNote.slice(0, MAX_GENERAL_NOTE_CHARS)
+      : undefined;
+
+  return { preferences, zones, zoneNotes, generalNote };
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: T[]): value is T {

@@ -158,12 +158,15 @@ export type GuestAction =
   | { type: "SET_GUEST_PHONE"; index: number; phone: string }
   | { type: "SET_GUEST_CONSENT"; index: number; consent: boolean }
   // A returning-guest lookup hit: merge the stored preferences + zone marks
-  // into guests[index] and flag it prefilled.
+  // (and, under v2 consent, the free-text notes) into guests[index] and flag
+  // it prefilled.
   | {
       type: "APPLY_GUEST_PROFILE";
       index: number;
       preferences: Partial<Preferences>;
       zones: Partial<Record<ZoneId, ZoneMark>>;
+      zoneNotes?: Partial<Record<ZoneId, string>>;
+      generalNote?: string;
     }
   // Reset one guest to defaults (used after a right-to-erasure "forget").
   | { type: "CLEAR_GUEST_PROFILE"; index: number }

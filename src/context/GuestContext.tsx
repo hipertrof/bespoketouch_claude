@@ -151,14 +151,17 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       return { ...state, guestCrm };
     }
     case "APPLY_GUEST_PROFILE": {
-      // Merge the looked-up preferences + zone marks into this guest, keeping
-      // any fields the stored profile didn't carry.
+      // Merge the looked-up preferences + zone marks (and, under v2 consent,
+      // the free-text notes) into this guest, keeping any fields the stored
+      // profile didn't carry.
       const guests = state.guests.map((g, i) =>
         i === action.index
           ? {
               ...g,
               preferences: { ...g.preferences, ...action.preferences },
               zones: { ...g.zones, ...action.zones },
+              zoneNotes: { ...g.zoneNotes, ...action.zoneNotes },
+              generalNote: action.generalNote ?? g.generalNote,
             }
           : g,
       );

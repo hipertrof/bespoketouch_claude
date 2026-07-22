@@ -254,6 +254,8 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         index,
         preferences: applied.preferences,
         zones: applied.zones,
+        zoneNotes: applied.zoneNotes,
+        generalNote: applied.generalNote,
       });
       setStatus("found");
     } catch (err) {

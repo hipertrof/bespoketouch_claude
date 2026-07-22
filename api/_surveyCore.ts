@@ -199,8 +199,31 @@ async function submitSurvey(
     return { status: 502, json: { error: `Could not save the survey (${res.status}).` } };
   }
 
+  // Auto-done: the first survey for this visit closes it out on /queue, same
+  // as the manual "mark as done" button (which the guest's answers make
+  // redundant). Best-effort and fire-once-per-request — a failed PATCH must
+  // not fail the survey the guest just gave; front-desk can still mark it done
+  // by hand. `status=eq.submitted` makes this a no-op if already done (e.g.
+  // the second guest of a couple, or a manual click that beat this request).
+  if (linkedIntake && intakeId) {
+    markIntakeDone(base, svc, intakeId, locationId);
+  }
+
   touchLastSeen(env, tokenId);
   return { status: 200, json: { ok: true } };
+}
+
+function markIntakeDone(base: string, svc: Headers, intakeId: string, locationId: string): void {
+  fetch(
+    `${base}/rest/v1/intakes?id=eq.${intakeId}&location_id=eq.${locationId}&status=eq.submitted`,
+    {
+      method: "PATCH",
+      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "done" }),
+    },
+  ).catch((err) => {
+    console.error("[survey] auto-done PATCH failed:", err);
+  });
 }
 
 // ---------------------------------------------------------------------------

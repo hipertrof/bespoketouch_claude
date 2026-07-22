@@ -28,11 +28,19 @@ import { createHmac } from "node:crypto";
 import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceAuth.js";
 
 // Bump when the consent wording (consentSaveBody in i18n) materially changes.
-export const CONSENT_VERSION = "2026-07-v1";
+// v2: the copy now explicitly discloses that marked body areas AND the notes
+// written about them are stored as health information (GDPR Art. 9) — the
+// wording change that unlocked storing zoneNotes/generalNote below.
+export const CONSENT_VERSION = "2026-07-v2";
 
 // ~18 months. A lookup that finds a row older than this deletes it and reports
 // a miss (lazy GDPR storage-limitation; a sweep job comes later).
 const EXPIRY_DAYS = 540;
+
+// Free-text notes are capped rather than unbounded — same spirit as the
+// intake's MAX_BODY_BYTES and the survey's MAX_NOTE_CHARS.
+const MAX_ZONE_NOTE_CHARS = 500;
+const MAX_GENERAL_NOTE_CHARS = 1000;
 
 export interface GuestEnv extends DeviceAuthEnv {
   hashSecret: string;
@@ -43,12 +51,19 @@ export interface GuestResult {
   json: unknown;
 }
 
-// The versioned shape stored in guest_profiles.preferences. Structured comfort
-// settings ONLY — no free text, no health data. Kept in sync with the client's
-// StoredPreferences (src/lib/guestProfile.ts); the server re-validates it
-// structurally on save so a buggy/hostile client can't smuggle extra keys in.
+// The versioned shape stored in guest_profiles.preferences. Kept in sync with
+// the client's StoredPreferences (src/lib/guestProfile.ts); the server
+// re-validates it structurally on save so a buggy/hostile client can't
+// smuggle extra keys in.
+//
+// v1 = structured comfort settings + zone marks only.
+// v2 = ALSO zoneNotes/generalNote — free-text health information (GDPR
+// Art. 9). Storable only because `save` requires consent===true and the
+// kiosk's v2 consent copy explicitly names this as health data before the
+// guest can opt in (see CONSENT_VERSION above). Every save from here on
+// writes v2; v1 rows already in the table simply lack these two keys.
 export interface StoredPreferencesV1 {
-  v: 1;
+  v: 1 | 2;
   pressure?: string;
   oilId?: string;
   tableWarming?: boolean;
@@ -56,8 +71,11 @@ export interface StoredPreferencesV1 {
   music?: string;
   communication?: string;
   // Body-zone marks, "priority" | "blocked" only ("standard" is the default and
-  // is never stored). Zone free-text notes are deliberately excluded.
+  // is never stored).
   zones?: Record<string, "priority" | "blocked">;
+  // v2 only. Per-zone free text and the overall note, guest-authored.
+  zoneNotes?: Record<string, string>;
+  generalNote?: string;
 }
 
 interface GuestBody {
@@ -297,14 +315,17 @@ export function phoneHash(phone: string, accountId: string, secret: string): str
 }
 
 // Server-side whitelist. Drops any key not in the known set and any zone value
-// other than priority/blocked — structural defense so free text or health data
-// can never reach the table even if a client sends it. Returns null only if the
-// payload isn't an object at all.
+// other than priority/blocked — structural defense so nothing beyond the
+// agreed v2 shape can reach the table even if a client sends it. zoneNotes/
+// generalNote are accepted here ONLY because the caller (saveGuest) already
+// rejected the request if consent !== true — this function has no consent
+// awareness of its own, so never call it from a path that skips that check.
+// Returns null only if the payload isn't an object at all.
 function sanitizePreferences(input: unknown): StoredPreferencesV1 | null {
   const rec = asRecord(input);
   if (!rec) return null;
 
-  const out: StoredPreferencesV1 = { v: 1 };
+  const out: StoredPreferencesV1 = { v: 2 };
   if (typeof rec.pressure === "string") out.pressure = rec.pressure;
   if (typeof rec.oilId === "string") out.oilId = rec.oilId;
   if (typeof rec.tableWarming === "boolean") out.tableWarming = rec.tableWarming;
@@ -320,6 +341,21 @@ function sanitizePreferences(input: unknown): StoredPreferencesV1 | null {
     }
     if (Object.keys(zones).length > 0) out.zones = zones;
   }
+
+  const zoneNotesRec = asRecord(rec.zoneNotes);
+  if (zoneNotesRec) {
+    const zoneNotes: Record<string, string> = {};
+    for (const [zoneId, note] of Object.entries(zoneNotesRec)) {
+      if (typeof note === "string" && note.trim().length > 0) {
+        zoneNotes[zoneId] = note.trim().slice(0, MAX_ZONE_NOTE_CHARS);
+      }
+    }
+    if (Object.keys(zoneNotes).length > 0) out.zoneNotes = zoneNotes;
+  }
+  if (typeof rec.generalNote === "string" && rec.generalNote.trim().length > 0) {
+    out.generalNote = rec.generalNote.trim().slice(0, MAX_GENERAL_NOTE_CHARS);
+  }
+
   return out;
 }
 

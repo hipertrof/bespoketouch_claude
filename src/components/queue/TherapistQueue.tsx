@@ -54,6 +54,7 @@ export function TherapistQueue() {
   const [selected, setSelected] = useState<IntakeRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"active" | "archive">("active");
 
   useEffect(() => {
     if (!loading && !user) navigate("/login");
@@ -121,9 +122,14 @@ export function TherapistQueue() {
   // the therapist has no business seeing.
   const selectedLoc = locations.find((l) => l.id === locationId) ?? null;
   const seeAll = selectedLoc ? canViewAllIntakes(selectedLoc) : false;
-  const visibleIntakes = seeAll
+  const scopedIntakes = seeAll
     ? intakes
     : intakes.filter((row) => (row.therapists ?? []).some((tp) => tp?.id === user.id));
+  // Archive = done (manually, by survey auto-done, or the 24h cron sweep — all
+  // three land here the same way). Active is everything still outstanding.
+  const visibleIntakes = scopedIntakes.filter((row) =>
+    tab === "archive" ? row.status === "done" : row.status !== "done",
+  );
 
   // Detail view: the selected intake, rendered by the shared panel.
   if (selected) {
@@ -193,6 +199,23 @@ export function TherapistQueue() {
                 <RefreshCw size={16} />
                 {t("queueRefresh", lang)}
               </Button>
+            </div>
+
+            <div className="mb-6 flex gap-2">
+              {(["active", "archive"] as const).map((tabKey) => (
+                <button
+                  key={tabKey}
+                  type="button"
+                  onClick={() => setTab(tabKey)}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    tab === tabKey
+                      ? "bg-sage-dark text-cream"
+                      : "bg-white text-slate-light shadow-soft hover:text-charcoal"
+                  }`}
+                >
+                  {tabKey === "active" ? t("queueTabActive", lang) : t("queueTabArchive", lang)}
+                </button>
+              ))}
             </div>
 
             {visibleIntakes.length === 0 ? (
