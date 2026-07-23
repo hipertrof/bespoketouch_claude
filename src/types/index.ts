@@ -31,6 +31,9 @@ export type ZoneId =
   | "thighsFront"
   | "shins"
   | "feetTop"
+  | "wrists"
+  | "hips"
+  | "knees"
   // Tył
   | "nape"
   | "shoulders"
@@ -41,7 +44,9 @@ export type ZoneId =
   | "glutes"
   | "thighsBack"
   | "calves"
-  | "feetSole";
+  | "feetSole"
+  | "elbows"
+  | "ankles";
 
 export type PressureLevel = "Lekki" | "Średni" | "Mocny" | "Głęboki";
 

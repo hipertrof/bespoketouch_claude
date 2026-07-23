@@ -13,6 +13,9 @@ export const zoneDefinitions: ZoneDefinition[] = [
   { id: "thighsFront", label: "Uda", view: "front" },
   { id: "shins", label: "Podudzia / Golenie", view: "front" },
   { id: "feetTop", label: "Stopy (wierzch)", view: "front" },
+  { id: "wrists", label: "Nadgarstki", view: "front" },
+  { id: "hips", label: "Biodra", view: "front" },
+  { id: "knees", label: "Kolana", view: "front" },
   // Tył
   { id: "nape", label: "Kark", view: "back" },
   { id: "shoulders", label: "Barki", view: "back" },
@@ -24,6 +27,8 @@ export const zoneDefinitions: ZoneDefinition[] = [
   { id: "thighsBack", label: "Uda (tył)", view: "back" },
   { id: "calves", label: "Łydki", view: "back" },
   { id: "feetSole", label: "Stopy (podeszwa)", view: "back" },
+  { id: "elbows", label: "Łokcie", view: "back" },
+  { id: "ankles", label: "Kostki", view: "back" },
 ];
 
 export const zoneLabel = (id: string): string =>

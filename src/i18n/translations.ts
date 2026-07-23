@@ -429,6 +429,9 @@ export const zoneTranslations: Record<ZoneId, Dict> = {
   thighsFront: { pl: "Uda", en: "Thigh (front)", uk: "Стегно (перед)", it: "Coscia (davanti)", fr: "Cuisse (avant)", de: "Oberschenkel (vorne)", es: "Muslo (frente)", id: "Paha (depan)" },
   shins: { pl: "Podudzia / Golenie", en: "Shin", uk: "Гомілка (перед)", it: "Stinco", fr: "Tibia", de: "Schienbein", es: "Espinilla", id: "Tulang kering" },
   feetTop: { pl: "Stopy (wierzch)", en: "Foot (top)", uk: "Стопа (верх)", it: "Piede (dorso)", fr: "Pied (dessus)", de: "Fuß (oben)", es: "Pie (empeine)", id: "Kaki (punggung)" },
+  wrists: { pl: "Nadgarstki", en: "Wrists", uk: "Зап'ястя", it: "Polsi", fr: "Poignets", de: "Handgelenke", es: "Muñecas", id: "Pergelangan tangan" },
+  hips: { pl: "Biodra", en: "Hips", uk: "Клуби", it: "Fianchi", fr: "Hanches", de: "Hüften", es: "Caderas", id: "Pinggul" },
+  knees: { pl: "Kolana", en: "Knees", uk: "Коліна", it: "Ginocchia", fr: "Genoux", de: "Knie", es: "Rodillas", id: "Lutut" },
   nape: { pl: "Kark", en: "Nape", uk: "Потилиця", it: "Nuca", fr: "Nuque", de: "Nacken", es: "Nuca", id: "Tengkuk" },
   shoulders: { pl: "Barki", en: "Shoulders", uk: "Плечі", it: "Spalle", fr: "Épaules", de: "Schultern", es: "Hombros", id: "Bahu" },
   upperBack: { pl: "Górny grzbiet", en: "Upper back", uk: "Верх спини", it: "Schiena alta", fr: "Haut du dos", de: "Oberer Rücken", es: "Espalda alta", id: "Punggung atas" },
@@ -439,6 +442,8 @@ export const zoneTranslations: Record<ZoneId, Dict> = {
   thighsBack: { pl: "Uda (tył)", en: "Thigh (back)", uk: "Стегно (зад)", it: "Coscia (dietro)", fr: "Cuisse (arrière)", de: "Oberschenkel (hinten)", es: "Muslo (espalda)", id: "Paha (belakang)" },
   calves: { pl: "Łydki", en: "Calf", uk: "Литка", it: "Polpaccio", fr: "Mollet", de: "Wade", es: "Pantorrilla", id: "Betis" },
   feetSole: { pl: "Stopy (podeszwa)", en: "Foot (sole)", uk: "Стопа (підошва)", it: "Pianta del piede", fr: "Plante du pied", de: "Fußsohle", es: "Planta del pie", id: "Telapak kaki" },
+  elbows: { pl: "Łokcie", en: "Elbows", uk: "Лікті", it: "Gomiti", fr: "Coudes", de: "Ellbogen", es: "Codos", id: "Siku" },
+  ankles: { pl: "Kostki", en: "Ankles", uk: "Щиколотки", it: "Caviglie", fr: "Chevilles", de: "Knöchel", es: "Tobillos", id: "Pergelangan kaki" },
 };
 
 export const massageNameTranslations: Record<string, Dict> = {
