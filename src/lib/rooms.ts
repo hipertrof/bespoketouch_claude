@@ -51,15 +51,24 @@ export async function updateRoom(
   id: string,
   patch: Partial<Pick<RoomRow, "name" | "active">>,
 ): Promise<void> {
-  const { error } = await supabase.from("rooms").update(patch).eq("id", id);
+  const { data, error } = await supabase.from("rooms").update(patch).eq("id", id).select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error("Room update matched no row (RLS or a stale id).");
 }
 
 // Hard delete — intakes keep a name snapshot (room_assignments), so a deleted
 // room doesn't erase history; beds cascade via the FK.
+//
+// RLS on a DELETE just filters rows out of the affected set — a row a policy
+// blocks isn't an error, it's simply not deleted, and Postgrest reports the
+// same success either way. Without checking that a row actually came back,
+// a blocked delete looks identical to a real one: no error, nothing removed,
+// silent no-op. Requesting `.select("id")` and checking the result is what
+// turns that into a real, surfaced error.
 export async function deleteRoom(id: string): Promise<void> {
-  const { error } = await supabase.from("rooms").delete().eq("id", id);
+  const { data, error } = await supabase.from("rooms").delete().eq("id", id).select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error("Room delete matched no row (RLS or a stale id).");
 }
 
 export async function createBed(roomId: string, name: string, sort: number): Promise<void> {
@@ -71,11 +80,15 @@ export async function updateBed(
   id: string,
   patch: Partial<Pick<BedRow, "name" | "active">>,
 ): Promise<void> {
-  const { error } = await supabase.from("beds").update(patch).eq("id", id);
+  const { data, error } = await supabase.from("beds").update(patch).eq("id", id).select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error("Bed update matched no row (RLS or a stale id).");
 }
 
+// See deleteRoom's comment: without .select() + a length check, an
+// RLS-blocked delete silently "succeeds" with nothing actually removed.
 export async function deleteBed(id: string): Promise<void> {
-  const { error } = await supabase.from("beds").delete().eq("id", id);
+  const { data, error } = await supabase.from("beds").delete().eq("id", id).select("id");
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error("Bed delete matched no row (RLS or a stale id).");
 }

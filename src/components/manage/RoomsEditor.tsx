@@ -161,7 +161,7 @@ function RoomCard({ room, onChanged }: { room: RoomWithBeds; onChanged: () => vo
 
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-sand pt-4">
         {room.beds.map((bed) => (
-          <BedChip key={bed.id} bed={bed} onChanged={onChanged} />
+          <BedChip key={bed.id} bed={bed} onChanged={onChanged} onError={setError} />
         ))}
         <button
           type="button"
@@ -180,9 +180,11 @@ function RoomCard({ room, onChanged }: { room: RoomWithBeds; onChanged: () => vo
 function BedChip({
   bed,
   onChanged,
+  onError,
 }: {
   bed: RoomWithBeds["beds"][number];
   onChanged: () => void;
+  onError: (message: string) => void;
 }) {
   const { lang } = useLanguage();
   const [name, setName] = useState(bed.name);
@@ -200,6 +202,8 @@ function BedChip({
     try {
       await updateBed(bed.id, { name: trimmed });
       onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
       setEditing(false);
@@ -211,7 +215,8 @@ function BedChip({
     try {
       await deleteBed(bed.id);
       onChanged();
-    } catch {
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
   }
