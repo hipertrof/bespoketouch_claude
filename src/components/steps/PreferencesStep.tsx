@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
 import { useGuest, useActiveGuest } from "../../context/GuestContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -55,6 +55,31 @@ export function PreferencesStep() {
     value: (typeof preferences)[K],
   ) => dispatch({ type: "SET_PREFERENCE", key, value });
 
+  // Only the levels the selected massage offers; no treatment picked (or the
+  // demo/no-restriction case) shows all four.
+  const treatmentId = state.treatmentSelections[activeIndex]?.treatmentId;
+  const treatment = state.catalog.find((m) => m.id === treatmentId);
+  const allowedPressures = pressureOrder.filter(
+    (p) => !treatment?.pressureLevels || treatment.pressureLevels.includes(p),
+  );
+
+  // Snap an out-of-range pressure (stale default, CRM prefill, or a massage
+  // switch after the fact) to the closest still-offered level; ties resolve
+  // toward the softer option (lower index in pressureOrder).
+  useEffect(() => {
+    if (allowedPressures.includes(preferences.pressure)) return;
+    const currentRank = pressureOrder.indexOf(preferences.pressure);
+    const nearest = allowedPressures.reduce((best, level) => {
+      const rank = pressureOrder.indexOf(level);
+      const bestRank = pressureOrder.indexOf(best);
+      const dist = Math.abs(rank - currentRank);
+      const bestDist = Math.abs(bestRank - currentRank);
+      return dist < bestDist || (dist === bestDist && rank < bestRank) ? level : best;
+    }, allowedPressures[0]);
+    if (nearest) setPref("pressure", nearest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedPressures.join(","), preferences.pressure]);
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       {isCouple && (
@@ -76,7 +101,7 @@ export function PreferencesStep() {
           description={t("pressureCardDesc", lang)}
         >
           <SegmentedControl
-            options={pressureOrder.map((v) => ({ value: v, label: pressureTranslations[v][lang] }))}
+            options={allowedPressures.map((v) => ({ value: v, label: pressureTranslations[v][lang] }))}
             value={preferences.pressure}
             onChange={(v) => setPref("pressure", v)}
           />

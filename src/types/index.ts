@@ -71,6 +71,8 @@ export interface MassageType {
   name: string;
   description: string;
   durations: MassageDuration[];
+  // Subset of PressureLevel this service offers; undefined = all four.
+  pressureLevels?: PressureLevel[];
 }
 
 export interface OilOption {

@@ -1,4 +1,4 @@
-import type { LangCode, MassageType } from "../types";
+import type { LangCode, MassageType, PressureLevel } from "../types";
 import { supabase } from "./supabase";
 import { massageTypes } from "../data/massageTypes";
 import { massageNameTranslations } from "../i18n/translations";
@@ -14,6 +14,8 @@ export interface ServiceRow {
   description_i18n: Record<string, string>;
   active: boolean;
   sort: number;
+  // Subset of PressureLevel this service offers; null = all four.
+  pressure_levels: string[] | null;
 }
 
 export interface ServiceDurationRow {
@@ -28,6 +30,19 @@ export interface ServiceDurationRow {
 // A service joined with its durations — the CMS edit unit.
 export interface CatalogService extends ServiceRow {
   durations: ServiceDurationRow[];
+}
+
+export const ALL_PRESSURE_LEVELS: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
+
+// Normalizes a raw pressure_levels column value into the app's PressureLevel[]
+// shape. Filters out unknown strings (defends against a hand-edited row); an
+// empty or full result collapses to undefined, so "all offered" always has
+// one canonical representation downstream.
+function normalizePressureLevels(raw: string[] | null): PressureLevel[] | undefined {
+  const valid = (raw ?? []).filter((v): v is PressureLevel =>
+    (ALL_PRESSURE_LEVELS as string[]).includes(v),
+  );
+  return valid.length > 0 && valid.length < ALL_PRESSURE_LEVELS.length ? valid : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +87,7 @@ export function bundledCatalog(): CatalogService[] {
     description_i18n: {},
     active: true,
     sort: i,
+    pressure_levels: m.pressureLevels ?? null,
     durations: m.durations.map((d) => ({
       id: `${m.id}-${d.minutes}`,
       service_id: m.id,
@@ -97,6 +113,7 @@ export function toMassageTypes(catalog: CatalogService[], lang: LangCode): Massa
       id: s.id,
       name: pick(s.name_i18n),
       description: pick(s.description_i18n),
+      pressureLevels: normalizePressureLevels(s.pressure_levels),
       durations: s.durations.map((d) => ({
         minutes: d.minutes,
         priceSingle: d.price_single ?? undefined,

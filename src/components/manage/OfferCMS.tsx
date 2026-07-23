@@ -5,13 +5,14 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
 import {
+  ALL_PRESSURE_LEVELS,
   fetchCatalog,
   importDefaultCatalog,
   type CatalogService,
   type ServiceDurationRow,
 } from "../../lib/catalog";
-import { languages, t, tf } from "../../i18n/translations";
-import type { LangCode } from "../../types";
+import { languages, pressureTranslations, t, tf } from "../../i18n/translations";
+import type { LangCode, PressureLevel } from "../../types";
 import { Button } from "../Button";
 import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
@@ -212,6 +213,10 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   const [names, setNames] = useState<Record<string, string>>(() => ({ ...service.name_i18n }));
   const [showTranslations, setShowTranslations] = useState(false);
   const [active, setActive] = useState(service.active);
+  // null (all offered) seeds every level checked.
+  const [pressureLevels, setPressureLevels] = useState<PressureLevel[]>(
+    () => (service.pressure_levels as PressureLevel[] | null) ?? ALL_PRESSURE_LEVELS,
+  );
   const [durations, setDurations] = useState<ServiceDurationRow[]>(service.durations);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,7 +246,14 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
     }
     const { error: sErr } = await supabase
       .from("services")
-      .update({ name_i18n: nameI18n, active })
+      .update({
+        name_i18n: nameI18n,
+        active,
+        // All four checked stores as null, keeping the "all offered" row
+        // canonical (matches bundled/imported services, which insert null).
+        pressure_levels:
+          pressureLevels.length === ALL_PRESSURE_LEVELS.length ? null : pressureLevels,
+      })
       .eq("id", service.id);
     if (sErr) {
       setBusy(false);
@@ -292,6 +304,16 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
 
   function updateDuration(index: number, patch: Partial<ServiceDurationRow>) {
     setDurations((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+  }
+
+  function togglePressureLevel(level: PressureLevel) {
+    setPressureLevels((prev) => {
+      const isOn = prev.includes(level);
+      // Unchecking the last remaining level is a no-op — a service must offer
+      // at least one (the DB CHECK constraint is the backstop for this).
+      if (isOn && prev.length === 1) return prev;
+      return isOn ? prev.filter((l) => l !== level) : [...prev, level];
+    });
   }
 
   // Collapsed-header summary: the durations and the lowest single price, so a
@@ -372,6 +394,33 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
           </div>
         </div>
       )}
+
+      <div className="mt-5">
+        <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-light">
+          {t("cmsPressureLevels", lang)}
+        </div>
+        <p className="mb-2 text-xs text-slate-light">{t("cmsPressureLevelsHint", lang)}</p>
+        <div className="flex flex-wrap gap-2">
+          {ALL_PRESSURE_LEVELS.map((level) => {
+            const isOn = pressureLevels.includes(level);
+            return (
+              <button
+                key={level}
+                type="button"
+                onClick={() => togglePressureLevel(level)}
+                aria-pressed={isOn}
+                className={`min-h-9 rounded-full border px-3.5 text-sm font-medium transition-colors ${
+                  isOn
+                    ? "border-sage bg-sage-tint text-sage-dark"
+                    : "border-sand bg-cream text-slate-light"
+                }`}
+              >
+                {pressureTranslations[level][lang]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="mt-5">
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-light">
