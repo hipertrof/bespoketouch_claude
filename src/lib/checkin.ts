@@ -38,28 +38,52 @@ export async function mintCheckinCode(deviceToken: string): Promise<CheckinCode>
   return { code: json.code, expiresAt: json.expiresAt };
 }
 
-// Returns the guest's stored preferences for this code's location, or null if
-// no profile exists for the phone. Throws on an invalid/expired/used code (the
-// caller should show a link-level error, not a "no profile" message).
-export async function checkinLookup(code: string, phone: string): Promise<StoredPreferences | null> {
+// Returns the guest's stored preferences (plus whether the profile carries a
+// standing health consent for the zone marks + free-text notes) for this
+// code's location, or null if no profile exists for the phone. Throws on an
+// invalid/expired/used code (the caller should show a link-level error, not a
+// "no profile" message).
+export async function checkinLookup(
+  code: string,
+  phone: string,
+): Promise<{ preferences: StoredPreferences; healthConsent: boolean } | null> {
   const json = (await postCheckin({ action: "lookup", code, phone })) as {
     found?: boolean;
     preferences?: unknown;
+    healthConsent?: boolean;
   };
-  if (!json.found) return null;
-  return (json.preferences as StoredPreferences) ?? null;
+  if (!json.found || !json.preferences) return null;
+  return {
+    preferences: json.preferences as StoredPreferences,
+    healthConsent: json.healthConsent === true,
+  };
 }
 
 // Updates the existing profile's preferences and drops an incomplete intake
-// into the location's queue. Returns false if no profile exists for this phone
-// (save never creates one) — the caller should show the same "no profile"
-// state as a lookup miss. Consumes the code: a repeat call will fail.
+// into the location's queue. `consent` (base) and `healthConsent` mirror the
+// kiosk's two-toggle model — this path now captures consent itself rather
+// than only editing an already-consented profile. consent===false erases the
+// whole stored profile (withdrawal), same as the kiosk's HandoffStep forget
+// branch; healthConsent gates whether zone marks + free-text notes in
+// `preferences` are stored at all. Returns false if no profile exists for
+// this phone (save never creates one) — the caller should show the same
+// "no profile" state as a lookup miss. Consumes the code: a repeat call will
+// fail.
 export async function checkinSave(
   code: string,
   phone: string,
   preferences: StoredPreferences,
+  consent: boolean,
+  healthConsent: boolean,
 ): Promise<boolean> {
-  const json = (await postCheckin({ action: "save", code, phone, preferences })) as {
+  const json = (await postCheckin({
+    action: "save",
+    code,
+    phone,
+    consent,
+    healthConsent,
+    preferences,
+  })) as {
     ok?: boolean;
     found?: boolean;
   };

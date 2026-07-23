@@ -48,7 +48,9 @@ export function PreferencesStep() {
   const { preferences } = activeGuest;
   const isCouple = state.partySize === 2;
   const activeIndex = state.activeGuestIndex;
-  const crm = state.guestCrm[activeIndex] ?? { phone: "", consent: false, prefilled: false };
+  const crm =
+    state.guestCrm[activeIndex] ??
+    { phone: "", consent: false, healthConsent: false, prefilled: false };
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -259,6 +261,36 @@ export function PreferencesStep() {
             <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
               {t("consentWithdrawHint", lang)}
             </p>
+          )}
+          {crm.consent && (
+            <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-charcoal">
+                    {t("consentHealthTitle", lang)}
+                  </div>
+                  <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+                    {t("consentHealthBody", lang)}
+                  </p>
+                </div>
+                <Toggle
+                  checked={crm.healthConsent}
+                  onChange={(v) =>
+                    dispatch({
+                      type: "SET_GUEST_HEALTH_CONSENT",
+                      index: activeIndex,
+                      healthConsent: v,
+                    })
+                  }
+                  label={t("consentHealthTitle", lang)}
+                />
+              </div>
+              {crm.prefilled && !crm.healthConsent && (
+                <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+                  {t("consentHealthWithdrawHint", lang)}
+                </p>
+              )}
+            </div>
           )}
           {crm.consent && !crm.prefilled && (
             <div className="mt-4">

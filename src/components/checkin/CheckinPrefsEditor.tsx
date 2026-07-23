@@ -26,10 +26,12 @@ import type {
 
 // Standalone editor over the check-in flow's StoredPreferences shape (no
 // GuestContext — this page runs on the guest's own phone, outside the kiosk's
-// device-gated providers). Deliberately mirrors PreferencesStep's option lists
-// and BodyMapStep's zone marks, but edits only the comfort-only subset the
-// user agreed the phone flow may touch: zoneNotes/generalNote (free-text
-// health data) are never shown or editable here.
+// device-gated providers). Deliberately mirrors PreferencesStep's option
+// lists. The comfort fields are always shown; the body-zone marks and
+// zoneNotes/generalNote (GDPR Art. 9 health data — a mark alone counts, even
+// with no text) are shown and editable ONLY when the `healthConsent` prop is
+// true — CheckinPage now captures both consents itself before rendering this
+// with a granted health consent, mirroring the kiosk's PreferencesStep.
 
 const pressureOrder: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
 
@@ -56,10 +58,12 @@ export function CheckinPrefsEditor({
   value,
   onChange,
   lang,
+  healthConsent,
 }: {
   value: StoredPreferences;
   onChange: (next: StoredPreferences) => void;
   lang: LangCode;
+  healthConsent: boolean;
 }) {
   const setField = <K extends keyof StoredPreferences>(key: K, v: StoredPreferences[K]) =>
     onChange({ ...value, [key]: v });
@@ -69,6 +73,13 @@ export function CheckinPrefsEditor({
     if (mark === "standard") delete zones[zoneId];
     else zones[zoneId] = mark;
     onChange({ ...value, zones });
+  };
+
+  const setZoneNote = (zoneId: ZoneId, note: string) => {
+    const zoneNotes = { ...(value.zoneNotes ?? {}) };
+    if (note.trim()) zoneNotes[zoneId] = note;
+    else delete zoneNotes[zoneId];
+    onChange({ ...value, zoneNotes });
   };
 
   return (
@@ -188,40 +199,61 @@ export function CheckinPrefsEditor({
         </div>
       </PreferenceCard>
 
-      <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>
-        <ul className="flex flex-col gap-2">
-          {zoneDefinitions.map((zone) => {
-            const mark = value.zones?.[zone.id] ?? "standard";
-            return (
-              <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">
-                <span className="mb-2 block text-sm font-medium text-charcoal">
-                  {tZone(zone.id, lang)}
-                </span>
-                {/* Grid, not a single-row pill: the "Nie masować (strefa
-                    wykluczona)" label is too long to fit three across on a
-                    phone without wrapping — a fixed-width row overflowed the
-                    card and got clipped by the viewport edge. */}
-                <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-sand bg-oatmeal/40 p-1">
-                  {zoneMarkOrder.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setZone(zone.id, opt.value)}
-                      className={`min-h-11 rounded-lg px-1.5 text-center text-[11px] font-semibold leading-tight transition-all duration-300 ${
-                        mark === opt.value
-                          ? "bg-clay text-white shadow-soft"
-                          : "text-slate hover:bg-white"
-                      }`}
-                    >
-                      {t(opt.key, lang)}
-                    </button>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </PreferenceCard>
+      {healthConsent && (
+        <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>
+          <ul className="flex flex-col gap-2">
+            {zoneDefinitions.map((zone) => {
+              const mark = value.zones?.[zone.id] ?? "standard";
+              return (
+                <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">
+                  <span className="mb-2 block text-sm font-medium text-charcoal">
+                    {tZone(zone.id, lang)}
+                  </span>
+                  {/* Grid, not a single-row pill: the "Nie masować (strefa
+                      wykluczona)" label is too long to fit three across on a
+                      phone without wrapping — a fixed-width row overflowed the
+                      card and got clipped by the viewport edge. */}
+                  <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-sand bg-oatmeal/40 p-1">
+                    {zoneMarkOrder.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setZone(zone.id, opt.value)}
+                        className={`min-h-11 rounded-lg px-1.5 text-center text-[11px] font-semibold leading-tight transition-all duration-300 ${
+                          mark === opt.value
+                            ? "bg-clay text-white shadow-soft"
+                            : "text-slate hover:bg-white"
+                        }`}
+                      >
+                        {t(opt.key, lang)}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={value.zoneNotes?.[zone.id] ?? ""}
+                    onChange={(e) => setZoneNote(zone.id, e.target.value)}
+                    placeholder={t("zoneNotePlaceholder", lang)}
+                    rows={2}
+                    className="mt-2 w-full resize-none rounded-lg border border-sand bg-(--color-cream)/50 px-3 py-2 text-xs leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </PreferenceCard>
+      )}
+
+      {healthConsent && (
+        <PreferenceCard title={t("generalNoteLabel", lang)} description={t("generalNoteHelp", lang)}>
+          <textarea
+            value={value.generalNote ?? ""}
+            onChange={(e) => setField("generalNote", e.target.value)}
+            placeholder={t("generalNotePlaceholder", lang)}
+            rows={4}
+            className="w-full resize-none rounded-xl border border-sand bg-(--color-cream)/50 px-3.5 py-2.5 text-sm leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
+          />
+        </PreferenceCard>
+      )}
     </div>
   );
 }

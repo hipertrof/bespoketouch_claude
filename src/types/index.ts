@@ -133,11 +133,15 @@ export interface RoomAssignment {
 
 // Opt-in guest CRM (preference memory) state for one guest. The phone is held
 // in memory only — never persisted client-side; the server stores just an
-// HMAC of it. `consent` defaults false and is always required before a save
-// (a prefill alone never writes). `prefilled` = a lookup hit was applied.
+// HMAC of it. `consent` (base: structured comfort prefs only) defaults false
+// and is always required before a save (a prefill alone never writes).
+// `healthConsent` is the second, nested opt-in for the Art. 9 body-zone marks
+// + free-text notes — meaningless (and forced false) without base consent.
+// `prefilled` = a lookup hit was applied.
 export interface GuestCrmState {
   phone: string;
   consent: boolean;
+  healthConsent: boolean;
   prefilled: boolean;
 }
 
@@ -180,9 +184,10 @@ export type GuestAction =
   | { type: "SET_GUEST_ROOM"; index: number; room: RoomAssignment | null }
   | { type: "SET_GUEST_PHONE"; index: number; phone: string }
   | { type: "SET_GUEST_CONSENT"; index: number; consent: boolean }
-  // A returning-guest lookup hit: merge the stored preferences + zone marks
-  // (and, under v2 consent, the free-text notes) into guests[index] and flag
-  // it prefilled.
+  | { type: "SET_GUEST_HEALTH_CONSENT"; index: number; healthConsent: boolean }
+  // A returning-guest lookup hit: merge the stored preferences into
+  // guests[index] (and, under a standing health consent, the zone marks +
+  // free-text notes) and flag it prefilled.
   | {
       type: "APPLY_GUEST_PROFILE";
       index: number;
@@ -190,6 +195,7 @@ export type GuestAction =
       zones: Partial<Record<ZoneId, ZoneMark>>;
       zoneNotes?: Partial<Record<ZoneId, string>>;
       generalNote?: string;
+      healthConsent: boolean;
     }
   // Reset one guest to defaults (used after a right-to-erasure "forget").
   | { type: "CLEAR_GUEST_PROFILE"; index: number }

@@ -18,11 +18,21 @@
 //     number is fine, a code turned into a phone-probing oracle is not;
 //   * a successful save kills the code (used_at) — one guest, one check-in.
 //
-// "save" deliberately can only UPDATE an existing profile — it never creates
-// one. Consent capture (the explicit opt-in + its versioned copy) stays a
-// kiosk-only act; a phone that was never asked for consent shouldn't be able
-// to originate a new consented record. A guest with no saved profile gets a
-// clean "not found" and does the normal kiosk flow instead.
+// "save" deliberately can only UPDATE (or, on base-consent withdrawal, DELETE)
+// an existing profile — it never creates one. A guest with no saved profile
+// gets a clean "not found" and does the normal kiosk flow instead.
+//
+// Since the 0024 consent split this path DOES capture consent, with the same
+// two toggles as the kiosk: base consent (structured comfort prefs) and health
+// consent (Art. 9 zone marks + free-text notes). The code+phone pair is
+// accepted as sufficient to grant/withdraw consent for an EXISTING profile.
+// save semantics mirror the kiosk's HandoffStep:
+//   * consent !== true            → the profile row is DELETED (withdrawal);
+//   * consent + healthConsent     → full save incl. zones/notes, both stamps;
+//   * consent, no healthConsent   → zones/notes stripped + health stamps
+//     nulled, so stored health data is erased.
+// lookup likewise returns zones/notes ONLY when the row carries a standing
+// health consent.
 //
 // The intake this creates is deliberately incomplete (no name, no therapist,
 // no treatment) — reception fills those in from /queue. status:"incomplete"
@@ -31,7 +41,14 @@
 
 import { randomBytes, createHash } from "node:crypto";
 import { checkDeviceConfig, resolveDevice, svcHeaders, type DeviceAuthEnv } from "./_deviceAuth.js";
-import { normalizePhone, phoneHash, resolveAccount, sanitizePreferences } from "./_guestCore.js";
+import {
+  BASE_CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
+  normalizePhone,
+  phoneHash,
+  resolveAccount,
+  sanitizePreferences,
+} from "./_guestCore.js";
 import type { StoredPreferencesV1 } from "./_guestCore.js";
 
 export interface CheckinEnv extends DeviceAuthEnv {
@@ -48,6 +65,8 @@ interface CheckinBody {
   deviceToken?: string;
   code?: string;
   phone?: string;
+  consent?: boolean;
+  healthConsent?: boolean;
   preferences?: unknown;
 }
 
@@ -156,7 +175,7 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   const rows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=preferences&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=preferences,health_consent_version&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
     ).body,
@@ -164,20 +183,24 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   const row = rows[0];
   if (!row) return { status: 200, json: { found: false } };
 
-  // Strip free-text health notes before returning to this anonymous, phone-
-  // facing caller: the editor never renders them, and the code is only a bearer
-  // credential, so whoever holds it must not receive Art. 9 data in the payload.
+  // A saved profile IS standing base consent — that's what let the profile
+  // exist to look up. Health consent is separate: the row's own stamp decides
+  // whether Art. 9 health data (marked zones + free-text notes) is included at
+  // all. Without it, strip all three defensively (they shouldn't be present).
+  const healthConsent = typeof row.health_consent_version === "string";
   const prefs = asRecord(row.preferences);
-  if (prefs) {
+  if (prefs && !healthConsent) {
+    delete prefs.zones;
     delete prefs.zoneNotes;
     delete prefs.generalNote;
   }
-  return { status: 200, json: { found: true, preferences: prefs ?? null } };
+  return { status: 200, json: { found: true, preferences: prefs ?? null, healthConsent } };
 }
 
 // ---------------------------------------------------------------------------
-// save — anonymous, code-authed. Only ever UPDATES an existing profile and
-// creates the incomplete intake; never originates a new consented record.
+// save — anonymous, code-authed. Only ever UPDATEs (or, on base-consent
+// withdrawal, DELETEs) an existing profile and creates the incomplete intake;
+// never originates a new consented record.
 // ---------------------------------------------------------------------------
 
 async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinResult> {
@@ -187,14 +210,21 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   const sanitized = sanitizePreferences(body.preferences);
   if (!sanitized) return { status: 400, json: { error: "Invalid preferences payload." } };
 
-  // This path is anonymous (code-authed) and has NO consent gate — consent
-  // capture is kiosk-only. sanitizePreferences passes zoneNotes/generalNote
-  // (free-text GDPR Art. 9 health data) straight through because it assumes the
-  // caller already enforced consent; this path never did. Drop any the client
-  // sent so a phone can never ORIGINATE health notes on a profile. Existing,
-  // kiosk-consented notes are carried forward from the stored profile below.
-  delete sanitized.zoneNotes;
-  delete sanitized.generalNote;
+  // Same two-consent model as the kiosk (GuestContext's SET_GUEST_CONSENT):
+  // health consent is nested under base and forced off without it.
+  const consent = body.consent === true;
+  const healthConsent = consent && body.healthConsent === true;
+
+  // sanitizePreferences passes zones/zoneNotes/generalNote (GDPR Art. 9 health
+  // data — a zone mark alone counts, even with no text) straight through
+  // because it has no consent awareness of its own. Strip them here whenever
+  // health consent isn't standing, so a phone can never store health data
+  // without it.
+  if (!healthConsent) {
+    delete sanitized.zones;
+    delete sanitized.zoneNotes;
+    delete sanitized.generalNote;
+  }
   const preferences = sanitized;
 
   const base = env.url.replace(/\/$/, "");
@@ -214,42 +244,52 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   const existing = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=id,preferences&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
     ).body,
   );
-  const existingRow = existing[0];
-  if (!existingRow) {
+  if (!existing[0]) {
     // No profile to edit — save never creates one. The guest does the normal
     // kiosk flow instead.
     return { status: 200, json: { found: false } };
   }
 
-  // The check-in editor only ever shows/edits the structured comfort fields —
-  // it never surfaces zoneNotes/generalNote (free-text, GDPR Art. 9 health
-  // data). `preferences` is a full-column replace on write, so without this
-  // merge a phone-only edit would silently erase any notes the guest gave
-  // consent for at the kiosk. Carry the existing consented notes forward
-  // untouched (client-supplied notes were already stripped above).
-  const existingPrefs = asRecord((existingRow as JsonRecord).preferences);
-  const merged: StoredPreferencesV1 = {
-    ...preferences,
-    ...(existingPrefs?.zoneNotes ? { zoneNotes: existingPrefs.zoneNotes as Record<string, string> } : {}),
-    ...(typeof existingPrefs?.generalNote === "string" ? { generalNote: existingPrefs.generalNote } : {}),
-  };
-
   const now = new Date().toISOString();
-  const patch = await fetch(
-    `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
-    {
-      method: "PATCH",
-      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ preferences: merged, last_seen_at: now }),
-    },
-  );
-  if (!patch.ok) {
-    return { status: 500, json: { error: `Could not update preferences (${patch.status}).` } };
+
+  if (!consent) {
+    // Base consent withdrawn: as effective as the grant (GDPR Art. 7(3)),
+    // mirroring the kiosk's HandoffStep forget branch — erase the whole
+    // profile rather than leaving a consent-less row behind. Today's visit
+    // still gets checked in below, from the comfort fields alone (health data
+    // was already stripped above since healthConsent can't stand without
+    // base).
+    const del = await fetch(
+      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+      { method: "DELETE", headers: { ...svc, Prefer: "return=minimal" } },
+    );
+    if (!del.ok) {
+      return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
+    }
+  } else {
+    const patch = await fetch(
+      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+      {
+        method: "PATCH",
+        headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({
+          preferences,
+          consent_version: BASE_CONSENT_VERSION,
+          consent_at: now,
+          health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
+          health_consent_at: healthConsent ? now : null,
+          last_seen_at: now,
+        }),
+      },
+    );
+    if (!patch.ok) {
+      return { status: 500, json: { error: `Could not update preferences (${patch.status}).` } };
+    }
   }
 
   // Single-use: atomically claim the code (set used_at only while it is still
@@ -272,9 +312,8 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     return { status: 410, json: { error: "This code has already been used." } };
   }
 
-  // Handoff carries the merged prefs (structured fields from the phone + the
-  // guest's existing consented notes), matching what the profile now holds — and
-  // never the raw client payload, whose notes were stripped.
+  // Handoff carries exactly what was just written (or, on withdrawal, the
+  // comfort-only submission) — never a raw unsanitized client payload.
   const intakeInsert = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
     headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
@@ -284,7 +323,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       party_size: 1,
       guest_names: [""],
       treatment_selections: [{ treatmentId: null, minutes: null, nameI18n: null, price: null }],
-      personalizations: [toPersonalizationState(merged)],
+      personalizations: [toPersonalizationState(preferences)],
       therapists: [null],
       expires_at: new Date(Date.now() + INTAKE_RETENTION_HOURS * 3600 * 1000).toISOString(),
     }),

@@ -36,7 +36,12 @@ function validateSelection(
 
 // Returning-guest CRM state starts empty: no phone, consent off (opt-in), not
 // prefilled. Consent is always re-collected per visit.
-const createGuestCrm = (): GuestCrmState => ({ phone: "", consent: false, prefilled: false });
+const createGuestCrm = (): GuestCrmState => ({
+  phone: "",
+  consent: false,
+  healthConsent: false,
+  prefilled: false,
+});
 
 const createPersonalization = (): PersonalizationState => ({
   bodyGender: "female",
@@ -150,15 +155,31 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       return { ...state, guestCrm };
     }
     case "SET_GUEST_CONSENT": {
+      // Health consent is nested under base consent — withdrawing the base
+      // withdraws both; it never survives on its own.
       const guestCrm = state.guestCrm.map((crm, i) =>
-        i === action.index ? { ...crm, consent: action.consent } : crm,
+        i === action.index
+          ? {
+              ...crm,
+              consent: action.consent,
+              healthConsent: action.consent ? crm.healthConsent : false,
+            }
+          : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_HEALTH_CONSENT": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index
+          ? { ...crm, healthConsent: crm.consent ? action.healthConsent : false }
+          : crm,
       );
       return { ...state, guestCrm };
     }
     case "APPLY_GUEST_PROFILE": {
-      // Merge the looked-up preferences + zone marks (and, under v2 consent,
-      // the free-text notes) into this guest, keeping any fields the stored
-      // profile didn't carry.
+      // Merge the looked-up preferences into this guest (and, under a standing
+      // health consent, the zone marks + free-text notes), keeping any fields
+      // the stored profile didn't carry.
       const guests = state.guests.map((g, i) =>
         i === action.index
           ? {
@@ -171,10 +192,14 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
           : g,
       );
       // prefilled + consent ON: the stored profile IS standing consent, and the
-      // toggle must say so. Switching it off before finishing now means
-      // withdrawal — HandoffStep erases the profile (see its forget branch).
+      // toggles must say so — health consent mirrors what the row actually
+      // carries. Switching base off before finishing now means withdrawal —
+      // HandoffStep erases the profile (see its forget branch); switching just
+      // health off makes the next save strip + erase the stored notes.
       const guestCrm = state.guestCrm.map((crm, i) =>
-        i === action.index ? { ...crm, prefilled: true, consent: true } : crm,
+        i === action.index
+          ? { ...crm, prefilled: true, consent: true, healthConsent: action.healthConsent }
+          : crm,
       );
       return { ...state, guests, guestCrm };
     }

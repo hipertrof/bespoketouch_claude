@@ -14,21 +14,26 @@ import { oils } from "../data/oils";
 // the (de)serializer between a guest's in-session PersonalizationState and the
 // versioned `preferences` blob stored under an HMAC-of-phone pseudonym.
 //
-// v1 blobs: structured comfort settings + zone marks only.
-// v2 blobs: ALSO include the free-text notes (zoneNotes, generalNote). Those
-// are health-adjacent (GDPR Article 9) and are only ever serialized when the
-// guest gave EXPLICIT consent to that — the kiosk's consent copy
-// (consentSaveBody, i18n) discloses this in plain language before the toggle
-// can be switched on. Without consent, notes stay on the ephemeral intake and
-// are scrubbed there at done/24h (see supabase/migrations/0018). The server
-// re-validates the same whitelist + length caps (api/_guestCore.ts).
+// v1 blobs: structured comfort settings only.
+// v2 blobs: MAY also include the marked body zones and free-text notes about
+// them (zones, zoneNotes, generalNote). All three are GDPR Article 9 health
+// data — a zone mark alone discloses a health-relevant area even with no text
+// attached — and, since the 0024 consent split, are gated behind a SECOND,
+// separate opt-in: base consent (consentSaveBody, i18n) covers only the
+// structured comfort prefs; health consent (consentHealthBody) covers the
+// zones and notes together. They're serialized only when the health toggle is
+// on; without it, zone marks and notes stay on the ephemeral intake and are
+// scrubbed there at done/24h (see supabase/migrations/0018). The server
+// re-validates the same whitelist + length caps and strips all three itself
+// when healthConsent isn't sent (api/_guestCore.ts).
 // ---------------------------------------------------------------------------
 
 export const STORED_PREFS_VERSION = 2;
 
 // Mirrors of api/_guestCore.ts's StoredPreferences shape (the TS type here is
 // canonical; the server validates structurally). v1 rows saved before this
-// change lack zoneNotes/generalNote — applyStoredPreferences below reads both.
+// change lack zones/zoneNotes/generalNote — applyStoredPreferences below reads
+// all three.
 const MAX_ZONE_NOTE_CHARS = 500;
 const MAX_GENERAL_NOTE_CHARS = 1000;
 
@@ -45,17 +50,18 @@ export interface StoredPreferences {
   generalNote?: string;
 }
 
-// Serialize the reusable subset of a guest's personalization: structured
-// preference fields, priority/blocked zone marks, and — this is the v2
-// change — the free-text notes, length-capped. Only reachable once the guest
-// has given explicit v2 consent (saveGuestProfile is gated on consent===true
-// server-side); toStoredPreferences itself has no consent branch because a
-// prefilled-but-withdrawn guest never reaches save (see HandoffStep).
-export function toStoredPreferences(p: PersonalizationState): StoredPreferences {
-  const zones: Partial<Record<ZoneId, "priority" | "blocked">> = {};
-  for (const [zoneId, mark] of Object.entries(p.zones)) {
-    if (mark === "priority" || mark === "blocked") zones[zoneId as ZoneId] = mark;
-  }
+// Serialize the reusable subset of a guest's personalization: the structured
+// preference fields always, and — only when includeHealthData (= health
+// consent) — the priority/blocked zone marks and free-text notes, length-
+// capped. Only reachable once the guest has given base consent
+// (saveGuestProfile is gated on consent===true server-side); a prefilled-but-
+// withdrawn guest never reaches save (see HandoffStep). The server strips
+// zones/notes again if healthConsent isn't set, so includeHealthData here is
+// belt-and-braces.
+export function toStoredPreferences(
+  p: PersonalizationState,
+  includeHealthData: boolean,
+): StoredPreferences {
   const stored: StoredPreferences = {
     v: 2,
     pressure: p.preferences.pressure,
@@ -65,17 +71,24 @@ export function toStoredPreferences(p: PersonalizationState): StoredPreferences 
     music: p.preferences.music,
     communication: p.preferences.communication,
   };
-  if (Object.keys(zones).length > 0) stored.zones = zones;
 
-  const zoneNotes: Partial<Record<ZoneId, string>> = {};
-  for (const [zoneId, note] of Object.entries(p.zoneNotes)) {
-    const trimmed = note?.trim();
-    if (trimmed) zoneNotes[zoneId as ZoneId] = trimmed.slice(0, MAX_ZONE_NOTE_CHARS);
+  if (includeHealthData) {
+    const zones: Partial<Record<ZoneId, "priority" | "blocked">> = {};
+    for (const [zoneId, mark] of Object.entries(p.zones)) {
+      if (mark === "priority" || mark === "blocked") zones[zoneId as ZoneId] = mark;
+    }
+    if (Object.keys(zones).length > 0) stored.zones = zones;
+
+    const zoneNotes: Partial<Record<ZoneId, string>> = {};
+    for (const [zoneId, note] of Object.entries(p.zoneNotes)) {
+      const trimmed = note?.trim();
+      if (trimmed) zoneNotes[zoneId as ZoneId] = trimmed.slice(0, MAX_ZONE_NOTE_CHARS);
+    }
+    if (Object.keys(zoneNotes).length > 0) stored.zoneNotes = zoneNotes;
+
+    const generalNote = p.generalNote?.trim();
+    if (generalNote) stored.generalNote = generalNote.slice(0, MAX_GENERAL_NOTE_CHARS);
   }
-  if (Object.keys(zoneNotes).length > 0) stored.zoneNotes = zoneNotes;
-
-  const generalNote = p.generalNote?.trim();
-  if (generalNote) stored.generalNote = generalNote.slice(0, MAX_GENERAL_NOTE_CHARS);
 
   return stored;
 }
@@ -85,11 +98,13 @@ const MUSIC_VALUES: MusicPreference[] = ["nature", "ambient", "silence"];
 const COMMUNICATION_VALUES: CommunicationStyle[] = ["silent", "guided"];
 const PILLOW_VALUES: Preferences["headrestPillow"][] = ["Standardowa", "Ultra-miękka"];
 
-// Validate a stored blob back into a partial preference set + zone marks (+
-// notes, on a v2 blob) to merge into a guest. Unknown/removed enum values and
-// unknown oils/zones are dropped so a corrupt or version-mismatched row can't
-// poison state. Returns null for anything that isn't a v1 or v2 blob. A v1
-// row (saved before notes existed) simply yields no zoneNotes/generalNote.
+// Validate a stored blob back into a partial preference set (+ zone marks and
+// notes, when the row carries health consent) to merge into a guest.
+// Unknown/removed enum values and unknown oils/zones are dropped so a corrupt
+// or version-mismatched row can't poison state. Returns null for anything
+// that isn't a v1 or v2 blob. A row without health consent (or a v1 row, saved
+// before zones/notes existed) simply yields no zones/zoneNotes/generalNote —
+// the server already omits them from what it returns.
 export function applyStoredPreferences(stored: unknown): {
   preferences: Partial<Preferences>;
   zones: Partial<Record<ZoneId, ZoneMark>>;
@@ -159,34 +174,43 @@ async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
   return json;
 }
 
-// Returns the stored preferences if a profile exists for this phone at the
-// kiosk's account, else null. Raw phone is sent over HTTPS and hashed
-// server-side; it is never stored.
+// Returns the stored preferences (plus whether the row carries a standing
+// health consent for the zone marks + free-text notes) if a profile exists
+// for this phone at the kiosk's account, else null. Raw phone is sent over
+// HTTPS and hashed server-side; it is never stored.
 export async function lookupGuestProfile(
   deviceToken: string,
   phone: string,
-): Promise<StoredPreferences | null> {
+): Promise<{ preferences: StoredPreferences; healthConsent: boolean } | null> {
   const json = (await postGuest({ action: "lookup", deviceToken, phone })) as {
     found?: boolean;
     preferences?: unknown;
+    healthConsent?: boolean;
   } | null;
-  if (!json?.found) return null;
-  return (json.preferences as StoredPreferences) ?? null;
+  if (!json?.found || !json.preferences) return null;
+  return {
+    preferences: json.preferences as StoredPreferences,
+    healthConsent: json.healthConsent === true,
+  };
 }
 
 // Upsert the reusable preference subset under the phone pseudonym. Requires
-// explicit consent (the server rejects consent !== true).
+// explicit base consent (the server rejects consent !== true); the Art. 9
+// zone marks + notes are sent — and stamped — only under the separate health
+// consent.
 export async function saveGuestProfile(
   deviceToken: string,
   phone: string,
   personalization: PersonalizationState,
+  healthConsent: boolean,
 ): Promise<void> {
   await postGuest({
     action: "save",
     deviceToken,
     phone,
     consent: true,
-    preferences: toStoredPreferences(personalization),
+    healthConsent,
+    preferences: toStoredPreferences(personalization, healthConsent),
   });
 }
 

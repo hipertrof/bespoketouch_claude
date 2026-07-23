@@ -65,7 +65,12 @@ export function HandoffStep() {
     const size = state.partySize;
     const ops = state.guestCrm.slice(0, size).flatMap((crm, i) => {
       if (crm.phone.replace(/\D/g, "").length < 8) return [];
-      if (crm.consent) return [saveGuestProfile(token, crm.phone, state.guests[i])];
+      if (crm.consent) {
+        // healthConsent=false saves a notes-free blob and nulls the health
+        // stamps server-side — withdrawing just the health consent erases the
+        // stored notes without losing the base profile.
+        return [saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent)];
+      }
       if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];
       return [];
     });

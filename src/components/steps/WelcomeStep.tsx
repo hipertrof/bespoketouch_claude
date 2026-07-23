@@ -297,7 +297,9 @@ function RoomBedPicker({ index, rooms }: { index: number; rooms: RoomOption[] })
 function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToken: string }) {
   const { state, dispatch } = useGuest();
   const lang = state.language;
-  const crm = state.guestCrm[index] ?? { phone: "", consent: false, prefilled: false };
+  const crm =
+    state.guestCrm[index] ??
+    { phone: "", consent: false, healthConsent: false, prefilled: false };
   const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "failed">("idle");
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgotten, setForgotten] = useState(false);
@@ -319,7 +321,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         setStatus("missing");
         return;
       }
-      const applied = applyStoredPreferences(stored);
+      const applied = applyStoredPreferences(stored.preferences);
       if (!applied) {
         setStatus("missing");
         return;
@@ -331,6 +333,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         zones: applied.zones,
         zoneNotes: applied.zoneNotes,
         generalNote: applied.generalNote,
+        healthConsent: stored.healthConsent,
       });
       setStatus("found");
     } catch (err) {

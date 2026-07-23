@@ -7,9 +7,75 @@ import type { StoredPreferences } from "../../lib/guestProfile";
 import { t } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
+import { Toggle } from "../Toggle";
 import { CheckinPrefsEditor } from "./CheckinPrefsEditor";
+import type { LangCode } from "../../types";
 
 type Stage = "phone" | "looking" | "notFound" | "editing" | "saving" | "saved" | "linkInvalid" | "error";
+
+// The two-consent card, identical in wording and nesting to the kiosk's
+// PreferencesStep — this page now captures consent itself (see
+// api/_checkinCore.ts's header comment for the trust-model change) rather
+// than only editing an already-consented profile. Unlike the kiosk there's no
+// phone field here (already entered on the previous screen) and no `prefilled`
+// concept (a profile existing at all is what got us to this screen, so the
+// withdraw hints show off the toggles' own state).
+function ConsentSection({
+  consent,
+  healthConsent,
+  onConsentChange,
+  onHealthConsentChange,
+  lang,
+}: {
+  consent: boolean;
+  healthConsent: boolean;
+  onConsentChange: (v: boolean) => void;
+  onHealthConsentChange: (v: boolean) => void;
+  lang: LangCode;
+}) {
+  return (
+    <div className="rounded-2xl border border-sand bg-white p-5 shadow-soft">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm font-semibold text-charcoal">{t("consentSaveTitle", lang)}</div>
+          <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+            {t("consentSaveBody", lang)}
+          </p>
+        </div>
+        <Toggle checked={consent} onChange={onConsentChange} label={t("consentSaveTitle", lang)} />
+      </div>
+      {!consent && (
+        <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+          {t("consentWithdrawHint", lang)}
+        </p>
+      )}
+      {consent && (
+        <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-charcoal">
+                {t("consentHealthTitle", lang)}
+              </div>
+              <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+                {t("consentHealthBody", lang)}
+              </p>
+            </div>
+            <Toggle
+              checked={healthConsent}
+              onChange={onHealthConsentChange}
+              label={t("consentHealthTitle", lang)}
+            />
+          </div>
+          {!healthConsent && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentHealthWithdrawHint", lang)}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // A code error surfaces as a fixed set of server strings (see
 // api/_checkinCore.ts's resolveCode) — never localized copy of its own, since
@@ -33,6 +99,12 @@ export function CheckinPage() {
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState<Stage>(code ? "phone" : "linkInvalid");
   const [prefs, setPrefs] = useState<StoredPreferences | null>(null);
+  // A profile existing at all IS standing base consent, so a successful
+  // lookup starts both toggles from what the row already carries — consent
+  // true, healthConsent from the lookup response. Switching base off forces
+  // health off too (mirrors GuestContext's SET_GUEST_CONSENT nesting).
+  const [consent, setConsent] = useState(true);
+  const [healthConsent, setHealthConsent] = useState(false);
 
   const phoneValid = phone.replace(/\D/g, "").length >= 8;
 
@@ -45,7 +117,9 @@ export function CheckinPage() {
         setStage("notFound");
         return;
       }
-      setPrefs(found);
+      setPrefs(found.preferences);
+      setConsent(true);
+      setHealthConsent(found.healthConsent);
       setStage("editing");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -53,11 +127,16 @@ export function CheckinPage() {
     }
   };
 
+  const handleConsentChange = (v: boolean) => {
+    setConsent(v);
+    if (!v) setHealthConsent(false);
+  };
+
   const handleSave = async () => {
     if (!code || !prefs) return;
     setStage("saving");
     try {
-      const ok = await checkinSave(code, phone, prefs);
+      const ok = await checkinSave(code, phone, prefs, consent, healthConsent);
       if (!ok) {
         setStage("notFound");
         return;
@@ -120,7 +199,14 @@ export function CheckinPage() {
               <h1 className="mb-1 font-serif text-2xl text-charcoal">{t("checkinPrefsTitle", lang)}</h1>
               <p className="text-sm leading-relaxed text-slate-light">{t("checkinPrefsIntro", lang)}</p>
             </div>
-            <CheckinPrefsEditor value={prefs} onChange={setPrefs} lang={lang} />
+            <ConsentSection
+              consent={consent}
+              healthConsent={healthConsent}
+              onConsentChange={handleConsentChange}
+              onHealthConsentChange={setHealthConsent}
+              lang={lang}
+            />
+            <CheckinPrefsEditor value={prefs} onChange={setPrefs} lang={lang} healthConsent={healthConsent} />
             <Button onClick={handleSave} disabled={stage === "saving"} className="w-full sm:w-auto sm:self-end">
               {t("checkinSave", lang)}
               <ArrowRight size={18} />
@@ -128,7 +214,15 @@ export function CheckinPage() {
           </div>
         )}
 
-        {stage === "saved" && (
+        {stage === "saved" && !consent && (
+          <StatusCard
+            title={t("checkinForgotten", lang)}
+            body={t("checkinForgottenInfo", lang)}
+            tone="success"
+          />
+        )}
+
+        {stage === "saved" && consent && (
           <StatusCard
             title={t("checkinSaved", lang)}
             body={t("checkinSavedInfo", lang)}

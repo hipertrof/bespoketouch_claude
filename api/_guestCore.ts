@@ -19,19 +19,26 @@
 // phone is limited to spas the caller has a paired kiosk in — and revoking the
 // slot cuts it off.
 //
-// Two guarantees kept from v1: `save` requires consent === true and stamps
-// consent_version/consent_at SERVER-side (the client can't forge them), and the
-// raw phone exists only in the request body (HTTPS) and is hashed immediately —
-// never persisted, never logged.
+// Guarantees: `save` requires base consent === true, stores the Art. 9 zone
+// marks and notes only under a second explicit healthConsent === true, and
+// stamps all consent versions/timestamps SERVER-side (the client can't forge
+// them). The raw phone exists only in the request body (HTTPS) and is hashed
+// immediately — never persisted, never logged.
 
 import { createHmac } from "node:crypto";
 import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceAuth.js";
 
-// Bump when the consent wording (consentSaveBody in i18n) materially changes.
-// v2: the copy now explicitly discloses that marked body areas AND the notes
-// written about them are stored as health information (GDPR Art. 9) — the
-// wording change that unlocked storing zoneNotes/generalNote below.
-export const CONSENT_VERSION = "2026-07-v2";
+// Two consents since v3 (migration 0024). Base consent gates the profile
+// existing at all (structured comfort prefs ONLY — consentSaveBody in i18n);
+// health consent additionally gates the body-zone marks AND the free-text
+// zoneNotes/generalNote (GDPR Art. 9 — a marked zone reveals health-relevant
+// info even with no text attached — consentHealthBody). Bump the matching
+// constant whenever its disclosure copy materially changes. Rows saved under
+// the single "2026-07-v2" consent (whose copy already named the marked areas
+// and notes as health data) were backfilled with health_consent_version =
+// consent_version in 0024.
+export const BASE_CONSENT_VERSION = "2026-07-v3-base";
+export const HEALTH_CONSENT_VERSION = "2026-07-v3-health";
 
 // ~18 months. A lookup that finds a row older than this deletes it and reports
 // a miss (lazy GDPR storage-limitation; a sweep job comes later).
@@ -56,12 +63,13 @@ export interface GuestResult {
 // re-validates it structurally on save so a buggy/hostile client can't
 // smuggle extra keys in.
 //
-// v1 = structured comfort settings + zone marks only.
-// v2 = ALSO zoneNotes/generalNote — free-text health information (GDPR
-// Art. 9). Storable only because `save` requires consent===true and the
-// kiosk's v2 consent copy explicitly names this as health data before the
-// guest can opt in (see CONSENT_VERSION above). Every save from here on
-// writes v2; v1 rows already in the table simply lack these two keys.
+// v1 = structured comfort settings only.
+// v2 = ALSO zones/zoneNotes/generalNote — the marked body areas and any
+// free-text about them, all GDPR Art. 9 health information (a mark alone,
+// with no text, still discloses a health-relevant area). Since the 0024
+// consent split these three keys are present ONLY when the row carries
+// health_consent_version (a separate explicit opt-in); a save without health
+// consent writes a v2 blob with all three absent.
 export interface StoredPreferencesV1 {
   v: 1 | 2;
   pressure?: string;
@@ -71,7 +79,8 @@ export interface StoredPreferencesV1 {
   music?: string;
   communication?: string;
   // Body-zone marks, "priority" | "blocked" only ("standard" is the default and
-  // is never stored).
+  // is never stored). Health data (see health_consent_version) since 0024,
+  // even though it carries no free text.
   zones?: Record<string, "priority" | "blocked">;
   // v2 only. Per-zone free text and the overall note, guest-authored.
   zoneNotes?: Record<string, string>;
@@ -83,6 +92,7 @@ interface GuestBody {
   deviceToken?: string;
   phone?: string;
   consent?: boolean;
+  healthConsent?: boolean;
   preferences?: unknown;
 }
 
@@ -130,7 +140,7 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
   const rows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=id,preferences,last_seen_at,updated_at` +
+        `${base}/rest/v1/guest_profiles?select=id,preferences,health_consent_version,last_seen_at,updated_at` +
           `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
@@ -157,8 +167,18 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
     body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
   }).catch(() => {});
 
+  // Defense in depth: without health consent the zones/notes must not exist in
+  // the blob at all (save strips them), but strip again on the way out so a
+  // row that somehow carries them without the stamp can't leak them.
+  const healthConsent = typeof row.health_consent_version === "string";
+  let preferences = row.preferences ?? null;
+  if (!healthConsent && preferences && typeof preferences === "object") {
+    const { zones: _z, zoneNotes: _zn, generalNote: _gn, ...rest } = preferences as Record<string, unknown>;
+    preferences = rest;
+  }
+
   // Return preferences only — never the hash or any identifier.
-  return { status: 200, json: { found: true, preferences: row.preferences ?? null } };
+  return { status: 200, json: { found: true, preferences, healthConsent } };
 }
 
 async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
@@ -171,6 +191,18 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
 
   const preferences = sanitizePreferences(body.preferences);
   if (!preferences) return { status: 400, json: { error: "Invalid preferences payload." } };
+
+  // Health consent is a second, separate opt-in gating the Art. 9 health data:
+  // the marked body zones AND any free-text about them. Without it, all three
+  // are stripped from the payload — and because the upsert replaces the whole
+  // preferences column and nulls the health stamps, a save with health consent
+  // withdrawn also erases previously stored zones/notes.
+  const healthConsent = body.healthConsent === true;
+  if (!healthConsent) {
+    delete preferences.zones;
+    delete preferences.zoneNotes;
+    delete preferences.generalNote;
+  }
 
   const base = env.url.replace(/\/$/, "");
   const svc = svcHeaders(env);
@@ -193,8 +225,10 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
         account_id: accountId,
         phone_hash: hash,
         preferences,
-        consent_version: CONSENT_VERSION,
+        consent_version: BASE_CONSENT_VERSION,
         consent_at: now,
+        health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
+        health_consent_at: healthConsent ? now : null,
         last_seen_at: now,
       }),
     },
@@ -316,11 +350,13 @@ export function phoneHash(phone: string, accountId: string, secret: string): str
 
 // Server-side whitelist. Drops any key not in the known set and any zone value
 // other than priority/blocked — structural defense so nothing beyond the
-// agreed v2 shape can reach the table even if a client sends it. zoneNotes/
-// generalNote are accepted here ONLY because the caller (saveGuest) already
-// rejected the request if consent !== true — this function has no consent
-// awareness of its own, so never call it from a path that skips that check.
-// Returns null only if the payload isn't an object at all.
+// agreed v2 shape can reach the table even if a client sends it. zones/
+// zoneNotes/generalNote pass through here — this function has NO consent
+// awareness of its own. The caller must enforce the health-consent gate:
+// saveGuest strips all three keys unless healthConsent === true, and
+// _checkinCore's saveByCode always strips them. Never call this from a path
+// without such a gate. Returns null only if the payload isn't an object at
+// all.
 //
 // Exported for api/_checkinCore.ts: the QR check-in save path edits an
 // EXISTING (already-consented) profile and needs the same structural
