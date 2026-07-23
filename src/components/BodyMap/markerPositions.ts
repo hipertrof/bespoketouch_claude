@@ -13,8 +13,8 @@ export const frontMarkers: MarkerPosition[] = [
   { zoneId: "decolletage", left: 50, top: 18 },
   { zoneId: "chest", left: 50, top: 25 },
   { zoneId: "abdomen", left: 50, top: 37 },
-  { zoneId: "shoulders", left: 27, top: 15 },
-  { zoneId: "shoulders", left: 73, top: 15 },
+  { zoneId: "shoulders", left: 27, top: 20 },
+  { zoneId: "shoulders", left: 73, top: 20 },
   { zoneId: "upperArmsFront", left: 16, top: 29 },
   { zoneId: "upperArmsFront", left: 84, top: 29 },
   { zoneId: "forearmsFront", left: 11, top: 43 },
@@ -36,9 +36,9 @@ export const frontMarkers: MarkerPosition[] = [
 ];
 
 export const backMarkers: MarkerPosition[] = [
-  { zoneId: "nape", left: 50, top: 11 },
-  { zoneId: "shoulders", left: 50, top: 17 },
-  { zoneId: "upperBack", left: 50, top: 22 },
+  { zoneId: "nape", left: 50, top: 14 },
+  { zoneId: "shoulders", left: 50, top: 20 },
+  { zoneId: "upperBack", left: 50, top: 25 },
   { zoneId: "lowerBack", left: 50, top: 33 },
   { zoneId: "upperArmsBack", left: 16, top: 29 },
   { zoneId: "upperArmsBack", left: 84, top: 29 },
