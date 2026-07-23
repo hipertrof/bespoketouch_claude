@@ -117,6 +117,18 @@ export interface TherapistAssignment {
   name: string;
 }
 
+// Room (+ optional bed within it) the receptionist assigned to one guest.
+// Snapshot only, like TherapistAssignment — survives a room/bed being renamed
+// or deleted later, and keeps the ids around for a future CRM join. bedId/
+// bedName are null when the room has no beds configured, or none was picked
+// yet. Null = no room assigned.
+export interface RoomAssignment {
+  roomId: string;
+  roomName: string;
+  bedId: string | null;
+  bedName: string | null;
+}
+
 // Opt-in guest CRM (preference memory) state for one guest. The phone is held
 // in memory only — never persisted client-side; the server stores just an
 // HMAC of it. `consent` defaults false and is always required before a save
@@ -137,6 +149,9 @@ export interface GuestState {
   // Index-aligned with `guests` — the therapist the receptionist assigned to
   // each person (null = none picked).
   guestTherapists: (TherapistAssignment | null)[];
+  // Index-aligned with `guests` — the room (+ bed) the receptionist assigned
+  // to each person (null = none picked). Optional: never gates canContinue.
+  guestRooms: (RoomAssignment | null)[];
   // Only meaningful when partySize === 2.
   separateTreatments: boolean;
   partySize: PartySize;
@@ -160,6 +175,7 @@ export type GuestAction =
   | { type: "SET_TREATMENT"; index: number; treatmentId: string }
   | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
   | { type: "SET_GUEST_THERAPIST"; index: number; therapist: TherapistAssignment | null }
+  | { type: "SET_GUEST_ROOM"; index: number; room: RoomAssignment | null }
   | { type: "SET_GUEST_PHONE"; index: number; phone: string }
   | { type: "SET_GUEST_CONSENT"; index: number; consent: boolean }
   // A returning-guest lookup hit: merge the stored preferences + zone marks

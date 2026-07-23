@@ -21,6 +21,7 @@ export function MasseurDashboard() {
     guestNames: state.guestNames,
     guests: state.guests,
     treatments: buildTreatmentSnapshots(state.treatmentSelections, state.partySize, catalog),
+    rooms: state.guestRooms,
   };
 
   return (

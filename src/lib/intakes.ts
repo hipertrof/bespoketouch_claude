@@ -1,6 +1,7 @@
 import type {
   PartySize,
   PersonalizationState,
+  RoomAssignment,
   TherapistAssignment,
   TreatmentSelection,
 } from "../types";
@@ -41,6 +42,9 @@ export interface IntakeRow {
   // Index-aligned with guest_names; null = no therapist assigned. Absent on
   // rows written before 0009 — treat as [].
   therapists: (TherapistAssignment | null)[] | null;
+  // Index-aligned with guest_names; null = no room assigned. Absent on rows
+  // written before 0022 — treat as [].
+  room_assignments: (RoomAssignment | null)[] | null;
   created_at: string;
   expires_at: string | null;
 }
@@ -102,6 +106,7 @@ export async function saveIntake(input: {
   treatmentSelections: TreatmentSnapshot[];
   personalizations: PersonalizationState[];
   therapists: (TherapistAssignment | null)[];
+  roomAssignments: (RoomAssignment | null)[];
 }): Promise<void> {
   const res = await fetch("/api/intake", {
     method: "POST",
@@ -113,6 +118,7 @@ export async function saveIntake(input: {
       treatmentSelections: input.treatmentSelections,
       personalizations: input.personalizations,
       therapists: input.therapists,
+      roomAssignments: input.roomAssignments,
     }),
   });
   if (!res.ok) {
@@ -154,6 +160,7 @@ export async function completeIntake(
     guestNames: string[];
     treatmentSelections: TreatmentSnapshot[];
     therapists: (TherapistAssignment | null)[];
+    roomAssignments?: (RoomAssignment | null)[];
   },
 ): Promise<void> {
   const { error } = await supabase
@@ -162,6 +169,7 @@ export async function completeIntake(
       guest_names: fields.guestNames,
       treatment_selections: fields.treatmentSelections,
       therapists: fields.therapists,
+      ...(fields.roomAssignments !== undefined ? { room_assignments: fields.roomAssignments } : {}),
       status: "submitted",
     })
     .eq("id", id);

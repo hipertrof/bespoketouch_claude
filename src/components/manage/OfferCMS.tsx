@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronDown, Hand, Plus, Trash2 } from "lucide-react";
+import { BedDouble, ChevronDown, Hand, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -16,6 +16,7 @@ import { Button } from "../Button";
 import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 import { BrandingEditor } from "./BrandingEditor";
+import { RoomsEditor } from "./RoomsEditor";
 
 interface LocationLite {
   id: string;
@@ -176,6 +177,16 @@ export function OfferCMS() {
                 </Button>
               </div>
             )}
+
+            {/* Section break, same pattern as the services heading above. */}
+            <div className="mt-10 mb-4 border-t border-sand pt-8">
+              <h2 className="flex items-center gap-2 font-serif text-xl text-charcoal">
+                <BedDouble size={18} className="text-slate-light" />
+                {t("cmsRoomsHeading", lang)}
+              </h2>
+              <p className="mt-1 text-sm text-slate">{t("cmsRoomsHint", lang)}</p>
+            </div>
+            {locationId && <RoomsEditor locationId={locationId} />}
           </>
         )}
     </DashboardShell>

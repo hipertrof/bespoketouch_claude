@@ -58,6 +58,7 @@ const initialState: GuestState = {
   guestNames: [""],
   treatmentSelections: [{ treatmentId: null, treatmentMinutes: null }],
   guestTherapists: [null],
+  guestRooms: [null],
   separateTreatments: false,
   partySize: 1,
   language: "pl",
@@ -133,6 +134,10 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         i === action.index ? action.therapist : tp,
       );
       return { ...state, guestTherapists };
+    }
+    case "SET_GUEST_ROOM": {
+      const guestRooms = state.guestRooms.map((rm, i) => (i === action.index ? action.room : rm));
+      return { ...state, guestRooms };
     }
     case "SET_GUEST_PHONE": {
       // Editing the number invalidates a prior lookup: the standing consent and
@@ -215,6 +220,12 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
             ? state.guestTherapists
             : [...state.guestTherapists, null]
           : [state.guestTherapists[0]];
+      const guestRooms =
+        action.partySize === 2
+          ? state.guestRooms.length === 2
+            ? state.guestRooms
+            : [...state.guestRooms, null]
+          : [state.guestRooms[0]];
       const guestCrm =
         action.partySize === 2
           ? state.guestCrm.length === 2
@@ -243,6 +254,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         guests,
         guestNames,
         guestTherapists,
+        guestRooms,
         guestCrm,
         treatmentSelections,
         separateTreatments: action.partySize === 1 ? false : state.separateTreatments,

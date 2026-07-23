@@ -13,6 +13,17 @@ export interface TherapistOption {
   name: string;
 }
 
+export interface BedOption {
+  id: string;
+  name: string;
+}
+
+export interface RoomOption {
+  id: string;
+  name: string;
+  beds: BedOption[];
+}
+
 // Account + location display names for the welcome headline. Null when the
 // location doesn't exist or is inactive.
 export async function fetchLocationInfo(locationId: string): Promise<LocationInfo | null> {
@@ -31,4 +42,14 @@ export async function fetchTherapists(locationId: string): Promise<TherapistOpti
     id: r.user_id,
     name: r.display_name,
   }));
+}
+
+// Rooms (with their beds nested) configured for the location, for the
+// receptionist's room/bed assignment dropdowns.
+export async function fetchRooms(locationId: string): Promise<RoomOption[]> {
+  const { data, error } = await supabase.rpc("kiosk_rooms", { p_location: locationId });
+  if (error) throw error;
+  return (
+    (data as { room_id: string; room_name: string; beds: BedOption[] }[] | null) ?? []
+  ).map((r) => ({ id: r.room_id, name: r.room_name, beds: r.beds ?? [] }));
 }

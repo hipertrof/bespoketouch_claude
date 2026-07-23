@@ -3,8 +3,10 @@ import { useDevice } from "./DeviceContext";
 import { bundledCatalog, fetchCatalog, type CatalogService } from "../lib/catalog";
 import {
   fetchLocationInfo,
+  fetchRooms,
   fetchTherapists,
   type LocationInfo,
+  type RoomOption,
   type TherapistOption,
 } from "../lib/kiosk";
 import { fetchBranding, type LocationBranding } from "../lib/branding";
@@ -26,6 +28,10 @@ interface CatalogContextValue {
   // Therapists assigned to the location, for the receptionist's per-guest
   // assignment dropdown. Empty when bundled / none assigned.
   therapists: TherapistOption[];
+  // Rooms (with beds nested) configured for the location, for the
+  // receptionist's per-guest room/bed assignment dropdown. Empty when bundled
+  // / none configured — the picker simply doesn't render.
+  rooms: RoomOption[];
   // Per-location kiosk branding (logo + accent colors). Null = stock look
   // (bundled/?demo run, nothing configured, or the lookup failed).
   branding: LocationBranding | null;
@@ -51,6 +57,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState<boolean>(Boolean(locationId));
   const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [branding, setBranding] = useState<LocationBranding | null>(null);
 
   useEffect(() => {
@@ -61,6 +68,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       setLocationInfo(null);
       setTherapists([]);
+      setRooms([]);
       setBranding(null);
       return;
     }
@@ -74,6 +82,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     // B's intakes.
     setLocationInfo(null);
     setTherapists([]);
+    setRooms([]);
     setBranding(null);
     fetchCatalog(locationId)
       .then((rows) => {
@@ -110,6 +119,11 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setTherapists(rows);
       })
       .catch((err) => console.warn("[kiosk] therapist list unavailable:", err));
+    fetchRooms(locationId)
+      .then((rows) => {
+        if (!cancelled) setRooms(rows);
+      })
+      .catch((err) => console.warn("[kiosk] room list unavailable:", err));
     fetchBranding(locationId)
       .then((b) => {
         if (!cancelled) setBranding(b);
@@ -123,7 +137,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   return (
     <CatalogContext.Provider
-      value={{ catalog, loading, source, locationId, locationInfo, therapists, branding }}
+      value={{ catalog, loading, source, locationId, locationInfo, therapists, rooms, branding }}
     >
       {children}
     </CatalogContext.Provider>

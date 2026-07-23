@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
 import { fetchCatalog, toMassageTypes } from "../../lib/catalog";
-import { fetchTherapists, type TherapistOption } from "../../lib/kiosk";
+import { fetchRooms, fetchTherapists, type RoomOption, type TherapistOption } from "../../lib/kiosk";
 import { completeIntake, buildTreatmentSnapshots, type IntakeRow } from "../../lib/intakes";
 import { t } from "../../i18n/translations";
 import { availableDurations } from "../../data/massageTypes";
@@ -28,6 +28,9 @@ export function CompleteIntakeModal({
   const [minutes, setMinutes] = useState<number | null>(null);
   const [therapistId, setTherapistId] = useState("");
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
+  const [roomId, setRoomId] = useState("");
+  const [bedId, setBedId] = useState("");
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [catalog, setCatalog] = useState<Awaited<ReturnType<typeof fetchCatalog>>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,11 +39,12 @@ export function CompleteIntakeModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([fetchCatalog(row.location_id), fetchTherapists(row.location_id)])
-      .then(([cat, ths]) => {
+    Promise.all([fetchCatalog(row.location_id), fetchTherapists(row.location_id), fetchRooms(row.location_id)])
+      .then(([cat, ths, rms]) => {
         if (cancelled) return;
         setCatalog(cat);
         setTherapists(ths);
+        setRooms(rms);
       })
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
       .finally(() => !cancelled && setLoading(false));
@@ -52,6 +56,7 @@ export function CompleteIntakeModal({
   const massages = toMassageTypes(catalog, lang);
   const selectedMassage = massages.find((m) => m.id === treatmentId) ?? null;
   const durations = selectedMassage ? availableDurations(selectedMassage, 1) : [];
+  const selectedRoom = rooms.find((r) => r.id === roomId) ?? null;
 
   const canSave = name.trim().length > 0 && treatmentId !== "" && minutes !== null;
 
@@ -61,10 +66,15 @@ export function CompleteIntakeModal({
     try {
       const snapshots = buildTreatmentSnapshots([{ treatmentId, treatmentMinutes: minutes }], 1, catalog);
       const therapist = therapists.find((th) => th.id === therapistId) ?? null;
+      const bed = selectedRoom?.beds.find((b) => b.id === bedId) ?? null;
+      const roomAssignment = selectedRoom
+        ? { roomId: selectedRoom.id, roomName: selectedRoom.name, bedId: bed?.id ?? null, bedName: bed?.name ?? null }
+        : null;
       await completeIntake(row.id, {
         guestNames: [name.trim()],
         treatmentSelections: snapshots,
         therapists: [therapist],
+        roomAssignments: [roomAssignment],
       });
       onSaved({
         ...row,
@@ -72,6 +82,7 @@ export function CompleteIntakeModal({
         guest_names: [name.trim()],
         treatment_selections: snapshots,
         therapists: [therapist],
+        room_assignments: [roomAssignment],
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -176,6 +187,47 @@ export function CompleteIntakeModal({
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {rooms.length > 0 && (
+            <div>
+              <label htmlFor="completeRoom" className="mb-1.5 block text-sm font-semibold text-charcoal">
+                {t("roomLabel", lang)}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  id="completeRoom"
+                  value={roomId}
+                  onChange={(e) => {
+                    setRoomId(e.target.value);
+                    setBedId("");
+                  }}
+                  className="min-h-11 flex-1 rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none focus:border-clay focus:ring-4 focus:ring-clay/15"
+                >
+                  <option value="">{t("roomChoose", lang)}</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedRoom && selectedRoom.beds.length > 0 && (
+                  <select
+                    id="completeBed"
+                    value={bedId}
+                    onChange={(e) => setBedId(e.target.value)}
+                    className="min-h-11 flex-1 rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none focus:border-clay focus:ring-4 focus:ring-clay/15"
+                  >
+                    <option value="">{t("bedChoose", lang)}</option>
+                    {selectedRoom.beds.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
           )}
         </div>

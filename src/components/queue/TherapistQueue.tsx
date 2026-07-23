@@ -37,6 +37,7 @@ function toView(row: IntakeRow): IntakePanelView {
     guestNames: row.guest_names ?? [],
     guests: row.personalizations ?? [],
     treatments: row.treatment_selections ?? [],
+    rooms: row.room_assignments ?? [],
   };
 }
 
@@ -287,6 +288,10 @@ function IntakeRowCard({
   const therapistNames = [
     ...new Set((row.therapists ?? []).flatMap((tp) => (tp ? [tp.name] : []))),
   ].join(", ");
+  // Assigned room names (deduped — a couple often shares one room).
+  const roomNames = [
+    ...new Set((row.room_assignments ?? []).flatMap((rm) => (rm ? [rm.roomName] : []))),
+  ].join(", ");
   const done = row.status === "done";
   const time = new Date(row.created_at).toLocaleTimeString([], {
     hour: "2-digit",
@@ -320,6 +325,7 @@ function IntakeRowCard({
           {treatmentName}
           {first?.minutes ? ` · ${first.minutes} min` : ""} · {time}
           {therapistNames ? ` · ${therapistNames}` : ""}
+          {roomNames ? ` · ${roomNames}` : ""}
         </div>
       </div>
       <div className="flex items-center gap-2">

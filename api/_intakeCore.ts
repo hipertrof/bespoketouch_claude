@@ -45,6 +45,7 @@ interface IntakeBody {
   treatmentSelections?: unknown;
   personalizations?: unknown;
   therapists?: unknown;
+  roomAssignments?: unknown;
 }
 
 // How long a locked intake stays in the queue before the retention job may purge
@@ -110,6 +111,9 @@ export async function handleIntake(
   const treatmentSelections = asArray(body.treatmentSelections).slice(0, partySize);
   const personalizations = asArray(body.personalizations).slice(0, partySize);
   const therapists = asArray(body.therapists).slice(0, partySize);
+  const roomAssignments = asArray(body.roomAssignments)
+    .slice(0, partySize)
+    .map(sanitizeRoomAssignment);
 
   const res = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
@@ -122,6 +126,7 @@ export async function handleIntake(
       treatment_selections: treatmentSelections,
       personalizations,
       therapists,
+      room_assignments: roomAssignments,
       expires_at: new Date(Date.now() + RETENTION_HOURS * 3600 * 1000).toISOString(),
     }),
   });
@@ -138,4 +143,24 @@ export async function handleIntake(
 
 function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
+}
+
+// Whitelists one guest's room/bed snapshot: fixed shape, so unlike the
+// free-form therapist/treatment entries this is worth validating field-by-
+// field rather than just size-capping. A malformed or missing entry becomes
+// null (no room assigned) rather than rejecting the whole intake.
+function sanitizeRoomAssignment(v: unknown): {
+  roomId: string;
+  roomName: string;
+  bedId: string | null;
+  bedName: string | null;
+} | null {
+  if (!v || typeof v !== "object") return null;
+  const obj = v as Record<string, unknown>;
+  const roomId = typeof obj.roomId === "string" ? obj.roomId : null;
+  const roomName = typeof obj.roomName === "string" ? obj.roomName.trim().slice(0, MAX_NAME_CHARS) : null;
+  if (!roomId || !roomName) return null;
+  const bedId = typeof obj.bedId === "string" ? obj.bedId : null;
+  const bedName = typeof obj.bedName === "string" ? obj.bedName.trim().slice(0, MAX_NAME_CHARS) : null;
+  return { roomId, roomName, bedId, bedName: bedId ? bedName : null };
 }

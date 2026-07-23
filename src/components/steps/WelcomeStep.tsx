@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, ClipboardCheck, HeartHandshake, QrCode, Search, Sparkles, Trash2, UserRound, Users } from "lucide-react";
+import { ArrowRight, BedDouble, Check, ClipboardCheck, HeartHandshake, QrCode, Search, Sparkles, Trash2, UserRound, Users } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -13,6 +13,7 @@ import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
 import { Toggle } from "../Toggle";
 import { CheckinQrModal } from "./CheckinQrModal";
+import type { RoomOption } from "../../lib/kiosk";
 import type { BodyGender, PartySize } from "../../types";
 
 const partySizeOptions: { value: PartySize; labelKey: string }[] = [
@@ -26,7 +27,7 @@ const partySizeOptions: { value: PartySize; labelKey: string }[] = [
 // (TreatmentStep), so this screen stays a short, single-purpose form.
 export function WelcomeStep() {
   const { state, dispatch } = useGuest();
-  const { locationInfo, therapists } = useCatalog();
+  const { locationInfo, therapists, rooms } = useCatalog();
   const { token } = useDevice();
   const lang = state.language;
   const isCouple = state.partySize === 2;
@@ -181,6 +182,7 @@ export function WelcomeStep() {
                 </select>
               </div>
             )}
+            {rooms.length > 0 && <RoomBedPicker index={i} rooms={rooms} />}
             {token && <ReturningGuestBlock index={i} deviceToken={token} />}
           </div>
         ))}
@@ -216,6 +218,73 @@ export function WelcomeStep() {
           {t("next", lang)}
           <ArrowRight size={18} />
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// Room + bed assignment for one guest. Optional — rendered only when the
+// location has rooms configured (CatalogContext.rooms), and never gates
+// canContinue. Picking a room resets the bed; the bed select only appears
+// when the chosen room actually has beds.
+function RoomBedPicker({ index, rooms }: { index: number; rooms: RoomOption[] }) {
+  const { state, dispatch } = useGuest();
+  const lang = state.language;
+  const assignment = state.guestRooms[index] ?? null;
+  const selectedRoom = rooms.find((r) => r.id === assignment?.roomId) ?? null;
+
+  return (
+    <div>
+      <label
+        htmlFor={`guestRoom-${index}`}
+        className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-charcoal"
+      >
+        <BedDouble size={16} className="text-slate-light" />
+        {t("roomLabel", lang)}
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <select
+          id={`guestRoom-${index}`}
+          value={assignment?.roomId ?? ""}
+          onChange={(e) => {
+            const room = rooms.find((r) => r.id === e.target.value) ?? null;
+            dispatch({
+              type: "SET_GUEST_ROOM",
+              index,
+              room: room ? { roomId: room.id, roomName: room.name, bedId: null, bedName: null } : null,
+            });
+          }}
+          className="min-h-12 w-full max-w-md rounded-2xl border border-sand bg-white px-4 text-base text-charcoal shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+        >
+          <option value="">{t("roomChoose", lang)}</option>
+          {rooms.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        {selectedRoom && selectedRoom.beds.length > 0 && (
+          <select
+            id={`guestBed-${index}`}
+            value={assignment?.bedId ?? ""}
+            onChange={(e) => {
+              const bed = selectedRoom.beds.find((b) => b.id === e.target.value) ?? null;
+              dispatch({
+                type: "SET_GUEST_ROOM",
+                index,
+                room: { roomId: selectedRoom.id, roomName: selectedRoom.name, bedId: bed?.id ?? null, bedName: bed?.name ?? null },
+              });
+            }}
+            className="min-h-12 w-full max-w-md rounded-2xl border border-sand bg-white px-4 text-base text-charcoal shadow-soft outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15 sm:max-w-sm"
+          >
+            <option value="">{t("bedChoose", lang)}</option>
+            {selectedRoom.beds.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   );

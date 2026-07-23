@@ -17,7 +17,7 @@ import { GuestNoteCard } from "./GuestNoteCard";
 import { formatPrice } from "../data/massageTypes";
 import { oils } from "../data/oils";
 import { guestDisplayName } from "../utils/guestName";
-import type { PartySize, PersonalizationState } from "../types";
+import type { PartySize, PersonalizationState, RoomAssignment } from "../types";
 import type { TreatmentSnapshot } from "../lib/intakes";
 import {
   communicationTranslations,
@@ -40,6 +40,9 @@ export interface IntakePanelView {
   guests: PersonalizationState[];
   // Index-aligned with `guests`: the treatment snapshot each guest chose.
   treatments: TreatmentSnapshot[];
+  // Index-aligned with `guests`: the room/bed each guest was assigned, if any.
+  // Optional — old callers (and pre-0022 rows) simply render nothing for it.
+  rooms?: (RoomAssignment | null)[];
 }
 
 interface IntakePanelProps {
@@ -73,6 +76,8 @@ export function IntakePanel({ view, initialLang, actions, footerNote, deviceToke
   const hasTreatment = Boolean(snapshot?.treatmentId);
   const treatmentName = hasTreatment ? pickName(snapshot.nameI18n, lang) : null;
   const price = snapshot?.price != null ? formatPrice(snapshot.price) : null;
+
+  const roomAssignment = view.rooms?.[selectedGuestIndex] ?? null;
 
   const oil = oils.find((o) => o.id === preferences.oilId);
   const oilName = oil ? oilNameTranslations[oil.id]?.[lang] ?? oil.name : null;
@@ -139,6 +144,20 @@ export function IntakePanel({ view, initialLang, actions, footerNote, deviceToke
               : "—"}
           </div>
         </div>
+        {roomAssignment && (
+          <>
+            <div className="hidden h-10 w-px bg-sand sm:block" />
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-light">
+                {t("roomLabel", lang)}
+              </div>
+              <div className="text-xl font-semibold text-charcoal sm:text-2xl">
+                {roomAssignment.roomName}
+                {roomAssignment.bedName ? ` · ${roomAssignment.bedName}` : ""}
+              </div>
+            </div>
+          </>
+        )}
         {isCouple && (
           <>
             <div className="hidden h-10 w-px bg-sand sm:block" />
