@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { subscriptionStatus } from "../../lib/billing";
@@ -189,6 +189,8 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showLocations, setShowLocations] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
 
   const dirty =
     slots !== account.slots_paid ||
@@ -202,6 +204,15 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
       .from("accounts")
       .update({ slots_paid: slots, subscription_start: start || null, subscription_end: end || null })
       .eq("id", account.id);
+    setBusy(false);
+    if (error) setError(error.message);
+    else onSaved();
+  }
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("accounts").delete().eq("id", account.id);
     setBusy(false);
     if (error) setError(error.message);
     else onSaved();
@@ -236,8 +247,51 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
         <Button variant="secondary" disabled={!dirty || busy} onClick={save}>
           {busy ? "Zapisywanie…" : "Zapisz"}
         </Button>
+        <button
+          type="button"
+          onClick={() => setConfirmDelete((v) => !v)}
+          disabled={busy}
+          title="Usuń konto"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-rose-dark hover:bg-rose-tint disabled:opacity-50"
+        >
+          <Trash2 size={16} />
+        </button>
       </div>
       {error && <p className="mt-2 text-sm text-rose-dark">{error}</p>}
+      {confirmDelete && (
+        <div className="mt-3 rounded-xl bg-rose-tint/40 p-4">
+          <p className="text-sm text-rose-dark">
+            Usuwa konto i wszystkie jego lokalizacje, kioski, profile gości, ankiety — nieodwracalne. Wpisz nazwę
+            konta, aby potwierdzić.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={account.name}
+              className={inputClass}
+            />
+            <Button
+              variant="secondary"
+              disabled={busy || confirmName.trim() !== account.name}
+              onClick={remove}
+              className="border-rose-dark text-rose-dark hover:bg-rose-tint"
+            >
+              {busy ? "Usuwanie…" : "Usuń konto"}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setConfirmDelete(false);
+                setConfirmName("");
+              }}
+            >
+              Anuluj
+            </Button>
+          </div>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setShowLocations((v) => !v)}
@@ -282,6 +336,7 @@ function LocationsSection({ accountId }: { accountId: string }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -308,6 +363,20 @@ function LocationsSection({ accountId }: { accountId: string }) {
       setName("");
       load();
     }
+  }
+
+  async function remove(id: string) {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("locations").delete().eq("id", id);
+    setBusy(false);
+    setConfirmDeleteId(null);
+    if (error) setError(error.message);
+    else load();
   }
 
   return (
@@ -340,6 +409,15 @@ function LocationsSection({ accountId }: { accountId: string }) {
                 >
                   Kioski
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => remove(l.id)}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-rose-dark hover:underline disabled:opacity-50"
+                >
+                  <Trash2 size={12} />
+                  {confirmDeleteId === l.id ? "Na pewno?" : "Usuń"}
+                </button>
               </span>
             </li>
           ))}
