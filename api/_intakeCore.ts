@@ -30,8 +30,13 @@ import {
   touchLastSeen,
   type DeviceAuthEnv,
 } from "./_deviceAuth.js";
+import { normalizePhone, phoneHash } from "./_guestCore.js";
 
-export type IntakeEnv = DeviceAuthEnv;
+export interface IntakeEnv extends DeviceAuthEnv {
+  // Needed to hash guestPhones for the guest_visits write (0025). Optional so
+  // an unset local .env degrades to "no visit history", not a dead endpoint.
+  hashSecret?: string;
+}
 
 export interface IntakeResult {
   status: number;
@@ -46,6 +51,10 @@ interface IntakeBody {
   personalizations?: unknown;
   therapists?: unknown;
   roomAssignments?: unknown;
+  // Index-aligned raw phones, sent ONLY for guests who engaged the CRM this
+  // session (base consent). Used to key the guest_visits history write —
+  // hashed immediately, never stored raw here.
+  guestPhones?: unknown;
 }
 
 // How long a locked intake stays in the queue before the retention job may purge
@@ -115,9 +124,13 @@ export async function handleIntake(
     .slice(0, partySize)
     .map(sanitizeRoomAssignment);
 
+  const guestPhones = asArray(body.guestPhones).slice(0, partySize);
+
+  // return=representation: the new intake's id keys the guest_visits history
+  // rows (0025) and the later survey linkage.
   const res = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
-    headers: { ...svcHeaders(env), "Content-Type": "application/json", Prefer: "return=minimal" },
+    headers: { ...svcHeaders(env), "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify({
       location_id: device.locationId,
       status: "submitted",
@@ -136,9 +149,113 @@ export async function handleIntake(
     return { status: 502, json: { error: `Could not save the intake (${res.status}).` } };
   }
 
+  // Durable visit history (0025): for each guest who used the CRM this session
+  // (a raw phone at their index), find their consented profile and snapshot the
+  // non-health visit facts. Best-effort — a failed visit write must never fail
+  // the intake, and no profile is ever CREATED here.
+  const inserted = (await res.json().catch(() => null)) as Array<{ id?: unknown }> | null;
+  const intakeId = typeof inserted?.[0]?.id === "string" ? inserted[0].id : null;
+  if (env.hashSecret && guestPhones.some((p) => typeof p === "string" && p)) {
+    await writeGuestVisits(env, base, {
+      locationId: device.locationId,
+      intakeId,
+      guestPhones,
+      treatmentSelections,
+      therapists,
+      roomAssignments,
+    }).catch(() => {});
+  }
+
   // A successful write is proof of life for the dashboard.
   touchLastSeen(env, device.tokenId);
   return { status: 200, json: { ok: true } };
+}
+
+// One guest_visits row per phone-bearing guest with an existing consented
+// profile. Snapshots (name strings, price) mirror the room-assignment
+// philosophy: history must survive later renames/deletes.
+async function writeGuestVisits(
+  env: IntakeEnv,
+  base: string,
+  args: {
+    locationId: string;
+    intakeId: string | null;
+    guestPhones: unknown[];
+    treatmentSelections: unknown[];
+    therapists: unknown[];
+    roomAssignments: Array<ReturnType<typeof sanitizeRoomAssignment>>;
+  },
+): Promise<void> {
+  const svc = svcHeaders(env);
+  const locRows = (await (
+    await fetch(
+      `${base}/rest/v1/locations?select=account_id,name&id=eq.${args.locationId}`,
+      { headers: svc },
+    )
+  ).json().catch(() => null)) as Array<{ account_id?: unknown; name?: unknown }> | null;
+  const accountId = typeof locRows?.[0]?.account_id === "string" ? locRows[0].account_id : null;
+  if (!accountId) return;
+  const locationName = typeof locRows?.[0]?.name === "string" ? locRows[0].name : "";
+
+  const rows: Record<string, unknown>[] = [];
+  for (let i = 0; i < args.guestPhones.length; i++) {
+    const raw = args.guestPhones[i];
+    const phone = typeof raw === "string" ? normalizePhone(raw) : null;
+    if (!phone || !env.hashSecret) continue;
+    const hash = phoneHash(phone, accountId, env.hashSecret);
+    const profRows = (await (
+      await fetch(
+        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        { headers: svc },
+      )
+    ).json().catch(() => null)) as Array<{ id?: unknown }> | null;
+    const guestId = typeof profRows?.[0]?.id === "string" ? profRows[0].id : null;
+    if (!guestId) continue;
+
+    const sel = asRecord(args.treatmentSelections[i]);
+    const ther = asRecord(args.therapists[i]);
+    const room = args.roomAssignments[i] ?? null;
+    rows.push({
+      account_id: accountId,
+      location_id: args.locationId,
+      location_name: locationName,
+      guest_id: guestId,
+      intake_id: args.intakeId,
+      treatment_name: pickTreatmentName(sel),
+      treatment_price: typeof sel?.price === "number" ? sel.price : null,
+      duration_min: typeof sel?.minutes === "number" ? sel.minutes : null,
+      therapist_id: typeof ther?.id === "string" ? ther.id : null,
+      therapist_name: typeof ther?.name === "string" ? ther.name : null,
+      room_name: room?.roomName ?? null,
+      bed_name: room?.bedName ?? null,
+    });
+  }
+  if (rows.length === 0) return;
+
+  await fetch(`${base}/rest/v1/guest_visits`, {
+    method: "POST",
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(rows),
+  }).catch(() => {});
+}
+
+// TreatmentSnapshot carries nameI18n (all languages); fall back to a plain
+// name field if a future shape simplifies. Polish first — it is the product's
+// home locale and the dashboard default.
+function pickTreatmentName(sel: Record<string, unknown> | null): string | null {
+  if (!sel) return null;
+  const i18n = asRecord(sel.nameI18n);
+  if (i18n) {
+    for (const lang of ["pl", "en"]) {
+      if (typeof i18n[lang] === "string" && i18n[lang]) return i18n[lang] as string;
+    }
+    for (const v of Object.values(i18n)) if (typeof v === "string" && v) return v;
+  }
+  return typeof sel.name === "string" ? sel.name : null;
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
 function asArray(v: unknown): unknown[] {

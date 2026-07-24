@@ -9,6 +9,7 @@ import { pairingProxyPlugin } from './vite-plugins/pairing-proxy.js'
 import { intakeProxyPlugin } from './vite-plugins/intake-proxy.js'
 import { surveyProxyPlugin } from './vite-plugins/survey-proxy.js'
 import { checkinProxyPlugin } from './vite-plugins/checkin-proxy.js'
+import { crmProxyPlugin } from './vite-plugins/crm-proxy.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -49,6 +50,7 @@ export default defineConfig(({ command, mode }) => {
       intakeProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+        hashSecret: env.GUEST_HASH_SECRET ?? "",
       }),
       surveyProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
@@ -58,6 +60,10 @@ export default defineConfig(({ command, mode }) => {
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
         hashSecret: env.GUEST_HASH_SECRET ?? "",
+      }),
+      crmProxyPlugin({
+        url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
+        serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       }),
     ],
   }

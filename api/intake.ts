@@ -17,6 +17,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const env = {
     url: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
     serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+    // For the guest_visits history write (0025) — hashes consented guests'
+    // phones to find their profiles. Missing secret = no history, intake still works.
+    hashSecret: process.env.GUEST_HASH_SECRET ?? "",
   };
 
   const result = await handleIntake(req.body, env);

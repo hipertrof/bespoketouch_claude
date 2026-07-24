@@ -107,6 +107,10 @@ export async function saveIntake(input: {
   personalizations: PersonalizationState[];
   therapists: (TherapistAssignment | null)[];
   roomAssignments: (RoomAssignment | null)[];
+  // Index-aligned raw phones for guests who engaged the CRM this session
+  // (null = no visit-history write for that guest). Hashed server-side to key
+  // the guest_visits timeline; never stored raw.
+  guestPhones?: (string | null)[];
 }): Promise<void> {
   const res = await fetch("/api/intake", {
     method: "POST",
@@ -119,6 +123,7 @@ export async function saveIntake(input: {
       personalizations: input.personalizations,
       therapists: input.therapists,
       roomAssignments: input.roomAssignments,
+      guestPhones: input.guestPhones,
     }),
   });
   if (!res.ok) {

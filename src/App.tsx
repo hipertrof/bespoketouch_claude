@@ -25,6 +25,7 @@ import { TherapistQueue } from "./components/queue/TherapistQueue";
 import { StaffManagement } from "./components/staff/StaffManagement";
 import { KioskManagement } from "./components/manage/KioskManagement";
 import { SurveyReport } from "./components/manage/SurveyReport";
+import { GuestCrmDashboard } from "./components/crm/GuestCrmDashboard";
 import { DesignLab } from "./components/designlab/DesignLab";
 import { CheckinPage } from "./components/checkin/CheckinPage";
 
@@ -122,6 +123,8 @@ function App() {
           <Route path="/staff" element={<StaffManagement />} />
           <Route path="/kiosks" element={<KioskManagement />} />
           <Route path="/reports" element={<SurveyReport />} />
+          {/* Guest 360 CRM — manager-and-up; all data flows through /api/crm. */}
+          <Route path="/guests" element={<GuestCrmDashboard />} />
           {/* Internal visual lab — static mockups, no data access. */}
           <Route path="/design-lab" element={<DesignLab />} />
         </Routes>

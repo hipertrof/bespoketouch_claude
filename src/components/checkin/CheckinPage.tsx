@@ -23,14 +23,30 @@ type Stage = "phone" | "looking" | "notFound" | "editing" | "saving" | "saved" |
 function ConsentSection({
   consent,
   healthConsent,
+  identityConsent,
+  marketingConsent,
+  name,
+  email,
   onConsentChange,
   onHealthConsentChange,
+  onIdentityConsentChange,
+  onMarketingConsentChange,
+  onNameChange,
+  onEmailChange,
   lang,
 }: {
   consent: boolean;
   healthConsent: boolean;
+  identityConsent: boolean;
+  marketingConsent: boolean;
+  name: string;
+  email: string;
   onConsentChange: (v: boolean) => void;
   onHealthConsentChange: (v: boolean) => void;
+  onIdentityConsentChange: (v: boolean) => void;
+  onMarketingConsentChange: (v: boolean) => void;
+  onNameChange: (v: string) => void;
+  onEmailChange: (v: string) => void;
   lang: LangCode;
 }) {
   return (
@@ -73,6 +89,74 @@ function ConsentSection({
           )}
         </div>
       )}
+      {consent && (
+        <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-charcoal">
+                {t("consentIdentityTitle", lang)}
+              </div>
+              <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+                {t("consentIdentityBody", lang)}
+              </p>
+            </div>
+            <Toggle
+              checked={identityConsent}
+              onChange={onIdentityConsentChange}
+              label={t("consentIdentityTitle", lang)}
+            />
+          </div>
+          {!identityConsent && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentIdentityWithdrawHint", lang)}
+            </p>
+          )}
+          {identityConsent && (
+            <div className="mt-4 flex flex-col gap-3">
+              <div>
+                <label htmlFor="checkinCrmName" className="mb-2 block text-sm font-semibold text-charcoal">
+                  {t("consentIdentityNameLabel", lang)}
+                </label>
+                <input
+                  id="checkinCrmName"
+                  type="text"
+                  value={name}
+                  onChange={(e) => onNameChange(e.target.value)}
+                  className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+                />
+              </div>
+              <div>
+                <label htmlFor="checkinCrmEmail" className="mb-2 block text-sm font-semibold text-charcoal">
+                  {t("consentIdentityEmailLabel", lang)}
+                </label>
+                <input
+                  id="checkinCrmEmail"
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => onEmailChange(e.target.value)}
+                  className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+                />
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-sand bg-white/60 p-3">
+                <div>
+                  <div className="text-sm font-semibold text-charcoal">
+                    {t("consentMarketingTitle", lang)}
+                  </div>
+                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-light">
+                    {t("consentMarketingBody", lang)}
+                  </p>
+                </div>
+                <Toggle
+                  checked={marketingConsent}
+                  onChange={onMarketingConsentChange}
+                  label={t("consentMarketingTitle", lang)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -105,6 +189,10 @@ export function CheckinPage() {
   // health off too (mirrors GuestContext's SET_GUEST_CONSENT nesting).
   const [consent, setConsent] = useState(true);
   const [healthConsent, setHealthConsent] = useState(false);
+  const [identityConsent, setIdentityConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [crmName, setCrmName] = useState("");
+  const [crmEmail, setCrmEmail] = useState("");
 
   const phoneValid = phone.replace(/\D/g, "").length >= 8;
 
@@ -120,6 +208,9 @@ export function CheckinPage() {
       setPrefs(found.preferences);
       setConsent(true);
       setHealthConsent(found.healthConsent);
+      setIdentityConsent(found.identityConsent);
+      setMarketingConsent(found.marketingConsent);
+      setCrmName(found.name ?? "");
       setStage("editing");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -129,14 +220,31 @@ export function CheckinPage() {
 
   const handleConsentChange = (v: boolean) => {
     setConsent(v);
-    if (!v) setHealthConsent(false);
+    if (!v) {
+      setHealthConsent(false);
+      setIdentityConsent(false);
+      setMarketingConsent(false);
+    }
+  };
+
+  const handleIdentityConsentChange = (v: boolean) => {
+    setIdentityConsent(v);
+    if (!v) setMarketingConsent(false);
   };
 
   const handleSave = async () => {
     if (!code || !prefs) return;
     setStage("saving");
     try {
-      const ok = await checkinSave(code, phone, prefs, consent, healthConsent);
+      const identity =
+        consent && identityConsent && crmName.trim()
+          ? {
+              name: crmName.trim(),
+              email: crmEmail.trim() || undefined,
+              marketingConsent,
+            }
+          : undefined;
+      const ok = await checkinSave(code, phone, prefs, consent, healthConsent, identity);
       if (!ok) {
         setStage("notFound");
         return;
@@ -202,8 +310,16 @@ export function CheckinPage() {
             <ConsentSection
               consent={consent}
               healthConsent={healthConsent}
+              identityConsent={identityConsent}
+              marketingConsent={marketingConsent}
+              name={crmName}
+              email={crmEmail}
               onConsentChange={handleConsentChange}
               onHealthConsentChange={setHealthConsent}
+              onIdentityConsentChange={handleIdentityConsentChange}
+              onMarketingConsentChange={setMarketingConsent}
+              onNameChange={setCrmName}
+              onEmailChange={setCrmEmail}
               lang={lang}
             />
             <CheckinPrefsEditor value={prefs} onChange={setPrefs} lang={lang} healthConsent={healthConsent} />

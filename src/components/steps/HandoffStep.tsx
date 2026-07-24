@@ -23,65 +23,73 @@ export function HandoffStep() {
   // write — the server derives the location from the token, and the bundled demo
   // has no token and nowhere to write. The ref makes it fire exactly once even
   // under StrictMode's double-effect.
+  // Opt-in guest CRM first, THEN the intake — sequenced deliberately: the
+  // intake endpoint keys guest_visits history rows off EXISTING guest_profiles,
+  // so a brand-new consenting guest's profile must land before the intake does.
+  //
+  // CRM semantics (unchanged from 0024, plus the 0025 identity tier):
+  //   * consent on               → save (healthConsent=false strips + erases
+  //     stored notes; identity sent only when opted in AND a name was typed);
+  //   * prefilled + consent off  → withdrawal, erase the profile (art. 7(3));
+  //   * never-prefilled + off    → no-op (an unticked toggle must not delete a
+  //     profile that was never loaded — shared phone, typo).
+  // CRM failures are logged, not surfaced — the upsert is idempotent and a lost
+  // preference save is only cosmetic; the intake still proceeds.
   const savedRef = useRef(false);
   const [saveError, setSaveError] = useState(false);
   useEffect(() => {
     if (savedRef.current || loading || !token) return;
     savedRef.current = true;
     const size = state.partySize;
-    saveIntake({
-      deviceToken: token,
-      partySize: size,
-      guestNames: state.guestNames.slice(0, size).map((n) => n.trim()),
-      treatmentSelections: buildTreatmentSnapshots(
-        state.treatmentSelections.slice(0, size),
-        size,
-        catalog,
-      ),
-      personalizations: state.guests.slice(0, size),
-      therapists: state.guestTherapists.slice(0, size),
-      roomAssignments: state.guestRooms.slice(0, size),
-    }).catch((err) => {
-      console.error("[intake] save failed:", err);
-      savedRef.current = false; // allow a retry on the next render
-      setSaveError(true);
-    });
-  }, [loading, token, catalog, state]);
 
-  // Opt-in guest CRM: persist each consenting guest's reusable preferences under
-  // an HMAC-of-phone pseudonym. Fire-once, own guard (StrictMode-safe). Skipped
-  // for the bundled demo (no token). Non-blocking and NOT retried on error — the
-  // upsert is idempotent and a lost preference save is only cosmetic.
-  //
-  // The inverse also holds: a guest whose profile WAS looked up (prefilled) but
-  // who finishes with consent switched off has withdrawn it — erase the stored
-  // profile. Withdrawal must be as effective as the grant (GDPR art. 7(3)).
-  // A never-prefilled guest with consent off stays a no-op: an unticked toggle
-  // must not delete a profile that was never loaded (shared phone, typo).
-  const crmSavedRef = useRef(false);
-  useEffect(() => {
-    if (crmSavedRef.current || loading || !token) return;
-    crmSavedRef.current = true;
-    const size = state.partySize;
-    const ops = state.guestCrm.slice(0, size).flatMap((crm, i) => {
+    const crmOps = state.guestCrm.slice(0, size).flatMap((crm, i) => {
       if (crm.phone.replace(/\D/g, "").length < 8) return [];
       if (crm.consent) {
-        // healthConsent=false saves a notes-free blob and nulls the health
-        // stamps server-side — withdrawing just the health consent erases the
-        // stored notes without losing the base profile.
-        return [saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent)];
+        const identity =
+          crm.identityConsent && crm.name.trim()
+            ? {
+                name: crm.name.trim(),
+                email: crm.email.trim() || undefined,
+                marketingConsent: crm.marketingConsent,
+              }
+            : undefined;
+        return [saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent, identity)];
       }
       if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];
       return [];
     });
-    if (ops.length > 0) {
-      void Promise.allSettled(ops).then((results) => {
+
+    Promise.allSettled(crmOps)
+      .then((results) => {
         for (const r of results) {
           if (r.status === "rejected") console.error("[crm] save/forget failed:", r.reason);
         }
+        return saveIntake({
+          deviceToken: token,
+          partySize: size,
+          guestNames: state.guestNames.slice(0, size).map((n) => n.trim()),
+          treatmentSelections: buildTreatmentSnapshots(
+            state.treatmentSelections.slice(0, size),
+            size,
+            catalog,
+          ),
+          personalizations: state.guests.slice(0, size),
+          therapists: state.guestTherapists.slice(0, size),
+          roomAssignments: state.guestRooms.slice(0, size),
+          // Only consenting guests get a visit-history row; others send null.
+          guestPhones: state.guestCrm
+            .slice(0, size)
+            .map((crm) =>
+              crm.consent && crm.phone.replace(/\D/g, "").length >= 8 ? crm.phone : null,
+            ),
+        });
+      })
+      .catch((err) => {
+        console.error("[intake] save failed:", err);
+        savedRef.current = false; // allow a retry on the next render
+        setSaveError(true);
       });
-    }
-  }, [loading, token, state]);
+  }, [loading, token, catalog, state]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">

@@ -181,16 +181,28 @@ async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
 export async function lookupGuestProfile(
   deviceToken: string,
   phone: string,
-): Promise<{ preferences: StoredPreferences; healthConsent: boolean } | null> {
+): Promise<{
+  preferences: StoredPreferences;
+  healthConsent: boolean;
+  identityConsent: boolean;
+  marketingConsent: boolean;
+  name: string | null;
+} | null> {
   const json = (await postGuest({ action: "lookup", deviceToken, phone })) as {
     found?: boolean;
     preferences?: unknown;
     healthConsent?: boolean;
+    identityConsent?: boolean;
+    marketingConsent?: boolean;
+    name?: unknown;
   } | null;
   if (!json?.found || !json.preferences) return null;
   return {
     preferences: json.preferences as StoredPreferences,
     healthConsent: json.healthConsent === true,
+    identityConsent: json.identityConsent === true,
+    marketingConsent: json.marketingConsent === true,
+    name: typeof json.name === "string" ? json.name : null,
   };
 }
 
@@ -203,6 +215,7 @@ export async function saveGuestProfile(
   phone: string,
   personalization: PersonalizationState,
   healthConsent: boolean,
+  identity?: { name: string; email?: string; marketingConsent?: boolean },
 ): Promise<void> {
   await postGuest({
     action: "save",
@@ -210,6 +223,12 @@ export async function saveGuestProfile(
     phone,
     consent: true,
     healthConsent,
+    // Identity tier: sent only when the guest opted in AND typed a name (the
+    // server rejects a nameless identity grant by nulling the tier).
+    identityConsent: identity !== undefined,
+    marketingConsent: identity?.marketingConsent === true,
+    name: identity?.name,
+    email: identity?.email || undefined,
     preferences: toStoredPreferences(personalization, healthConsent),
   });
 }

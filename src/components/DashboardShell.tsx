@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { to: "/staff", labelKey: "staffNav" },
   { to: "/kiosks", labelKey: "kiosksNav" },
   { to: "/reports", labelKey: "surveyNav" },
+  { to: "/guests", labelKey: "guestsNav" },
 ] as const;
 
 export function DashboardShell({

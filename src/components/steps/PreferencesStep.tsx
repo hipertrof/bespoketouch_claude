@@ -50,7 +50,16 @@ export function PreferencesStep() {
   const activeIndex = state.activeGuestIndex;
   const crm =
     state.guestCrm[activeIndex] ??
-    { phone: "", consent: false, healthConsent: false, prefilled: false };
+    {
+      phone: "",
+      consent: false,
+      healthConsent: false,
+      identityConsent: false,
+      marketingConsent: false,
+      name: "",
+      email: "",
+      prefilled: false,
+    };
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -289,6 +298,103 @@ export function PreferencesStep() {
                 <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
                   {t("consentHealthWithdrawHint", lang)}
                 </p>
+              )}
+            </div>
+          )}
+          {crm.consent && (
+            <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-charcoal">
+                    {t("consentIdentityTitle", lang)}
+                  </div>
+                  <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
+                    {t("consentIdentityBody", lang)}
+                  </p>
+                </div>
+                <Toggle
+                  checked={crm.identityConsent}
+                  onChange={(v) => {
+                    dispatch({
+                      type: "SET_GUEST_IDENTITY_CONSENT",
+                      index: activeIndex,
+                      identityConsent: v,
+                    });
+                    // Prefill the display name from the intake name on first opt-in.
+                    if (v && !crm.name.trim()) {
+                      const intakeName = (state.guestNames[activeIndex] ?? "").trim();
+                      if (intakeName) {
+                        dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: intakeName });
+                      }
+                    }
+                  }}
+                  label={t("consentIdentityTitle", lang)}
+                />
+              </div>
+              {crm.prefilled && !crm.identityConsent && (
+                <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+                  {t("consentIdentityWithdrawHint", lang)}
+                </p>
+              )}
+              {crm.identityConsent && (
+                <div className="mt-4 flex flex-col gap-3">
+                  <div>
+                    <label
+                      htmlFor={`crmName-${activeIndex}`}
+                      className="mb-2 block text-sm font-semibold text-charcoal"
+                    >
+                      {t("consentIdentityNameLabel", lang)}
+                    </label>
+                    <input
+                      id={`crmName-${activeIndex}`}
+                      type="text"
+                      value={crm.name}
+                      onChange={(e) =>
+                        dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: e.target.value })
+                      }
+                      className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={`crmEmail-${activeIndex}`}
+                      className="mb-2 block text-sm font-semibold text-charcoal"
+                    >
+                      {t("consentIdentityEmailLabel", lang)}
+                    </label>
+                    <input
+                      id={`crmEmail-${activeIndex}`}
+                      type="email"
+                      inputMode="email"
+                      value={crm.email}
+                      onChange={(e) =>
+                        dispatch({ type: "SET_GUEST_CRM_EMAIL", index: activeIndex, email: e.target.value })
+                      }
+                      className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+                    />
+                  </div>
+                  <div className="flex items-start justify-between gap-4 rounded-lg border border-sand bg-white/60 p-3">
+                    <div>
+                      <div className="text-sm font-semibold text-charcoal">
+                        {t("consentMarketingTitle", lang)}
+                      </div>
+                      <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-light">
+                        {t("consentMarketingBody", lang)}
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={crm.marketingConsent}
+                      onChange={(v) =>
+                        dispatch({
+                          type: "SET_GUEST_MARKETING_CONSENT",
+                          index: activeIndex,
+                          marketingConsent: v,
+                        })
+                      }
+                      label={t("consentMarketingTitle", lang)}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           )}

@@ -299,7 +299,16 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
   const lang = state.language;
   const crm =
     state.guestCrm[index] ??
-    { phone: "", consent: false, healthConsent: false, prefilled: false };
+    {
+      phone: "",
+      consent: false,
+      healthConsent: false,
+      identityConsent: false,
+      marketingConsent: false,
+      name: "",
+      email: "",
+      prefilled: false,
+    };
   const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "failed">("idle");
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgotten, setForgotten] = useState(false);
@@ -334,7 +343,15 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         zoneNotes: applied.zoneNotes,
         generalNote: applied.generalNote,
         healthConsent: stored.healthConsent,
+        identityConsent: stored.identityConsent,
+        marketingConsent: stored.marketingConsent,
+        name: stored.name,
       });
+      // Greeting bonus: an identity-consented guest's stored name can prefill
+      // the (still-editable) intake name field if it's empty.
+      if (stored.name && !(state.guestNames[index] ?? "").trim()) {
+        dispatch({ type: "SET_GUEST_NAME", index, name: stored.name });
+      }
       setStatus("found");
     } catch (err) {
       console.error("[crm] lookup failed:", err);

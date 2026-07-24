@@ -1,0 +1,166 @@
+import { supabase } from "./supabase";
+
+// Client wrapper for the Guest 360 CRM endpoint (/api/crm — api/_crmCore.ts).
+// All guest CRM tables are service-role-only, so every read/write goes through
+// the endpoint with the caller's JWT; the server enforces manager-and-up in
+// the named account. Mirrors src/lib/members.ts's bearer-call pattern.
+
+export interface CrmGuestListItem {
+  id: string;
+  name: string | null;
+  identityConsent: boolean;
+  healthConsent: boolean;
+  marketingConsent: boolean;
+  visitCount: number;
+  lastVisitAt: string | null;
+  lastSeenAt: string | null;
+  createdAt: string | null;
+  tagIds: string[];
+}
+
+export interface CrmVisit {
+  id: string;
+  location_name: string;
+  visited_at: string;
+  treatment_name: string | null;
+  treatment_price: number | null;
+  duration_min: number | null;
+  therapist_name: string | null;
+  room_name: string | null;
+  bed_name: string | null;
+}
+
+export interface CrmNote {
+  id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CrmTag {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface CrmSurvey {
+  id: string;
+  therapist_name: string | null;
+  treatment_type: string | null;
+  csat_stars: number | null;
+  nps: number | null;
+  next_visit_note: string | null;
+  created_at: string;
+}
+
+export interface CrmConsentStamp {
+  version: string | null;
+  at: string | null;
+}
+
+export interface CrmGuestDetail {
+  guest: {
+    id: string;
+    name: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
+    birthday: string | null;
+    preferences: unknown;
+    consent: {
+      base: CrmConsentStamp;
+      health: CrmConsentStamp;
+      identity: CrmConsentStamp;
+      marketing: CrmConsentStamp;
+    };
+    createdAt: string | null;
+    lastSeenAt: string | null;
+  };
+  visits: CrmVisit[];
+  notes: CrmNote[];
+  tags: CrmTag[];
+  surveys: CrmSurvey[];
+  stats: {
+    visitCount: number;
+    firstVisitAt: string | null;
+    lastVisitAt: string | null;
+    totalSpend: number;
+    favoriteTherapist: string | null;
+    favoriteTreatment: string | null;
+  };
+}
+
+async function postCrm<T>(payload: Record<string, unknown>): Promise<T> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Not signed in.");
+  const res = await fetch("/api/crm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!res.ok) {
+    const msg = typeof json?.error === "string" ? json.error : `Request failed (${res.status}).`;
+    throw new Error(msg);
+  }
+  return json as T;
+}
+
+export async function listCrmGuests(
+  accountId: string,
+  opts: { search?: string; limit?: number; offset?: number } = {},
+): Promise<CrmGuestListItem[]> {
+  const json = await postCrm<{ guests: CrmGuestListItem[] }>({
+    action: "list",
+    accountId,
+    search: opts.search,
+    limit: opts.limit,
+    offset: opts.offset,
+  });
+  return json.guests ?? [];
+}
+
+export async function getCrmGuest(accountId: string, guestId: string): Promise<CrmGuestDetail> {
+  return postCrm<CrmGuestDetail>({ action: "get", accountId, guestId });
+}
+
+export async function addCrmNote(accountId: string, guestId: string, body: string): Promise<void> {
+  await postCrm({ action: "addNote", accountId, guestId, body });
+}
+
+export async function deleteCrmNote(accountId: string, noteId: string): Promise<void> {
+  await postCrm({ action: "deleteNote", accountId, noteId });
+}
+
+export async function listCrmTags(accountId: string): Promise<CrmTag[]> {
+  const json = await postCrm<{ tags: CrmTag[] }>({ action: "listTags", accountId });
+  return json.tags ?? [];
+}
+
+export async function createCrmTag(accountId: string, name: string, color?: string): Promise<CrmTag | null> {
+  const json = await postCrm<{ tag: CrmTag | null }>({ action: "createTag", accountId, name, color });
+  return json.tag ?? null;
+}
+
+export async function deleteCrmTag(accountId: string, tagId: string): Promise<void> {
+  await postCrm({ action: "deleteTag", accountId, tagId });
+}
+
+export async function assignCrmTag(accountId: string, guestId: string, tagId: string): Promise<void> {
+  await postCrm({ action: "assignTag", accountId, guestId, tagId });
+}
+
+export async function unassignCrmTag(accountId: string, guestId: string, tagId: string): Promise<void> {
+  await postCrm({ action: "unassignTag", accountId, guestId, tagId });
+}
+
+// GDPR Art. 17 — erases the profile; visits/notes/tags cascade away, survey
+// links go null.
+export async function forgetCrmGuest(accountId: string, guestId: string): Promise<void> {
+  await postCrm({ action: "forget", accountId, guestId });
+}
+
+// GDPR Art. 15/20 — everything held about the guest, as one JSON blob.
+export async function exportCrmGuest(accountId: string, guestId: string): Promise<unknown> {
+  return postCrm({ action: "export", accountId, guestId });
+}

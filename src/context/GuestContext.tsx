@@ -40,6 +40,10 @@ const createGuestCrm = (): GuestCrmState => ({
   phone: "",
   consent: false,
   healthConsent: false,
+  identityConsent: false,
+  marketingConsent: false,
+  name: "",
+  email: "",
   prefilled: false,
 });
 
@@ -155,14 +159,17 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       return { ...state, guestCrm };
     }
     case "SET_GUEST_CONSENT": {
-      // Health consent is nested under base consent — withdrawing the base
-      // withdraws both; it never survives on its own.
+      // Health and identity consent are nested under base — withdrawing the
+      // base withdraws everything; none survives on its own. Marketing hangs
+      // off identity, so it falls too.
       const guestCrm = state.guestCrm.map((crm, i) =>
         i === action.index
           ? {
               ...crm,
               consent: action.consent,
               healthConsent: action.consent ? crm.healthConsent : false,
+              identityConsent: action.consent ? crm.identityConsent : false,
+              marketingConsent: action.consent ? crm.marketingConsent : false,
             }
           : crm,
       );
@@ -173,6 +180,45 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
         i === action.index
           ? { ...crm, healthConsent: crm.consent ? action.healthConsent : false }
           : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_IDENTITY_CONSENT": {
+      // Identity requires base; marketing requires identity, so switching
+      // identity off pulls marketing down with it.
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index
+          ? {
+              ...crm,
+              identityConsent: crm.consent ? action.identityConsent : false,
+              marketingConsent:
+                crm.consent && action.identityConsent ? crm.marketingConsent : false,
+            }
+          : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_MARKETING_CONSENT": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index
+          ? {
+              ...crm,
+              marketingConsent:
+                crm.consent && crm.identityConsent ? action.marketingConsent : false,
+            }
+          : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_CRM_NAME": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? { ...crm, name: action.name } : crm,
+      );
+      return { ...state, guestCrm };
+    }
+    case "SET_GUEST_CRM_EMAIL": {
+      const guestCrm = state.guestCrm.map((crm, i) =>
+        i === action.index ? { ...crm, email: action.email } : crm,
       );
       return { ...state, guestCrm };
     }
@@ -198,7 +244,15 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
       // health off makes the next save strip + erase the stored notes.
       const guestCrm = state.guestCrm.map((crm, i) =>
         i === action.index
-          ? { ...crm, prefilled: true, consent: true, healthConsent: action.healthConsent }
+          ? {
+              ...crm,
+              prefilled: true,
+              consent: true,
+              healthConsent: action.healthConsent,
+              identityConsent: action.identityConsent,
+              marketingConsent: action.marketingConsent,
+              name: action.name ?? crm.name,
+            }
           : crm,
       );
       return { ...state, guests, guestCrm };

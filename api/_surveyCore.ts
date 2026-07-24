@@ -173,10 +173,27 @@ async function submitSurvey(
     therapistId = null;
   }
 
+  // Guest CRM linkage (0025): a response is tied back to a guest profile only
+  // when the intake maps to exactly ONE guest_visits row — a couple's intake
+  // is ambiguous about who answered, so it stays unlinked. FK is on delete set
+  // null, so a later forget reverts the response to pseudonymous.
+  let guestId: string | null = null;
+  if (linkedIntake && intakeId) {
+    const visitRes = await fetch(
+      `${base}/rest/v1/guest_visits?select=guest_id&intake_id=eq.${intakeId}`,
+      { headers: svc },
+    );
+    const visits = asArray(await visitRes.json().catch(() => null));
+    if (visits.length === 1 && typeof visits[0].guest_id === "string") {
+      guestId = visits[0].guest_id;
+    }
+  }
+
   const payload: JsonRecord = {
     account_id: accountId,
     location_id: locationId,
     intake_id: linkedIntake ? intakeId : null,
+    guest_id: guestId,
     therapist_id: therapistId,
     therapist_name: textOrNull(body.therapistName, 200),
     // Column is `treatment_type` — 0001's name, kept rather than renamed.

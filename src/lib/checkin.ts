@@ -46,16 +46,28 @@ export async function mintCheckinCode(deviceToken: string): Promise<CheckinCode>
 export async function checkinLookup(
   code: string,
   phone: string,
-): Promise<{ preferences: StoredPreferences; healthConsent: boolean } | null> {
+): Promise<{
+  preferences: StoredPreferences;
+  healthConsent: boolean;
+  identityConsent: boolean;
+  marketingConsent: boolean;
+  name: string | null;
+} | null> {
   const json = (await postCheckin({ action: "lookup", code, phone })) as {
     found?: boolean;
     preferences?: unknown;
     healthConsent?: boolean;
+    identityConsent?: boolean;
+    marketingConsent?: boolean;
+    name?: unknown;
   };
   if (!json.found || !json.preferences) return null;
   return {
     preferences: json.preferences as StoredPreferences,
     healthConsent: json.healthConsent === true,
+    identityConsent: json.identityConsent === true,
+    marketingConsent: json.marketingConsent === true,
+    name: typeof json.name === "string" ? json.name : null,
   };
 }
 
@@ -75,6 +87,7 @@ export async function checkinSave(
   preferences: StoredPreferences,
   consent: boolean,
   healthConsent: boolean,
+  identity?: { name: string; email?: string; marketingConsent?: boolean },
 ): Promise<boolean> {
   const json = (await postCheckin({
     action: "save",
@@ -82,6 +95,10 @@ export async function checkinSave(
     phone,
     consent,
     healthConsent,
+    identityConsent: identity !== undefined,
+    marketingConsent: identity?.marketingConsent === true,
+    name: identity?.name,
+    email: identity?.email || undefined,
     preferences,
   })) as {
     ok?: boolean;

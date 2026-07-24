@@ -44,9 +44,12 @@ import { checkDeviceConfig, resolveDevice, svcHeaders, type DeviceAuthEnv } from
 import {
   BASE_CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
+  IDENTITY_CONSENT_VERSION,
+  MARKETING_CONSENT_VERSION,
   normalizePhone,
   phoneHash,
   resolveAccount,
+  sanitizeIdentity,
   sanitizePreferences,
 } from "./_guestCore.js";
 import type { StoredPreferencesV1 } from "./_guestCore.js";
@@ -67,6 +70,11 @@ interface CheckinBody {
   phone?: string;
   consent?: boolean;
   healthConsent?: boolean;
+  identityConsent?: boolean;
+  marketingConsent?: boolean;
+  name?: unknown;
+  email?: unknown;
+  birthday?: unknown;
   preferences?: unknown;
 }
 
@@ -175,7 +183,7 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   const rows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=preferences,health_consent_version&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=preferences,health_consent_version,identity_consent_version,marketing_consent_version,display_name&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
     ).body,
@@ -194,7 +202,15 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
     delete prefs.zoneNotes;
     delete prefs.generalNote;
   }
-  return { status: 200, json: { found: true, preferences: prefs ?? null, healthConsent } };
+  // Identity tier (0025): same exposure rule as the kiosk lookup — the display
+  // name and the consent flags, never contact email/phone/birthday.
+  const identityConsent = typeof row.identity_consent_version === "string";
+  const marketingConsent = identityConsent && typeof row.marketing_consent_version === "string";
+  const name = identityConsent && typeof row.display_name === "string" ? row.display_name : null;
+  return {
+    status: 200,
+    json: { found: true, preferences: prefs ?? null, healthConsent, identityConsent, marketingConsent, name },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +288,11 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
     }
   } else {
+    // Identity/marketing tiers (0025), same nesting + withdrawal-erases rules
+    // as _guestCore.saveGuest: no identity consent nulls every identity +
+    // marketing column; marketing stands only on identity.
+    const identity = body.identityConsent === true ? sanitizeIdentity(body) : null;
+    const marketingConsent = identity !== null && body.marketingConsent === true;
     const patch = await fetch(
       `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
       {
@@ -283,6 +304,14 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
           consent_at: now,
           health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
           health_consent_at: healthConsent ? now : null,
+          identity_consent_version: identity ? IDENTITY_CONSENT_VERSION : null,
+          identity_consent_at: identity ? now : null,
+          display_name: identity?.name ?? null,
+          contact_phone: identity ? phone : null,
+          contact_email: identity?.email ?? null,
+          birthday: identity?.birthday ?? null,
+          marketing_consent_version: marketingConsent ? MARKETING_CONSENT_VERSION : null,
+          marketing_consent_at: marketingConsent ? now : null,
           last_seen_at: now,
         }),
       },
@@ -316,7 +345,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   // comfort-only submission) — never a raw unsanitized client payload.
   const intakeInsert = await fetch(`${base}/rest/v1/intakes`, {
     method: "POST",
-    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify({
       location_id: locationId,
       status: "incomplete",
@@ -330,6 +359,29 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   });
   if (!intakeInsert.ok) {
     return { status: 502, json: { error: `Could not create the check-in (${intakeInsert.status}).` } };
+  }
+
+  // Durable visit history (0025). Only when the profile still exists (consent
+  // kept — a withdrawal just deleted it, and its history cascaded away).
+  // Detail-less at this point (no treatment/therapist yet — reception fills
+  // the intake in later); best-effort, never fails the check-in.
+  if (consent && existing[0]?.id) {
+    const intakeRows = asArray(await intakeInsert.json().catch(() => null));
+    const intakeId = typeof intakeRows[0]?.id === "string" ? intakeRows[0].id : null;
+    const locRows = asArray(
+      (await getJson(`${base}/rest/v1/locations?select=name&id=eq.${locationId}`, svc)).body,
+    );
+    await fetch(`${base}/rest/v1/guest_visits`, {
+      method: "POST",
+      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({
+        account_id: accountId,
+        location_id: locationId,
+        location_name: typeof locRows[0]?.name === "string" ? locRows[0].name : "",
+        guest_id: String(existing[0].id),
+        intake_id: intakeId,
+      }),
+    }).catch(() => {});
   }
 
   return { status: 200, json: { ok: true } };

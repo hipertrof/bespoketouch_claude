@@ -79,6 +79,7 @@ The dev server (`npm run dev`) runs middleware plugins that import the same core
 - `/api/survey` ← `api/_surveyCore.ts` ↔ `vite-plugins/survey-proxy.ts`
 - `/api/checkin` ← `api/_checkinCore.ts` ↔ `vite-plugins/checkin-proxy.ts`
 - `/api/translate` ← `api/_translateCore.ts` (DeepL) ↔ `vite-plugins/deepl-proxy.ts`
+- `/api/crm` ← `api/_crmCore.ts` ↔ `vite-plugins/crm-proxy.ts`
 
 **When you add or change an endpoint in `api/`, update or add its dev proxy.** Without it, the endpoint works in prod but 404s in dev. Proxies are registered in `vite.config.ts` and receive secrets via `loadEnv`.
 
@@ -131,6 +132,19 @@ The single opt-in consent from Phase 4a is split into two nested tiers, both req
 `saveGuest` strips `zones`/`zoneNotes`/`generalNote` from the payload and nulls both health columns whenever `healthConsent !== true` — so a save with health consent switched off (base still on) erases previously stored zones/notes without touching the rest of the profile, same withdrawal-must-be-as-easy-as-the-grant guarantee as the original single consent. `lookupGuest` strips them again on the way out (checks `health_consent_version`) as defense in depth. Client-side, `GuestCrmState` carries both `consent`/`healthConsent` booleans; `SET_GUEST_CONSENT` forces `healthConsent: false` whenever base goes off, enforcing the nesting in both directions. The kiosk's `PreferencesStep.tsx` consent card nests a second toggle, shown only while base is on.
 
 Rows saved under the old single "2026-07-v2" consent were backfilled in `0024` (`health_consent_version = consent_version`) rather than left to special-case forever — that consent's disclosure copy already named zones+notes as health data, so no re-consent was needed.
+
+### Guest CRM expansion: identity/marketing tiers, visits, Guest 360 (migration `0025`)
+Two MORE consent tiers on `guest_profiles`, same server-stamped/withdrawal-erases semantics:
+- **Identity** (`IDENTITY_CONSENT_VERSION`, requires base, sibling of health) covers `display_name`, `contact_phone` (the RAW normalized phone — `phone_hash` stays the ONLY lookup key), `contact_email`, optional `birthday`. `saveGuest`/`saveByCode` null every identity+marketing column when `identityConsent !== true` or no name was supplied (`sanitizeIdentity`, exported from `_guestCore.ts`). Kiosk/checkin lookups return only the name + consent flags, never contact data.
+- **Marketing** (`MARKETING_CONSENT_VERSION`, requires identity) is the separate permission to CONTACT the guest. Modeled only — nothing sends yet.
+
+Client nesting (GuestContext): base off forces health+identity+marketing off; identity off forces marketing off. `CheckinPage` mirrors this with local state.
+
+**Durable visit history**: `guest_visits` (service-role-only, FK `guest_profiles on delete cascade`, `intake_id` deliberately WITHOUT FK — intakes are volatile). Written best-effort at intake-submit inside `_intakeCore.ts` (kiosk sends index-aligned `guestPhones` for consenting guests only; server hashes → finds an EXISTING profile → snapshots treatment/therapist/room/location names+price; never creates a profile) and `_checkinCore.ts` (detail-less row; reception completes the intake later). Deliberately a NON-health snapshot — zones/notes never reach `guest_visits`. The 540-day lazy expiry and both forget paths erase visits/notes/tags via FK cascade with no extra code.
+
+**Survey linkage**: `survey_responses.guest_id` (FK `on delete set null`) set in `submitSurvey` only when exactly one `guest_visits` row maps to the intake — a couple's intake stays unlinked (ambiguous respondent). Forget reverts responses to pseudonymous.
+
+**Guest 360 dashboard** (`/guests`, `src/components/crm/GuestCrmDashboard.tsx` + `src/lib/crm.ts`): manager-and-up ONLY, matching the survey precedent. All CRM tables (`guest_visits`, `guest_notes`, `guest_tags`, `guest_tag_assignments`) are RLS-deny-all with zero policies — every staff read/write goes through the authed `/api/crm` (`api/_crmCore.ts`, JWT self-authorization copied from `_membersCore.ts`; each action re-verifies the guest belongs to the caller's account). Actions: list/get (stats computed server-side), notes (author-snapshotted, capped 2000 chars, UI hints "no health info here"), tags CRUD + assignment, `forget` (Art. 17, type-name-to-confirm in the UI), `export` (Art. 15/20 JSON download). Do NOT add client-side Supabase reads of these tables or per-table RLS policies — the single-endpoint model is the boundary.
 
 ### Body-map zones (anatomical markers)
 A guest marks pain/preference zones on a silhouette during intake. Zone state flows: client (`GuestContext.zones`) → server write (`/api/intake` pins it) → stored in `intakes.personalizations` + optional guest CRM (`guest_profiles.preferences`, opt-in only). New zones require sync across four files:
