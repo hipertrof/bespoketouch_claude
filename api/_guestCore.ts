@@ -368,7 +368,7 @@ export async function resolveAccount(
 }
 
 // Normalizes to digits with an optional leading '+'. A 9-digit local number
-// with no country code is assumed Polish (+48). Rejects anything under 8
+// with no country code is assumed Polish (+48). Rejects anything under 6
 // digits. This is the single source of truth — the client sends the raw value.
 export function normalizePhone(raw: string | undefined): string | null {
   if (typeof raw !== "string") return null;
@@ -380,7 +380,7 @@ export function normalizePhone(raw: string | undefined): string | null {
   // to one value; otherwise a save and a later lookup/forget can miss each other
   // and a GDPR erasure silently deletes nothing.
   if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.length < 8) return null;
+  if (digits.length < 6) return null;
   if (hasPlus) return `+${digits}`;
   if (digits.length === 9) return `+48${digits}`; // bare Polish mobile/landline
   return `+${digits}`;

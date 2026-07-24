@@ -60,6 +60,11 @@ export function PreferencesStep() {
       email: "",
       prefilled: false,
     };
+  // Any consent tier requires a phone to key the save to — without one there's
+  // nothing to save under. A prefilled guest already has a valid phone from
+  // the lookup, so this only blocks a fresh guest who toggled consent on
+  // without entering a number.
+  const phoneValid = crm.phone.replace(/\D/g, "").length >= 6;
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -419,6 +424,11 @@ export function PreferencesStep() {
               />
             </div>
           )}
+          {crm.consent && !phoneValid && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentPhoneRequiredHint", lang)}
+            </p>
+          )}
         </div>
       )}
 
@@ -430,7 +440,10 @@ export function PreferencesStep() {
           <ArrowLeft size={18} />
           {t("backButton", lang)}
         </Button>
-        <Button onClick={() => dispatch({ type: "COMPLETE_GUEST_PREFERENCES" })}>
+        <Button
+          onClick={() => dispatch({ type: "COMPLETE_GUEST_PREFERENCES" })}
+          disabled={crm.consent && !phoneValid}
+        >
           {t("confirmLock", lang)}
           <ArrowRight size={18} />
         </Button>

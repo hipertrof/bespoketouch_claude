@@ -318,7 +318,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
   // rather than prefilling this session, so there's nothing to reconcile here.
   const [showQr, setShowQr] = useState(false);
 
-  const phoneValid = crm.phone.replace(/\D/g, "").length >= 8;
+  const phoneValid = crm.phone.replace(/\D/g, "").length >= 6;
 
   const handleLookup = async () => {
     if (!phoneValid) return;

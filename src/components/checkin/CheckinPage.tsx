@@ -194,7 +194,7 @@ export function CheckinPage() {
   const [crmName, setCrmName] = useState("");
   const [crmEmail, setCrmEmail] = useState("");
 
-  const phoneValid = phone.replace(/\D/g, "").length >= 8;
+  const phoneValid = phone.replace(/\D/g, "").length >= 6;
 
   const handleLookup = async () => {
     if (!code || !phoneValid) return;

@@ -43,7 +43,7 @@ export function HandoffStep() {
     const size = state.partySize;
 
     const crmOps = state.guestCrm.slice(0, size).flatMap((crm, i) => {
-      if (crm.phone.replace(/\D/g, "").length < 8) return [];
+      if (crm.phone.replace(/\D/g, "").length < 6) return [];
       if (crm.consent) {
         const identity =
           crm.identityConsent && crm.name.trim()
@@ -80,7 +80,7 @@ export function HandoffStep() {
           guestPhones: state.guestCrm
             .slice(0, size)
             .map((crm) =>
-              crm.consent && crm.phone.replace(/\D/g, "").length >= 8 ? crm.phone : null,
+              crm.consent && crm.phone.replace(/\D/g, "").length >= 6 ? crm.phone : null,
             ),
         });
       })
