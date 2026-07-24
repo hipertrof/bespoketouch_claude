@@ -170,7 +170,7 @@ async function listGuests(body: CrmBody, accountId: string, base: string, svc: H
 
   let url =
     `${base}/rest/v1/guest_profiles?select=id,display_name,consent_version,health_consent_version,` +
-    `identity_consent_version,marketing_consent_version,created_at,last_seen_at,` +
+    `marketing_consent_version,created_at,last_seen_at,` +
     `guest_visits(id,visited_at),guest_tag_assignments(tag_id)` +
     `&account_id=eq.${accountId}&order=last_seen_at.desc.nullslast&limit=${limit}&offset=${offset}`;
   // Name search only means anything over identity-consented rows — anonymous
@@ -190,7 +190,6 @@ async function listGuests(body: CrmBody, accountId: string, base: string, svc: H
     return {
       id: r.id,
       name: typeof r.display_name === "string" ? r.display_name : null,
-      identityConsent: typeof r.identity_consent_version === "string",
       healthConsent: typeof r.health_consent_version === "string",
       marketingConsent: typeof r.marketing_consent_version === "string",
       visitCount: visits.length,
@@ -220,7 +219,7 @@ async function getGuest(body: CrmBody, accountId: string, base: string, svc: Hea
 
   const visits = asArray(visitsRes.body);
   const healthConsent = typeof row.health_consent_version === "string";
-  const identityConsent = typeof row.identity_consent_version === "string";
+  const marketingIdentity = typeof row.marketing_consent_version === "string";
 
   // Same defense-in-depth strip as lookupGuest: no health stamp, no zones/notes.
   let preferences = row.preferences ?? null;
@@ -250,15 +249,14 @@ async function getGuest(body: CrmBody, accountId: string, base: string, svc: Hea
     json: {
       guest: {
         id: guestId,
-        name: identityConsent && typeof row.display_name === "string" ? row.display_name : null,
-        contactPhone: identityConsent && typeof row.contact_phone === "string" ? row.contact_phone : null,
-        contactEmail: identityConsent && typeof row.contact_email === "string" ? row.contact_email : null,
-        birthday: identityConsent && typeof row.birthday === "string" ? row.birthday : null,
+        name: marketingIdentity && typeof row.display_name === "string" ? row.display_name : null,
+        contactPhone: marketingIdentity && typeof row.contact_phone === "string" ? row.contact_phone : null,
+        contactEmail: marketingIdentity && typeof row.contact_email === "string" ? row.contact_email : null,
+        birthday: marketingIdentity && typeof row.birthday === "string" ? row.birthday : null,
         preferences,
         consent: {
           base: { version: row.consent_version ?? null, at: row.consent_at ?? null },
           health: { version: row.health_consent_version ?? null, at: row.health_consent_at ?? null },
-          identity: { version: row.identity_consent_version ?? null, at: row.identity_consent_at ?? null },
           marketing: { version: row.marketing_consent_version ?? null, at: row.marketing_consent_at ?? null },
         },
         createdAt: row.created_at ?? null,

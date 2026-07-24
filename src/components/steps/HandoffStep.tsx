@@ -27,9 +27,12 @@ export function HandoffStep() {
   // intake endpoint keys guest_visits history rows off EXISTING guest_profiles,
   // so a brand-new consenting guest's profile must land before the intake does.
   //
-  // CRM semantics (unchanged from 0024, plus the 0025 identity tier):
+  // CRM semantics (unchanged from 0024, plus the marketing tier from
+  // 0025/0026 — storing name/contact and permission to use it, merged into
+  // one toggle):
   //   * consent on               → save (healthConsent=false strips + erases
-  //     stored notes; identity sent only when opted in AND a name was typed);
+  //     stored notes; identity sent only when marketing was opted in AND a
+  //     name was typed);
   //   * prefilled + consent off  → withdrawal, erase the profile (art. 7(3));
   //   * never-prefilled + off    → no-op (an unticked toggle must not delete a
   //     profile that was never loaded — shared phone, typo).
@@ -46,12 +49,8 @@ export function HandoffStep() {
       if (crm.phone.replace(/\D/g, "").length < 6) return [];
       if (crm.consent) {
         const identity =
-          crm.identityConsent && crm.name.trim()
-            ? {
-                name: crm.name.trim(),
-                email: crm.email.trim() || undefined,
-                marketingConsent: crm.marketingConsent,
-              }
+          crm.marketingConsent && crm.name.trim()
+            ? { name: crm.name.trim(), email: crm.email.trim() || undefined }
             : undefined;
         return [saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent, identity)];
       }

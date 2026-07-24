@@ -138,17 +138,18 @@ export interface RoomAssignment {
 // `healthConsent` is the second, nested opt-in for the Art. 9 body-zone marks
 // + free-text notes — meaningless (and forced false) without base consent.
 // `prefilled` = a lookup hit was applied.
-// `identityConsent` (third tier, sibling of health, nested under base) covers
-// storing the guest's real identity: display name, contact email — and the raw
-// phone server-side. `marketingConsent` (fourth tier, nested under identity)
-// is the separate permission to be contacted; nothing sends yet.
+// `marketingConsent` (third tier, sibling of health, nested under base)
+// covers BOTH storing the guest's real identity (display name, contact
+// email — and the raw phone server-side) AND permission to contact them with
+// it; nothing sends yet. Started as two separate nested tiers (identity, then
+// marketing) but collapsed into one — "remembered but unreachable" wasn't a
+// distinction guests cared to make, and it was one consent toggle too many.
 export interface GuestCrmState {
   phone: string;
   consent: boolean;
   healthConsent: boolean;
-  identityConsent: boolean;
   marketingConsent: boolean;
-  // Display name + optional email for the identity tier, held in memory only.
+  // Display name + optional email for the marketing tier, held in memory only.
   name: string;
   email: string;
   prefilled: boolean;
@@ -194,7 +195,6 @@ export type GuestAction =
   | { type: "SET_GUEST_PHONE"; index: number; phone: string }
   | { type: "SET_GUEST_CONSENT"; index: number; consent: boolean }
   | { type: "SET_GUEST_HEALTH_CONSENT"; index: number; healthConsent: boolean }
-  | { type: "SET_GUEST_IDENTITY_CONSENT"; index: number; identityConsent: boolean }
   | { type: "SET_GUEST_MARKETING_CONSENT"; index: number; marketingConsent: boolean }
   | { type: "SET_GUEST_CRM_NAME"; index: number; name: string }
   | { type: "SET_GUEST_CRM_EMAIL"; index: number; email: string }
@@ -209,7 +209,6 @@ export type GuestAction =
       zoneNotes?: Partial<Record<ZoneId, string>>;
       generalNote?: string;
       healthConsent: boolean;
-      identityConsent: boolean;
       marketingConsent: boolean;
       name: string | null;
     }

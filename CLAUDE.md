@@ -37,13 +37,13 @@ There is **no test runner configured**. `src/lib/rls-isolation.test.ts` exists b
 
 ## Current production state
 
-**Phases complete and live:** 0 (foundation), 1 (tenancy/RBAC), 2 (device pairing + hardening), 3 (offer CMS + therapist queue), 4a (opt-in guest CRM), 4b (post-treatment survey), 5 (soft-lapse reminders). Full RLS isolation verified (test pass ~50 cases as manager + therapist roles). Room/bed assignment (see below) shipped on top of Phase 3; the guest CRM's base/health consent split (see below) shipped on top of Phase 4a. **Deferred:** Stripe integration (subscription dates set by hand in `/admin`).
+**Phases complete and live:** 0 (foundation), 1 (tenancy/RBAC), 2 (device pairing + hardening), 3 (offer CMS + therapist queue), 4a (opt-in guest CRM), 4b (post-treatment survey), 5 (soft-lapse reminders). Full RLS isolation verified (test pass ~50 cases as manager + therapist roles). Room/bed assignment (see below) shipped on top of Phase 3; the guest CRM's base/health consent split (see below) and its marketing/visit-history/Guest 360 expansion (migrations `0025`/`0026`, see below) shipped on top of Phase 4a. **Deferred:** Stripe integration (subscription dates set by hand in `/admin`); CRM marketing consent is modeled but nothing sends yet.
 
 ## What this is
 
 **BespokeTouch** — a multi-tenant SaaS spa product with two faces:
 1. A **guest-intake kiosk** (route `/`) — an anonymous, no-login, multi-step, multi-language state machine a spa guest fills in on a tablet (preferences, body-map pain zones, oil choices) that hands off to a therapist.
-2. **Staff dashboards** (all other routes) — login-gated, role-scoped React screens: platform admin, offer CMS, therapist queue, staff management, kiosk/device management. Six of these share `DashboardShell.tsx` for header/nav chrome.
+2. **Staff dashboards** (all other routes) — login-gated, role-scoped React screens: platform admin, offer CMS, therapist queue, staff management, kiosk/device management, survey reporting, guest CRM. Seven of these share `DashboardShell.tsx` for header/nav chrome.
 
 Backend is **Supabase** (Postgres + Auth + REST). There is no custom app server — privileged operations run as **Vercel serverless functions** in `api/`. Everything else is a client-side SPA talking to Supabase REST under Row-Level Security.
 
@@ -133,12 +133,10 @@ The single opt-in consent from Phase 4a is split into two nested tiers, both req
 
 Rows saved under the old single "2026-07-v2" consent were backfilled in `0024` (`health_consent_version = consent_version`) rather than left to special-case forever — that consent's disclosure copy already named zones+notes as health data, so no re-consent was needed.
 
-### Guest CRM expansion: identity/marketing tiers, visits, Guest 360 (migration `0025`)
-Two MORE consent tiers on `guest_profiles`, same server-stamped/withdrawal-erases semantics:
-- **Identity** (`IDENTITY_CONSENT_VERSION`, requires base, sibling of health) covers `display_name`, `contact_phone` (the RAW normalized phone — `phone_hash` stays the ONLY lookup key), `contact_email`, optional `birthday`. `saveGuest`/`saveByCode` null every identity+marketing column when `identityConsent !== true` or no name was supplied (`sanitizeIdentity`, exported from `_guestCore.ts`). Kiosk/checkin lookups return only the name + consent flags, never contact data.
-- **Marketing** (`MARKETING_CONSENT_VERSION`, requires identity) is the separate permission to CONTACT the guest. Modeled only — nothing sends yet.
+### Guest CRM expansion: marketing tier, visits, Guest 360 (migrations `0025`, `0026`)
+One MORE consent tier on `guest_profiles` (`MARKETING_CONSENT_VERSION`/`marketing_consent_at`, requires base, sibling of health), same server-stamped/withdrawal-erases semantics: covers `display_name`, `contact_phone` (the RAW normalized phone — `phone_hash` stays the ONLY lookup key), `contact_email`, optional `birthday`, AND the permission to CONTACT the guest with them (sending itself isn't built yet). `saveGuest`/`saveByCode` null every identity+marketing column when `marketingConsent !== true` or no name was supplied (`sanitizeIdentity`, exported from `_guestCore.ts`). Kiosk/checkin lookups return only the name + consent flag, never contact data.
 
-Client nesting (GuestContext): base off forces health+identity+marketing off; identity off forces marketing off. `CheckinPage` mirrors this with local state.
+0025 originally shipped this as TWO nested tiers (identity, then marketing nested under it) — 0026 collapsed them into one because "we remember your name but may not contact you" wasn't a state guests cared to distinguish, and it was one consent toggle too many. 0026 drops `identity_consent_version`/`identity_consent_at`, backfilling any row that had identity-without-marketing into the merged column first. Client nesting (GuestContext): base off forces health+marketing off. `CheckinPage` mirrors this with local state.
 
 **Durable visit history**: `guest_visits` (service-role-only, FK `guest_profiles on delete cascade`, `intake_id` deliberately WITHOUT FK — intakes are volatile). Written best-effort at intake-submit inside `_intakeCore.ts` (kiosk sends index-aligned `guestPhones` for consenting guests only; server hashes → finds an EXISTING profile → snapshots treatment/therapist/room/location names+price; never creates a profile) and `_checkinCore.ts` (detail-less row; reception completes the intake later). Deliberately a NON-health snapshot — zones/notes never reach `guest_visits`. The 540-day lazy expiry and both forget paths erase visits/notes/tags via FK cascade with no extra code.
 

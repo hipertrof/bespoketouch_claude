@@ -8,7 +8,6 @@ import { supabase } from "./supabase";
 export interface CrmGuestListItem {
   id: string;
   name: string | null;
-  identityConsent: boolean;
   healthConsent: boolean;
   marketingConsent: boolean;
   visitCount: number;
@@ -69,7 +68,6 @@ export interface CrmGuestDetail {
     consent: {
       base: CrmConsentStamp;
       health: CrmConsentStamp;
-      identity: CrmConsentStamp;
       marketing: CrmConsentStamp;
     };
     createdAt: string | null;

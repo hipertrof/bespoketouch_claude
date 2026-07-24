@@ -44,7 +44,6 @@ import { checkDeviceConfig, resolveDevice, svcHeaders, type DeviceAuthEnv } from
 import {
   BASE_CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
-  IDENTITY_CONSENT_VERSION,
   MARKETING_CONSENT_VERSION,
   normalizePhone,
   phoneHash,
@@ -70,7 +69,6 @@ interface CheckinBody {
   phone?: string;
   consent?: boolean;
   healthConsent?: boolean;
-  identityConsent?: boolean;
   marketingConsent?: boolean;
   name?: unknown;
   email?: unknown;
@@ -183,7 +181,7 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   const rows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=preferences,health_consent_version,identity_consent_version,marketing_consent_version,display_name&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=preferences,health_consent_version,marketing_consent_version,display_name&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
     ).body,
@@ -202,14 +200,14 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
     delete prefs.zoneNotes;
     delete prefs.generalNote;
   }
-  // Identity tier (0025): same exposure rule as the kiosk lookup — the display
-  // name and the consent flags, never contact email/phone/birthday.
-  const identityConsent = typeof row.identity_consent_version === "string";
-  const marketingConsent = identityConsent && typeof row.marketing_consent_version === "string";
-  const name = identityConsent && typeof row.display_name === "string" ? row.display_name : null;
+  // Marketing tier (0025, merged 0026): same exposure rule as the kiosk
+  // lookup — the display name and the consent flag, never contact
+  // email/phone/birthday.
+  const marketingConsent = typeof row.marketing_consent_version === "string";
+  const name = marketingConsent && typeof row.display_name === "string" ? row.display_name : null;
   return {
     status: 200,
-    json: { found: true, preferences: prefs ?? null, healthConsent, identityConsent, marketingConsent, name },
+    json: { found: true, preferences: prefs ?? null, healthConsent, marketingConsent, name },
   };
 }
 
@@ -288,11 +286,10 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
     }
   } else {
-    // Identity/marketing tiers (0025), same nesting + withdrawal-erases rules
-    // as _guestCore.saveGuest: no identity consent nulls every identity +
-    // marketing column; marketing stands only on identity.
-    const identity = body.identityConsent === true ? sanitizeIdentity(body) : null;
-    const marketingConsent = identity !== null && body.marketingConsent === true;
+    // Marketing tier (0025, merged 0026), same withdrawal-erases rule as
+    // _guestCore.saveGuest: no marketing consent (or no name) nulls every
+    // identity + marketing column.
+    const identity = body.marketingConsent === true ? sanitizeIdentity(body) : null;
     const patch = await fetch(
       `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
       {
@@ -304,14 +301,12 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
           consent_at: now,
           health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
           health_consent_at: healthConsent ? now : null,
-          identity_consent_version: identity ? IDENTITY_CONSENT_VERSION : null,
-          identity_consent_at: identity ? now : null,
           display_name: identity?.name ?? null,
           contact_phone: identity ? phone : null,
           contact_email: identity?.email ?? null,
           birthday: identity?.birthday ?? null,
-          marketing_consent_version: marketingConsent ? MARKETING_CONSENT_VERSION : null,
-          marketing_consent_at: marketingConsent ? now : null,
+          marketing_consent_version: identity ? MARKETING_CONSENT_VERSION : null,
+          marketing_consent_at: identity ? now : null,
           last_seen_at: now,
         }),
       },

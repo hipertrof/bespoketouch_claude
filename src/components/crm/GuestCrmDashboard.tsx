@@ -28,7 +28,7 @@ import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 // route gates on canManage (cosmetic), and /api/crm re-checks the caller's
 // owner/manager membership per request (the real boundary; every CRM table is
 // service-role-only). Anonymous (hash-only) rows appear without a name — they
-// are real guests who declined the identity tier, and their visit history and
+// are real guests who declined the marketing tier, and their visit history and
 // preferences are still owner-visible data.
 
 interface AccountLite {
@@ -353,7 +353,6 @@ function GuestDetailPanel({
           <div className="flex flex-wrap gap-1.5">
             {consentChip(t("guestsConsentBase", lang), guest.consent.base)}
             {consentChip(t("guestsConsentHealth", lang), guest.consent.health)}
-            {consentChip(t("guestsConsentIdentity", lang), guest.consent.identity)}
             {consentChip(t("guestsConsentMarketing", lang), guest.consent.marketing)}
           </div>
         </div>

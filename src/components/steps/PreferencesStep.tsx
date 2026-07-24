@@ -54,7 +54,6 @@ export function PreferencesStep() {
       phone: "",
       consent: false,
       healthConsent: false,
-      identityConsent: false,
       marketingConsent: false,
       name: "",
       email: "",
@@ -311,19 +310,19 @@ export function PreferencesStep() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold text-charcoal">
-                    {t("consentIdentityTitle", lang)}
+                    {t("consentMarketingTitle", lang)}
                   </div>
                   <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-slate-light">
-                    {t("consentIdentityBody", lang)}
+                    {t("consentMarketingBody", lang)}
                   </p>
                 </div>
                 <Toggle
-                  checked={crm.identityConsent}
+                  checked={crm.marketingConsent}
                   onChange={(v) => {
                     dispatch({
-                      type: "SET_GUEST_IDENTITY_CONSENT",
+                      type: "SET_GUEST_MARKETING_CONSENT",
                       index: activeIndex,
-                      identityConsent: v,
+                      marketingConsent: v,
                     });
                     // Prefill the display name from the intake name on first opt-in.
                     if (v && !crm.name.trim()) {
@@ -333,22 +332,22 @@ export function PreferencesStep() {
                       }
                     }
                   }}
-                  label={t("consentIdentityTitle", lang)}
+                  label={t("consentMarketingTitle", lang)}
                 />
               </div>
-              {crm.prefilled && !crm.identityConsent && (
+              {crm.prefilled && !crm.marketingConsent && (
                 <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
-                  {t("consentIdentityWithdrawHint", lang)}
+                  {t("consentMarketingWithdrawHint", lang)}
                 </p>
               )}
-              {crm.identityConsent && (
+              {crm.marketingConsent && (
                 <div className="mt-4 flex flex-col gap-3">
                   <div>
                     <label
                       htmlFor={`crmName-${activeIndex}`}
                       className="mb-2 block text-sm font-semibold text-charcoal"
                     >
-                      {t("consentIdentityNameLabel", lang)}
+                      {t("consentMarketingNameLabel", lang)}
                     </label>
                     <input
                       id={`crmName-${activeIndex}`}
@@ -365,7 +364,7 @@ export function PreferencesStep() {
                       htmlFor={`crmEmail-${activeIndex}`}
                       className="mb-2 block text-sm font-semibold text-charcoal"
                     >
-                      {t("consentIdentityEmailLabel", lang)}
+                      {t("consentMarketingEmailLabel", lang)}
                     </label>
                     <input
                       id={`crmEmail-${activeIndex}`}
@@ -376,27 +375,6 @@ export function PreferencesStep() {
                         dispatch({ type: "SET_GUEST_CRM_EMAIL", index: activeIndex, email: e.target.value })
                       }
                       className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
-                    />
-                  </div>
-                  <div className="flex items-start justify-between gap-4 rounded-lg border border-sand bg-white/60 p-3">
-                    <div>
-                      <div className="text-sm font-semibold text-charcoal">
-                        {t("consentMarketingTitle", lang)}
-                      </div>
-                      <p className="mt-1 max-w-xl text-xs leading-relaxed text-slate-light">
-                        {t("consentMarketingBody", lang)}
-                      </p>
-                    </div>
-                    <Toggle
-                      checked={crm.marketingConsent}
-                      onChange={(v) =>
-                        dispatch({
-                          type: "SET_GUEST_MARKETING_CONSENT",
-                          index: activeIndex,
-                          marketingConsent: v,
-                        })
-                      }
-                      label={t("consentMarketingTitle", lang)}
                     />
                   </div>
                 </div>

@@ -49,7 +49,6 @@ export async function checkinLookup(
 ): Promise<{
   preferences: StoredPreferences;
   healthConsent: boolean;
-  identityConsent: boolean;
   marketingConsent: boolean;
   name: string | null;
 } | null> {
@@ -57,7 +56,6 @@ export async function checkinLookup(
     found?: boolean;
     preferences?: unknown;
     healthConsent?: boolean;
-    identityConsent?: boolean;
     marketingConsent?: boolean;
     name?: unknown;
   };
@@ -65,7 +63,6 @@ export async function checkinLookup(
   return {
     preferences: json.preferences as StoredPreferences,
     healthConsent: json.healthConsent === true,
-    identityConsent: json.identityConsent === true,
     marketingConsent: json.marketingConsent === true,
     name: typeof json.name === "string" ? json.name : null,
   };
@@ -87,7 +84,7 @@ export async function checkinSave(
   preferences: StoredPreferences,
   consent: boolean,
   healthConsent: boolean,
-  identity?: { name: string; email?: string; marketingConsent?: boolean },
+  identity?: { name: string; email?: string },
 ): Promise<boolean> {
   const json = (await postCheckin({
     action: "save",
@@ -95,8 +92,7 @@ export async function checkinSave(
     phone,
     consent,
     healthConsent,
-    identityConsent: identity !== undefined,
-    marketingConsent: identity?.marketingConsent === true,
+    marketingConsent: identity !== undefined,
     name: identity?.name,
     email: identity?.email || undefined,
     preferences,

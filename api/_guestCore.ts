@@ -40,15 +40,17 @@ import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceA
 export const BASE_CONSENT_VERSION = "2026-07-v3-base";
 export const HEALTH_CONSENT_VERSION = "2026-07-v3-health";
 
-// Two more tiers since migration 0025. Identity consent (nested under base,
-// sibling of health) gates storing the guest's real identity: display name,
-// raw contact phone/email, optional birthday. Marketing consent (nested under
-// identity) is the separate GDPR-distinguishable permission to be CONTACTED —
-// modeled now, nothing sends yet. Both stamped server-side; a save with
-// identityConsent !== true nulls every identity + marketing column
+// A third tier since migration 0025, collapsed to one (from two) in 0026.
+// Marketing consent (nested under base, sibling of health) gates BOTH storing
+// the guest's real identity — display name, raw contact phone/email,
+// optional birthday — AND the permission to CONTACT them with it. Originally
+// modeled as two separate nested opt-ins (identity, then marketing); merged
+// into one because "we remember your name but may not use it" wasn't a
+// meaningful state guests cared to distinguish, and four consent decisions
+// was one too many. Sending itself isn't built yet. Stamped server-side; a
+// save with marketingConsent !== true nulls every identity + marketing column
 // (withdrawal-erases, same guarantee as the health tier).
-export const IDENTITY_CONSENT_VERSION = "2026-07-v4-identity";
-export const MARKETING_CONSENT_VERSION = "2026-07-v4-marketing";
+export const MARKETING_CONSENT_VERSION = "2026-07-v5-marketing";
 
 // ~18 months. A lookup that finds a row older than this deletes it and reports
 // a miss (lazy GDPR storage-limitation; a sweep job comes later).
@@ -103,7 +105,6 @@ interface GuestBody {
   phone?: string;
   consent?: boolean;
   healthConsent?: boolean;
-  identityConsent?: boolean;
   marketingConsent?: boolean;
   name?: unknown;
   email?: unknown;
@@ -155,7 +156,7 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
   const rows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=id,preferences,health_consent_version,identity_consent_version,marketing_consent_version,display_name,last_seen_at,updated_at` +
+        `${base}/rest/v1/guest_profiles?select=id,preferences,health_consent_version,marketing_consent_version,display_name,last_seen_at,updated_at` +
           `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
@@ -192,17 +193,16 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
     preferences = rest;
   }
 
-  // Identity tier: the kiosk gets the display name (for the greeting and to
-  // prefill the consent card) plus the consent flags — never the contact
+  // Marketing tier: the kiosk gets the display name (for the greeting and to
+  // prefill the consent card) plus the consent flag — never the contact
   // email/phone/birthday, which only the manager-facing /api/crm may read.
-  const identityConsent = typeof row.identity_consent_version === "string";
-  const marketingConsent = identityConsent && typeof row.marketing_consent_version === "string";
-  const name = identityConsent && typeof row.display_name === "string" ? row.display_name : null;
+  const marketingConsent = typeof row.marketing_consent_version === "string";
+  const name = marketingConsent && typeof row.display_name === "string" ? row.display_name : null;
 
   // Return preferences only — never the hash or any identifier.
   return {
     status: 200,
-    json: { found: true, preferences, healthConsent, identityConsent, marketingConsent, name },
+    json: { found: true, preferences, healthConsent, marketingConsent, name },
   };
 }
 
@@ -235,14 +235,14 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   if (!auth.ok) return auth.result;
   const accountId = auth.accountId;
 
-  // Identity is a third opt-in (requires base, which is already checked above).
-  // Without it every identity + marketing column is nulled in the upsert, so a
-  // save with identity consent withdrawn erases the stored name/contact data.
-  // Marketing is honored only while identity is on. contact_phone is the
-  // already-normalized phone — stored RAW under this tier for future outreach;
-  // phone_hash stays the only lookup key.
-  const identity = body.identityConsent === true ? sanitizeIdentity(body) : null;
-  const marketingConsent = identity !== null && body.marketingConsent === true;
+  // Marketing is a third opt-in (requires base, which is already checked
+  // above), covering BOTH storing the guest's name/contact AND permission to
+  // use it. Without it (or without a name — a nameless grant is meaningless)
+  // every identity + marketing column is nulled in the upsert, so withdrawal
+  // erases the stored name/contact data. contact_phone is the
+  // already-normalized phone — stored RAW under this tier for future
+  // outreach; phone_hash stays the only lookup key.
+  const identity = body.marketingConsent === true ? sanitizeIdentity(body) : null;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const now = new Date().toISOString();
@@ -263,14 +263,12 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
         consent_at: now,
         health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
         health_consent_at: healthConsent ? now : null,
-        identity_consent_version: identity ? IDENTITY_CONSENT_VERSION : null,
-        identity_consent_at: identity ? now : null,
         display_name: identity?.name ?? null,
         contact_phone: identity ? phone : null,
         contact_email: identity?.email ?? null,
         birthday: identity?.birthday ?? null,
-        marketing_consent_version: marketingConsent ? MARKETING_CONSENT_VERSION : null,
-        marketing_consent_at: marketingConsent ? now : null,
+        marketing_consent_version: identity ? MARKETING_CONSENT_VERSION : null,
+        marketing_consent_at: identity ? now : null,
         last_seen_at: now,
       }),
     },
@@ -441,9 +439,10 @@ export function sanitizePreferences(input: unknown): StoredPreferencesV1 | null 
   return out;
 }
 
-// Structural whitelist for the identity tier, consent-blind like
-// sanitizePreferences — callers gate on identityConsent === true before using
-// it. A profile needs at least a non-empty name to count as identified;
+// Structural whitelist for the identity fields under the marketing tier,
+// consent-blind like sanitizePreferences — callers gate on
+// marketingConsent === true before using it. A profile needs at least a
+// non-empty name to count as identified;
 // email/birthday are optional and dropped when malformed rather than
 // rejecting the save. Exported for api/_checkinCore.ts (same sharing pattern
 // as sanitizePreferences).

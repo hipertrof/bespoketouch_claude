@@ -184,7 +184,6 @@ export async function lookupGuestProfile(
 ): Promise<{
   preferences: StoredPreferences;
   healthConsent: boolean;
-  identityConsent: boolean;
   marketingConsent: boolean;
   name: string | null;
 } | null> {
@@ -192,7 +191,6 @@ export async function lookupGuestProfile(
     found?: boolean;
     preferences?: unknown;
     healthConsent?: boolean;
-    identityConsent?: boolean;
     marketingConsent?: boolean;
     name?: unknown;
   } | null;
@@ -200,7 +198,6 @@ export async function lookupGuestProfile(
   return {
     preferences: json.preferences as StoredPreferences,
     healthConsent: json.healthConsent === true,
-    identityConsent: json.identityConsent === true,
     marketingConsent: json.marketingConsent === true,
     name: typeof json.name === "string" ? json.name : null,
   };
@@ -209,13 +206,15 @@ export async function lookupGuestProfile(
 // Upsert the reusable preference subset under the phone pseudonym. Requires
 // explicit base consent (the server rejects consent !== true); the Art. 9
 // zone marks + notes are sent — and stamped — only under the separate health
-// consent.
+// consent. `identity` (name + optional email) is sent only under the
+// marketing tier, which covers both storing that name/contact info and
+// permission to use it — there's no separate "stored but unused" state.
 export async function saveGuestProfile(
   deviceToken: string,
   phone: string,
   personalization: PersonalizationState,
   healthConsent: boolean,
-  identity?: { name: string; email?: string; marketingConsent?: boolean },
+  identity?: { name: string; email?: string },
 ): Promise<void> {
   await postGuest({
     action: "save",
@@ -223,10 +222,9 @@ export async function saveGuestProfile(
     phone,
     consent: true,
     healthConsent,
-    // Identity tier: sent only when the guest opted in AND typed a name (the
-    // server rejects a nameless identity grant by nulling the tier).
-    identityConsent: identity !== undefined,
-    marketingConsent: identity?.marketingConsent === true,
+    // Marketing tier: sent only when the guest opted in AND typed a name (the
+    // server rejects a nameless grant by nulling the tier).
+    marketingConsent: identity !== undefined,
     name: identity?.name,
     email: identity?.email || undefined,
     preferences: toStoredPreferences(personalization, healthConsent),

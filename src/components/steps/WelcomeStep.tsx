@@ -303,7 +303,6 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
       phone: "",
       consent: false,
       healthConsent: false,
-      identityConsent: false,
       marketingConsent: false,
       name: "",
       email: "",
@@ -343,11 +342,10 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         zoneNotes: applied.zoneNotes,
         generalNote: applied.generalNote,
         healthConsent: stored.healthConsent,
-        identityConsent: stored.identityConsent,
         marketingConsent: stored.marketingConsent,
         name: stored.name,
       });
-      // Greeting bonus: an identity-consented guest's stored name can prefill
+      // Greeting bonus: a marketing-consented guest's stored name can prefill
       // the (still-editable) intake name field if it's empty.
       if (stored.name && !(state.guestNames[index] ?? "").trim()) {
         dispatch({ type: "SET_GUEST_NAME", index, name: stored.name });
