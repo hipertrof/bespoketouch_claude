@@ -82,6 +82,17 @@ export function CheckinPrefsEditor({
     onChange({ ...value, zoneNotes });
   };
 
+  // Phone screen, not the kiosk's visual body map — a guest reviewing/editing
+  // here shouldn't have to scroll past a dozen "standard" zones to find the
+  // few that matter. Only show a zone that's already marked priority/blocked
+  // or already carries a note; unmarking + clearing its note drops it back
+  // out of the list on the next render (value-derived, not frozen).
+  const relevantZones = zoneDefinitions.filter((zone) => {
+    const mark = value.zones?.[zone.id] ?? "standard";
+    const hasNote = Boolean(value.zoneNotes?.[zone.id]?.trim());
+    return mark !== "standard" || hasNote;
+  });
+
   return (
     <div className="grid grid-cols-1 gap-5">
       <PreferenceCard title={t("pressureCardTitle", lang)} description={t("pressureCardDesc", lang)}>
@@ -199,10 +210,10 @@ export function CheckinPrefsEditor({
         </div>
       </PreferenceCard>
 
-      {healthConsent && (
+      {healthConsent && relevantZones.length > 0 && (
         <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>
           <ul className="flex flex-col gap-2">
-            {zoneDefinitions.map((zone) => {
+            {relevantZones.map((zone) => {
               const mark = value.zones?.[zone.id] ?? "standard";
               return (
                 <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">

@@ -83,7 +83,16 @@ export function CheckinQrModal({
           {error ? (
             <p className="px-4 text-sm text-rose-dark">{error}</p>
           ) : svg && !expired ? (
-            <div className="h-72 w-72 p-4" dangerouslySetInnerHTML={{ __html: svg }} />
+            // The qrcode lib bakes a fixed 288px width/height onto the <svg> it
+            // returns. This wrapper is already the same 288px box (h-72 w-72,
+            // inherited from the parent) plus its own p-4 — stacking a second
+            // fixed 288px child on top of that padding overflowed the card and
+            // pushed the code off-center. Force the injected <svg> to scale to
+            // its own (padded) box instead of dictating its own pixel size.
+            <div
+              className="flex h-full w-full items-center justify-center p-4 [&>svg]:h-full [&>svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
           ) : expired ? (
             <p className="px-4 text-sm text-slate-light">{t("checkinLinkExpired", lang)}</p>
           ) : (
