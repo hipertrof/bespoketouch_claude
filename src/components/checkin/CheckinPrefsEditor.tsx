@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Check, Flame, MessageCircle, Music, Plus, VolumeX, X } from "lucide-react";
 import { PreferenceCard } from "../PreferenceCard";
 import { SegmentedControl } from "../SegmentedControl";
 import { Toggle } from "../Toggle";
@@ -84,14 +84,43 @@ export function CheckinPrefsEditor({
 
   // Phone screen, not the kiosk's visual body map — a guest reviewing/editing
   // here shouldn't have to scroll past a dozen "standard" zones to find the
-  // few that matter. Only show a zone that's already marked priority/blocked
-  // or already carries a note; unmarking + clearing its note drops it back
-  // out of the list on the next render (value-derived, not frozen).
-  const relevantZones = zoneDefinitions.filter((zone) => {
-    const mark = value.zones?.[zone.id] ?? "standard";
-    const hasNote = Boolean(value.zoneNotes?.[zone.id]?.trim());
-    return mark !== "standard" || hasNote;
-  });
+  // few that matter. A zone is visible once it's marked priority/blocked,
+  // carries a note, or the guest explicitly opened it via "Add a body zone"
+  // below (addedZoneIds) — that last set is local-only UI state, not derived
+  // from `value`, so a freshly-added zone stays visible at its default
+  // "standard" mark while the guest fills it in. Removing it (the row's ×)
+  // clears both the mark/note AND this set, dropping it back out of view.
+  const [addedZoneIds, setAddedZoneIds] = useState<Set<ZoneId>>(new Set());
+  const [pickingZone, setPickingZone] = useState(false);
+
+  const isZoneVisible = (zoneId: ZoneId) => {
+    const mark = value.zones?.[zoneId] ?? "standard";
+    const hasNote = Boolean(value.zoneNotes?.[zoneId]?.trim());
+    return mark !== "standard" || hasNote || addedZoneIds.has(zoneId);
+  };
+  const visibleZones = zoneDefinitions.filter((zone) => isZoneVisible(zone.id));
+  const availableZones = zoneDefinitions.filter((zone) => !isZoneVisible(zone.id));
+
+  const addZone = (zoneId: ZoneId) => {
+    setAddedZoneIds((prev) => new Set(prev).add(zoneId));
+    setPickingZone(false);
+  };
+
+  const removeZone = (zoneId: ZoneId) => {
+    // A single combined onChange — setZone + setZoneNote would each read the
+    // same pre-update `value` from this closure, so the second call would
+    // silently undo the first's zones change.
+    const zones = { ...(value.zones ?? {}) };
+    delete zones[zoneId];
+    const zoneNotes = { ...(value.zoneNotes ?? {}) };
+    delete zoneNotes[zoneId];
+    onChange({ ...value, zones, zoneNotes });
+    setAddedZoneIds((prev) => {
+      const next = new Set(prev);
+      next.delete(zoneId);
+      return next;
+    });
+  };
 
   return (
     <div className="grid grid-cols-1 gap-5">
@@ -210,47 +239,90 @@ export function CheckinPrefsEditor({
         </div>
       </PreferenceCard>
 
-      {healthConsent && relevantZones.length > 0 && (
+      {healthConsent && (
         <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>
-          <ul className="flex flex-col gap-2">
-            {relevantZones.map((zone) => {
-              const mark = value.zones?.[zone.id] ?? "standard";
-              return (
-                <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">
-                  <span className="mb-2 block text-sm font-medium text-charcoal">
-                    {tZone(zone.id, lang)}
-                  </span>
-                  {/* Grid, not a single-row pill: the "Nie masować (strefa
-                      wykluczona)" label is too long to fit three across on a
-                      phone without wrapping — a fixed-width row overflowed the
-                      card and got clipped by the viewport edge. */}
-                  <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-sand bg-oatmeal/40 p-1">
-                    {zoneMarkOrder.map((opt) => (
+          {visibleZones.length > 0 && (
+            <ul className="mb-3 flex flex-col gap-2">
+              {visibleZones.map((zone) => {
+                const mark = value.zones?.[zone.id] ?? "standard";
+                return (
+                  <li key={zone.id} className="rounded-xl border border-sand bg-white p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <span className="text-sm font-medium text-charcoal">
+                        {tZone(zone.id, lang)}
+                      </span>
                       <button
-                        key={opt.value}
                         type="button"
-                        onClick={() => setZone(zone.id, opt.value)}
-                        className={`min-h-11 rounded-lg px-1.5 text-center text-[11px] font-semibold leading-tight transition-all duration-300 ${
-                          mark === opt.value
-                            ? "bg-clay text-white shadow-soft"
-                            : "text-slate hover:bg-white"
-                        }`}
+                        onClick={() => removeZone(zone.id)}
+                        aria-label={t("checkinRemoveZone", lang)}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-light transition-colors duration-200 hover:bg-oatmeal hover:text-rose-dark"
                       >
-                        {t(opt.key, lang)}
+                        <X size={14} />
                       </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={value.zoneNotes?.[zone.id] ?? ""}
-                    onChange={(e) => setZoneNote(zone.id, e.target.value)}
-                    placeholder={t("zoneNotePlaceholder", lang)}
-                    rows={2}
-                    className="mt-2 w-full resize-none rounded-lg border border-sand bg-(--color-cream)/50 px-3 py-2 text-xs leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
-                  />
-                </li>
-              );
-            })}
-          </ul>
+                    </div>
+                    {/* Grid, not a single-row pill: the "Nie masować (strefa
+                        wykluczona)" label is too long to fit three across on a
+                        phone without wrapping — a fixed-width row overflowed the
+                        card and got clipped by the viewport edge. */}
+                    <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-sand bg-oatmeal/40 p-1">
+                      {zoneMarkOrder.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setZone(zone.id, opt.value)}
+                          className={`min-h-11 rounded-lg px-1.5 text-center text-[11px] font-semibold leading-tight transition-all duration-300 ${
+                            mark === opt.value
+                              ? "bg-clay text-white shadow-soft"
+                              : "text-slate hover:bg-white"
+                          }`}
+                        >
+                          {t(opt.key, lang)}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={value.zoneNotes?.[zone.id] ?? ""}
+                      onChange={(e) => setZoneNote(zone.id, e.target.value)}
+                      placeholder={t("zoneNotePlaceholder", lang)}
+                      rows={2}
+                      className="mt-2 w-full resize-none rounded-lg border border-sand bg-(--color-cream)/50 px-3 py-2 text-xs leading-relaxed text-charcoal placeholder:text-slate-light/70 outline-none transition-colors duration-200 focus:border-clay focus:ring-2 focus:ring-clay/15"
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {availableZones.length > 0 &&
+            (pickingZone ? (
+              <select
+                autoFocus
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) addZone(e.target.value as ZoneId);
+                }}
+                onBlur={() => setPickingZone(false)}
+                className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+              >
+                <option value="" disabled>
+                  {t("checkinAddZonePlaceholder", lang)}
+                </option>
+                {availableZones.map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {tZone(zone.id, lang)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPickingZone(true)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-dashed border-sand px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40 hover:text-clay-dark"
+              >
+                <Plus size={15} />
+                {t("checkinAddZone", lang)}
+              </button>
+            ))}
         </PreferenceCard>
       )}
 
