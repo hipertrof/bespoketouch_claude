@@ -1,8 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Check, Flame, MessageCircle, Music, Plus, VolumeX, X } from "lucide-react";
+import { Check, ChevronUp, Flame, MessageCircle, Music, Plus, VolumeX, X } from "lucide-react";
 import { PreferenceCard } from "../PreferenceCard";
 import { SegmentedControl } from "../SegmentedControl";
 import { Toggle } from "../Toggle";
+import { BodySilhouette, figureAspectRatio } from "../BodyMap/BodySilhouette";
+import { ZoneMarker } from "../BodyMap/ZoneMarker";
+import { ZonePopover } from "../BodyMap/ZonePopover";
+import { markersForView } from "../BodyMap/markerPositions";
 import { oils } from "../../data/oils";
 import { zoneDefinitions } from "../../data/zones";
 import {
@@ -17,11 +21,13 @@ import {
 } from "../../i18n/translations";
 import type { StoredPreferences } from "../../lib/guestProfile";
 import type {
+  BodyView,
   CommunicationStyle,
   LangCode,
   MusicPreference,
   PressureLevel,
   ZoneId,
+  ZoneMark,
 } from "../../types";
 
 // Standalone editor over the check-in flow's StoredPreferences shape (no
@@ -82,29 +88,23 @@ export function CheckinPrefsEditor({
     onChange({ ...value, zoneNotes });
   };
 
-  // Phone screen, not the kiosk's visual body map — a guest reviewing/editing
-  // here shouldn't have to scroll past a dozen "standard" zones to find the
-  // few that matter. A zone is visible once it's marked priority/blocked,
-  // carries a note, or the guest explicitly opened it via "Add a body zone"
-  // below (addedZoneIds) — that last set is local-only UI state, not derived
-  // from `value`, so a freshly-added zone stays visible at its default
-  // "standard" mark while the guest fills it in. Removing it (the row's ×)
-  // clears both the mark/note AND this set, dropping it back out of view.
-  const [addedZoneIds, setAddedZoneIds] = useState<Set<ZoneId>>(new Set());
-  const [pickingZone, setPickingZone] = useState(false);
+  // Adding/changing zones happens on the same visual body map as the kiosk's
+  // BodyMapStep (silhouette + tap markers + popover), just driven by the
+  // parent-owned StoredPreferences instead of GuestContext. The map is
+  // collapsed behind a button because on a phone it eats most of the viewport
+  // and a returning guest often only tweaks a note. The list below stays the
+  // compact summary/editor: a zone is listed once it's marked priority/blocked
+  // or carries a note, so a mark set back to "standard" on the map (with no
+  // note) simply drops off it.
+  const [showMap, setShowMap] = useState(false);
+  const [mapView, setMapView] = useState<BodyView>("front");
+  const [activeMarkerIndex, setActiveMarkerIndex] = useState<number | null>(null);
+  const markers = markersForView(mapView);
 
-  const isZoneVisible = (zoneId: ZoneId) => {
-    const mark = value.zones?.[zoneId] ?? "standard";
-    const hasNote = Boolean(value.zoneNotes?.[zoneId]?.trim());
-    return mark !== "standard" || hasNote || addedZoneIds.has(zoneId);
-  };
-  const visibleZones = zoneDefinitions.filter((zone) => isZoneVisible(zone.id));
-  const availableZones = zoneDefinitions.filter((zone) => !isZoneVisible(zone.id));
-
-  const addZone = (zoneId: ZoneId) => {
-    setAddedZoneIds((prev) => new Set(prev).add(zoneId));
-    setPickingZone(false);
-  };
+  const visibleZones = zoneDefinitions.filter((zone) => {
+    const mark = value.zones?.[zone.id] ?? "standard";
+    return mark !== "standard" || Boolean(value.zoneNotes?.[zone.id]?.trim());
+  });
 
   const removeZone = (zoneId: ZoneId) => {
     // A single combined onChange — setZone + setZoneNote would each read the
@@ -115,11 +115,6 @@ export function CheckinPrefsEditor({
     const zoneNotes = { ...(value.zoneNotes ?? {}) };
     delete zoneNotes[zoneId];
     onChange({ ...value, zones, zoneNotes });
-    setAddedZoneIds((prev) => {
-      const next = new Set(prev);
-      next.delete(zoneId);
-      return next;
-    });
   };
 
   return (
@@ -293,36 +288,88 @@ export function CheckinPrefsEditor({
             </ul>
           )}
 
-          {availableZones.length > 0 &&
-            (pickingZone ? (
-              <select
-                autoFocus
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) addZone(e.target.value as ZoneId);
+          {showMap ? (
+            <div>
+              <div className="mb-3 flex justify-center">
+                <div className="inline-flex rounded-full border border-sand bg-white p-1 shadow-soft">
+                  {(["front", "back"] as BodyView[]).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setMapView(v);
+                        setActiveMarkerIndex(null);
+                      }}
+                      className={`min-h-11 rounded-full px-5 text-sm font-semibold transition-all duration-300 ${
+                        mapView === v
+                          ? "bg-sage-dark text-cream shadow-soft"
+                          : "text-slate hover:bg-oatmeal"
+                      }`}
+                    >
+                      {v === "front" ? t("front", lang) : t("back", lang)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                style={{ aspectRatio: figureAspectRatio("female") }}
+                className="relative mx-auto w-full max-w-60 select-none rounded-3xl border border-sand/60 bg-white/60 p-4"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setActiveMarkerIndex(null);
                 }}
-                onBlur={() => setPickingZone(false)}
-                className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
               >
-                <option value="" disabled>
-                  {t("checkinAddZonePlaceholder", lang)}
-                </option>
-                {availableZones.map((zone) => (
-                  <option key={zone.id} value={zone.id}>
-                    {tZone(zone.id, lang)}
-                  </option>
+                <BodySilhouette view={mapView} gender="female" />
+                {markers.map((marker, index) => (
+                  <ZoneMarker
+                    key={`${marker.zoneId}-${index}`}
+                    position={marker}
+                    label={tZone(marker.zoneId, lang)}
+                    mark={value.zones?.[marker.zoneId] ?? "standard"}
+                    isActive={activeMarkerIndex === index}
+                    onToggle={() =>
+                      setActiveMarkerIndex((prev) => (prev === index ? null : index))
+                    }
+                  />
                 ))}
-              </select>
-            ) : (
+                {activeMarkerIndex !== null && (
+                  <ZonePopover
+                    position={markers[activeMarkerIndex]}
+                    label={tZone(markers[activeMarkerIndex].zoneId, lang)}
+                    current={value.zones?.[markers[activeMarkerIndex].zoneId] ?? "standard"}
+                    note={value.zoneNotes?.[markers[activeMarkerIndex].zoneId] ?? ""}
+                    lang={lang}
+                    onSelect={(mark: ZoneMark) =>
+                      setZone(markers[activeMarkerIndex].zoneId, mark)
+                    }
+                    onNoteChange={(note) => setZoneNote(markers[activeMarkerIndex].zoneId, note)}
+                    onClose={() => setActiveMarkerIndex(null)}
+                  />
+                )}
+              </div>
+
               <button
                 type="button"
-                onClick={() => setPickingZone(true)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-dashed border-sand px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40 hover:text-clay-dark"
+                onClick={() => {
+                  setShowMap(false);
+                  setActiveMarkerIndex(null);
+                }}
+                className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-dashed border-sand px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40 hover:text-clay-dark"
               >
-                <Plus size={15} />
-                {t("checkinAddZone", lang)}
+                <ChevronUp size={15} />
+                {t("checkinHideBodyMap", lang)}
               </button>
-            ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowMap(true)}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-dashed border-sand px-3 text-sm font-semibold text-slate transition-all duration-200 hover:border-clay/40 hover:text-clay-dark"
+            >
+              <Plus size={15} />
+              {t("checkinOpenBodyMap", lang)}
+            </button>
+          )}
         </PreferenceCard>
       )}
 
