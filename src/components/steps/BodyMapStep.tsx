@@ -78,9 +78,13 @@ export function BodyMapStep() {
       <h1 className="mb-2 font-serif text-3xl text-charcoal sm:text-4xl">
         {t("workAreasTitle", lang)}
       </h1>
-      <p className="mb-8 max-w-xl text-base leading-relaxed text-slate">
+      <p className="mb-2 max-w-xl text-base leading-relaxed text-slate">
         {t("workAreasIntro", lang)}
       </p>
+      {/* Reassurance at the one step that collects Article 9 health data —
+          zone marks and notes — where the guest is otherwise told nothing about
+          where any of it goes. */}
+      <p className="mb-8 max-w-xl text-xs text-slate-light">{t("bodyMapPrivacy", lang)}</p>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]">
         <div>

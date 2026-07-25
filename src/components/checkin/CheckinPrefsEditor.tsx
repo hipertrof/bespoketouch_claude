@@ -236,6 +236,9 @@ export function CheckinPrefsEditor({
 
       {healthConsent && (
         <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>
+          {/* Same disclosure as the kiosk's BodyMapStep — this surface captures
+              the identical Article 9 zone data, so it gets the identical line. */}
+          <p className="mb-3 text-xs text-slate-light">{t("bodyMapPrivacy", lang)}</p>
           {visibleZones.length > 0 && (
             <ul className="mb-3 flex flex-col gap-2">
               {visibleZones.map((zone) => {

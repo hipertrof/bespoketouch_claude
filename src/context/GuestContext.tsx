@@ -131,10 +131,26 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
     case "SET_TREATMENT_MINUTES": {
       // Duration always applies to every guest, even with different
       // massages — couples' treatments must run the same length.
-      const treatmentSelections = state.treatmentSelections.map((sel) => ({
-        ...sel,
-        treatmentMinutes: action.minutes,
-      }));
+      //
+      // The newly picked duration wins over an existing treatment: a treatment
+      // that doesn't offer it is dropped rather than left as an impossible
+      // pair. Without this, switching duration after picking a treatment left
+      // the pick invisible (filtered out of the list) but still set in state,
+      // so canContinue passed and an unbookable combination reached the intake.
+      // null ("any length") clears the filter only — it never drops a pick.
+      const treatmentSelections = state.treatmentSelections.map((sel) => {
+        const treatment = state.catalog.find((m) => m.id === sel.treatmentId);
+        const offersMinutes =
+          action.minutes === null ||
+          (treatment?.durations.some(
+            (d) => d.minutes === action.minutes && durationPrice(d, state.partySize) !== undefined,
+          ) ??
+            false);
+        return {
+          treatmentId: offersMinutes ? sel.treatmentId : null,
+          treatmentMinutes: action.minutes,
+        };
+      });
       return { ...state, treatmentSelections };
     }
     case "SET_GUEST_THERAPIST": {

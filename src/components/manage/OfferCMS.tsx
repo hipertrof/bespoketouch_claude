@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BedDouble, ChevronDown, Hand, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BedDouble, GripVertical, Hand, Plus, Trash2, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -12,6 +12,7 @@ import {
   type ServiceDurationRow,
 } from "../../lib/catalog";
 import { languages, pressureTranslations, t, tf } from "../../i18n/translations";
+import { useDragReorder } from "../../hooks/useDragReorder";
 import type { LangCode, PressureLevel } from "../../types";
 import { Button } from "../Button";
 import { DashboardShell } from "../DashboardShell";
@@ -43,6 +44,12 @@ export function OfferCMS() {
   const [catalog, setCatalog] = useState<CatalogService[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { dragIndex, insertionIndex, dragOffset, getHandleProps, registerItem } = useDragReorder({
+    itemCount: catalog.length,
+    onReorder: (from, to) => reorderServices(from, to),
+    disabled: busy,
+  });
 
   // Route gate: must be signed in AND able to manage offers (platform admin,
   // owner, or manager). Therapist/front-desk are sent to the therapist queue.
@@ -101,6 +108,56 @@ export function OfferCMS() {
     }
   }
 
+  // Move a service to an arbitrary position (drag) or one step (arrows).
+  // `services.sort` has existed since 0001 and fetchCatalog already orders by
+  // it, but nothing ever wrote it after insert — so legacy rows can all sit at
+  // the default 0, where a naive swap is a silent no-op. Renormalizing the whole
+  // list to 0..n-1 and writing only the rows that actually change fixes that and
+  // closes the gaps left behind by deletes, in one pass.
+  async function reorderServices(from: number, to: number) {
+    if (!locationId || from === to) return;
+    if (from < 0 || to < 0 || from >= catalog.length || to >= catalog.length) return;
+
+    const previous = catalog;
+    const reordered = [...catalog];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+
+    const changed = reordered
+      .map((service, i) => ({ id: service.id, sort: i }))
+      .filter(({ id, sort }) => previous.find((s) => s.id === id)?.sort !== sort);
+    if (changed.length === 0) return;
+
+    // Optimistic: a drag that snapped back until the round-trip landed would
+    // read as broken. The loadCatalog in `finally` is still the authority.
+    setCatalog(reordered);
+
+    setBusy(true);
+    setError(null);
+    try {
+      await Promise.all(
+        changed.map(async ({ id, sort }) => {
+          // RLS-blocked updates return error: null with zero rows, so the
+          // affected-row check is the only way to tell a real write from a
+          // silent no-op (see CLAUDE.md).
+          const { data, error: updateError } = await supabase
+            .from("services")
+            .update({ sort })
+            .eq("id", id)
+            .select("id");
+          if (updateError) throw new Error(updateError.message);
+          if (!data || data.length === 0) throw new Error(t("cmsReorderFailed", lang));
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("cmsReorderFailed", lang));
+    } finally {
+      setBusy(false);
+      // Reload either way — on failure it resyncs away any partial write.
+      await loadCatalog(locationId);
+    }
+  }
+
   async function addService() {
     if (!locationId) return;
     setBusy(true);
@@ -153,7 +210,9 @@ export function OfferCMS() {
                 <Hand size={18} className="text-slate-light" />
                 {t("cmsServicesHeading", lang)}
               </h2>
-              <p className="mt-1 text-sm text-slate">{t("cmsServicesHint", lang)}</p>
+              <p className="mt-1 text-sm text-slate">
+                {t("cmsServicesHint", lang)} {t("cmsReorderHint", lang)}
+              </p>
             </div>
 
             {catalog.length === 0 ? (
@@ -169,9 +228,26 @@ export function OfferCMS() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
-                {catalog.map((s) => (
-                  <ServiceEditor key={s.id} service={s} onChanged={() => loadCatalog(locationId)} />
+              // Single column, not a grid: "up" has to mean the row above, and
+              // in a multi-column grid the previous item sits to the left.
+              <div className="flex flex-col gap-2">
+                {catalog.map((s, i) => (
+                  <ServiceEditor
+                    key={s.id}
+                    service={s}
+                    index={i}
+                    onChanged={() => loadCatalog(locationId)}
+                    onMoveUp={() => reorderServices(i, i - 1)}
+                    onMoveDown={() => reorderServices(i, i + 1)}
+                    canMoveUp={i > 0 && !busy}
+                    canMoveDown={i < catalog.length - 1 && !busy}
+                    registerItem={registerItem}
+                    handleProps={getHandleProps(i)}
+                    isDragging={dragIndex === i}
+                    dragOffset={dragIndex === i ? dragOffset : 0}
+                    dropBefore={insertionIndex === i}
+                    dropAfter={insertionIndex === catalog.length && i === catalog.length - 1}
+                  />
                 ))}
                 <Button variant="secondary" onClick={addService} disabled={busy} className="self-start">
                   + {t("cmsAddService", lang)}
@@ -207,7 +283,161 @@ const otherLangs = languages.map((l) => l.code).filter((c): c is LangCode => c !
 
 // One service row: a required Polish name, optional per-language name
 // translations (blank = falls back to Polish), an active flag, and durations.
-function ServiceEditor({ service, onChanged }: { service: CatalogService; onChanged: () => void }) {
+// One line in the offer list. Deliberately the same density as the kiosk's
+// treatment list — a manager scanning the offer is doing the same "find the
+// known name" job the receptionist does, so it gets the same one-line row
+// rather than an accordion that pushes everything below it down the page.
+// Editing happens in a modal, so this row has no expand affordance and the
+// only chevron-ish controls left are the reorder arrows.
+function ServiceEditor({
+  service,
+  index,
+  onChanged,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+  registerItem,
+  handleProps,
+  isDragging,
+  dragOffset,
+  dropBefore,
+  dropAfter,
+}: {
+  service: CatalogService;
+  index: number;
+  onChanged: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  registerItem: (index: number, el: HTMLElement | null) => void;
+  handleProps: {
+    onPointerDown: (e: React.PointerEvent) => void;
+    style: { touchAction: "none" };
+  };
+  isDragging: boolean;
+  dragOffset: number;
+  dropBefore: boolean;
+  dropAfter: boolean;
+}) {
+  const { lang } = useLanguage();
+  const [open, setOpen] = useState(false);
+
+  const name = service.name_i18n.pl?.trim() || t("cmsName", lang);
+  const pricedSingles = service.durations
+    .map((d) => d.price_single)
+    .filter((p): p is number => p != null);
+  const summary =
+    service.durations.length === 0
+      ? "—"
+      : [
+          `${service.durations.map((d) => d.minutes).join(", ")} min`,
+          pricedSingles.length
+            ? tf("priceFrom", lang, { price: `${Math.min(...pricedSingles)} zł` })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  return (
+    <>
+      <div
+        ref={(el) => registerItem(index, el)}
+        style={
+          isDragging
+            ? { transform: `translateY(${dragOffset}px)`, position: "relative", zIndex: 10 }
+            : undefined
+        }
+        className={`flex items-center rounded-2xl border bg-white ${
+          service.active ? "" : "opacity-60"
+        } ${
+          isDragging
+            ? "border-clay opacity-90 shadow-lift"
+            : "border-sand shadow-soft transition-transform duration-150"
+        } ${dropBefore ? "shadow-[0_-3px_0_-1px_var(--color-clay)]" : ""} ${
+          dropAfter ? "shadow-[0_3px_0_-1px_var(--color-clay)]" : ""
+        }`}
+      >
+        {/* Drag from the grip only: the row body is already a button that opens
+            the editor, so a whole-row drag surface would fight it. */}
+        <span
+          {...handleProps}
+          aria-hidden="true"
+          className="flex min-h-11 w-7 shrink-0 cursor-grab items-center justify-center text-sand-dark transition-colors duration-200 hover:text-slate-light active:cursor-grabbing"
+        >
+          <GripVertical size={16} />
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 py-2.5 pr-4 text-left transition-colors duration-200 hover:bg-oatmeal/50"
+        >
+          <span className="min-w-0 flex-1 truncate">
+            <span className="text-sm font-semibold text-charcoal">{name}</span>
+            <span className="ml-2 text-xs text-slate-light">{summary}</span>
+          </span>
+          {!service.active && (
+            <span className="shrink-0 rounded-full bg-oatmeal px-2.5 py-0.5 text-xs font-medium text-slate-light">
+              {t("cmsInactive", lang)}
+            </span>
+          )}
+        </button>
+
+        {/* Arrows, not chevrons: a chevron reads as "expand", and three of them
+            in a row gave no clue which one moved the service and which opened
+            it. */}
+        <div className="flex shrink-0 items-center pr-2">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            aria-label={t("cmsMoveUp", lang)}
+            className="flex min-h-11 w-9 items-center justify-center rounded-xl text-slate-light transition-colors duration-200 hover:bg-oatmeal hover:text-charcoal disabled:pointer-events-none disabled:opacity-25"
+          >
+            <ArrowUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            aria-label={t("cmsMoveDown", lang)}
+            className="flex min-h-11 w-9 items-center justify-center rounded-xl text-slate-light transition-colors duration-200 hover:bg-oatmeal hover:text-charcoal disabled:pointer-events-none disabled:opacity-25"
+          >
+            <ArrowDown size={16} />
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <ServiceEditorModal
+          service={service}
+          title={name}
+          onClose={() => setOpen(false)}
+          onChanged={() => {
+            setOpen(false);
+            onChanged();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// The editing form, in a modal. Mounted only while open, so its state re-seeds
+// from the freshest service row each time and abandoned edits die on close.
+function ServiceEditorModal({
+  service,
+  title,
+  onClose,
+  onChanged,
+}: {
+  service: CatalogService;
+  title: string;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const { lang } = useLanguage();
   // Per-language name map, seeded from the stored translations.
   const [names, setNames] = useState<Record<string, string>>(() => ({ ...service.name_i18n }));
@@ -220,10 +450,15 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
   const [durations, setDurations] = useState<ServiceDurationRow[]>(service.durations);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Collapsed by default so the offer reads as a scannable list of services;
-  // the editing form (name, translations, durations, prices) only appears once
-  // the manager opens a service. A freshly added service starts collapsed too.
-  const [expanded, setExpanded] = useState(false);
+
+  // Esc closes, matching what a manager expects of any dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const setName = (code: string, value: string) =>
     setNames((prev) => ({ ...prev, [code]: value }));
@@ -316,50 +551,29 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
     });
   }
 
-  // Collapsed-header summary: the durations and the lowest single price, so a
-  // manager can scan the offer without opening each service.
-  const pricedSingles = durations
-    .map((d) => d.price_single)
-    .filter((p): p is number => p != null);
-  const summary =
-    durations.length === 0
-      ? "—"
-      : [
-          `${durations.map((d) => d.minutes).join(", ")} min`,
-          pricedSingles.length
-            ? tf("priceFrom", lang, { price: `${Math.min(...pricedSingles)} zł` })
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-
   return (
-    <div className={`overflow-hidden rounded-2xl bg-white shadow-soft ${active ? "" : "opacity-60"}`}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-3 p-5 text-left"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-soft sm:p-8"
       >
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-serif text-lg text-charcoal">
-            {names.pl?.trim() || t("cmsName", lang)}
-          </div>
-          <div className="mt-0.5 truncate text-xs text-slate-light">{summary}</div>
-        </div>
-        {!active && (
-          <span className="shrink-0 rounded-full bg-oatmeal px-2.5 py-0.5 text-xs font-medium text-slate-light">
-            {t("cmsInactive", lang)}
-          </span>
-        )}
-        <ChevronDown
-          size={18}
-          className={`shrink-0 text-slate-light transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-        />
-      </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("close", lang)}
+          className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full text-slate-light hover:bg-oatmeal"
+        >
+          <X size={20} />
+        </button>
 
-      {expanded && (
-        <div className="border-t border-sand px-5 pb-5 pt-4">
+        <h2 className="mb-6 pr-12 font-serif text-2xl text-charcoal">{title}</h2>
+
       <Field label={`${t("cmsName", lang)} (PL)`}>
         <input
           required
@@ -433,7 +647,11 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                 instead of being repeated on every duration row (the old layout
                 stamped MIN / price / couple labels onto each line, which read as
                 clutter once a service had several durations). */}
-            <div className="grid min-w-[26rem] grid-cols-[5.5rem_1fr_3.25rem_1fr_1.75rem] items-center gap-x-3 gap-y-2">
+            {/* These are all short numeric fields, so the columns are sized to
+                their content rather than to an input's ~170px intrinsic width —
+                which is what used to push this table into a horizontal scroll
+                inside the modal. min-w only bites on a genuinely tiny phone. */}
+            <div className="grid min-w-[19rem] grid-cols-[3.75rem_1fr_2.5rem_1fr_1.5rem] items-center gap-x-2 gap-y-1.5">
               <HeadCell>{t("cmsMin", lang)}</HeadCell>
               <HeadCell>{t("cmsPriceSingle", lang)}</HeadCell>
               <HeadCell className="text-center">{t("cmsCoupleShort", lang)}</HeadCell>
@@ -452,7 +670,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                         minutes: Math.max(0, Math.round(Number(e.target.value) || 0)),
                       })
                     }
-                    className={`${inputClass} tabular-nums`}
+                    className={numCellClass}
                   />
                   <input
                     type="number"
@@ -467,7 +685,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                           e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
                       })
                     }
-                    className={`${inputClass} tabular-nums`}
+                    className={numCellClass}
                   />
                   <label className="flex justify-center">
                     <input
@@ -497,7 +715,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
                           e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
                       })
                     }
-                    className={`${inputClass} tabular-nums disabled:opacity-40`}
+                    className={`${numCellClass} disabled:opacity-40`}
                   />
                   <button
                     type="button"
@@ -530,7 +748,7 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
 
       {error && <p className="mt-3 text-sm text-rose-dark">{error}</p>}
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-6 flex items-center gap-3 border-t border-sand pt-5">
         <label className="flex items-center gap-2 text-sm text-slate">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
           {t("cmsActive", lang)}
@@ -539,18 +757,26 @@ function ServiceEditor({ service, onChanged }: { service: CatalogService; onChan
         <button type="button" onClick={remove} disabled={busy} className="text-sm text-rose-dark hover:underline">
           {t("cmsDelete", lang)}
         </button>
-        <Button variant="secondary" onClick={save} disabled={busy}>
+        <Button variant="secondary" onClick={onClose} disabled={busy}>
+          {t("cancel", lang)}
+        </Button>
+        <Button onClick={save} disabled={busy}>
           {busy ? t("saving", lang) : t("save", lang)}
         </Button>
       </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
 const inputClass =
   "min-h-11 rounded-xl border border-sand bg-cream px-3 text-charcoal outline-none focus:border-sage";
+
+// Compact variant for the durations table: numeric fields only, so it trades
+// the full-size input's padding and intrinsic width for a table that fits
+// without scrolling. min-w-0 is what actually lets the 1fr columns shrink.
+const numCellClass =
+  "min-h-10 w-full min-w-0 rounded-lg border border-sand bg-cream px-2 text-sm tabular-nums text-charcoal outline-none focus:border-sage";
 
 function Field({
   label,

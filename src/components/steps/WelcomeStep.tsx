@@ -138,6 +138,13 @@ export function WelcomeStep() {
               />
             </div>
             <div>
+              {/* Labelled for what it controls, not who the guest is: it only
+                  picks which silhouette the body map draws, and it defaults to
+                  "female" — so without a caption the pre-selected pill reads as
+                  an answer someone gave rather than a default nobody touched. */}
+              <span className="mb-2.5 block text-sm font-semibold text-charcoal">
+                {t("bodyGenderLabel", lang)}
+              </span>
               <div className="inline-flex self-start rounded-full border border-sand bg-white p-1 shadow-soft">
                 {(["female", "male"] as BodyGender[]).map((g) => (
                   <button

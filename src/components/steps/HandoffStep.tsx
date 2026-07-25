@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, MapPin } from "lucide-react";
+import { Check, CheckCircle2, MapPin } from "lucide-react";
 import { useGuest } from "../../context/GuestContext";
 import { useCatalog } from "../../context/CatalogContext";
 import { useDevice } from "../../context/DeviceContext";
@@ -40,6 +40,10 @@ export function HandoffStep() {
   // preference save is only cosmetic; the intake still proceeds.
   const savedRef = useRef(false);
   const [saveError, setSaveError] = useState(false);
+  // Surfaced so staff know the intake actually landed before they refresh the
+  // tablet for the next guest — refreshing mid-save aborts the request and
+  // there is no draft to recover.
+  const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (savedRef.current || loading || !token) return;
     savedRef.current = true;
@@ -81,6 +85,12 @@ export function HandoffStep() {
             .map((crm) =>
               crm.consent && crm.phone.replace(/\D/g, "").length >= 6 ? crm.phone : null,
             ),
+        }).then(() => {
+          setSaved(true);
+          // A failed attempt clears savedRef so a later render retries; if that
+          // retry lands, the stale error has to go with it or staff would see a
+          // save that succeeded still reading as failed.
+          setSaveError(false);
         });
       })
       .catch((err) => {
@@ -138,6 +148,13 @@ export function HandoffStep() {
           })}
         </ul>
       </div>
+
+      {saved && !saveError && (
+        <p className="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-sage-dark">
+          <Check size={14} strokeWidth={2.5} />
+          {t("intakeSaved", lang)}
+        </p>
+      )}
 
       {saveError && (
         <p className="mt-6 max-w-md text-sm text-rose-dark">{t("intakeSaveFailed", lang)}</p>

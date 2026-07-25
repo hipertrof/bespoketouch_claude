@@ -189,7 +189,9 @@ export type GuestAction =
   | { type: "SET_STEP"; step: AppStep }
   | { type: "SET_GUEST_NAME"; index: number; name: string }
   | { type: "SET_TREATMENT"; index: number; treatmentId: string }
-  | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number }
+  // null clears the duration filter back to "any length", so staff can widen
+  // the treatment list again after narrowing it.
+  | { type: "SET_TREATMENT_MINUTES"; index: number; minutes: number | null }
   | { type: "SET_GUEST_THERAPIST"; index: number; therapist: TherapistAssignment | null }
   | { type: "SET_GUEST_ROOM"; index: number; room: RoomAssignment | null }
   | { type: "SET_GUEST_PHONE"; index: number; phone: string }
