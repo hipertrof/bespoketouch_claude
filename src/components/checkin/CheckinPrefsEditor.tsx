@@ -316,13 +316,13 @@ export function CheckinPrefsEditor({
               </div>
 
               <div
-                style={{ aspectRatio: figureAspectRatio("female") }}
+                style={{ aspectRatio: figureAspectRatio(value.bodyGender ?? "female") }}
                 className="relative mx-auto w-full max-w-60 select-none rounded-3xl border border-sand/60 bg-white/60 p-4"
                 onClick={(e) => {
                   if (e.target === e.currentTarget) setActiveMarkerIndex(null);
                 }}
               >
-                <BodySilhouette view={mapView} gender="female" />
+                <BodySilhouette view={mapView} gender={value.bodyGender ?? "female"} />
                 {markers.map((marker, index) => (
                   <ZoneMarker
                     key={`${marker.zoneId}-${index}`}

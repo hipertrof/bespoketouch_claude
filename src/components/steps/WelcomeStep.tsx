@@ -115,6 +115,10 @@ export function WelcomeStep() {
         <div className="flex flex-wrap gap-8">
         {Array.from({ length: state.partySize }).map((_, i) => (
           <div key={i} className="flex flex-col gap-3">
+            {/* First in the column on purpose: "have you been here before?" is
+                the first thing reception asks, and a hit prefills the name and
+                silhouette below it — so the form fills top-down. */}
+            {token && <ReturningGuestBlock index={i} deviceToken={token} />}
             <div>
               <label
                 htmlFor={`guestName-${i}`}
@@ -190,7 +194,6 @@ export function WelcomeStep() {
               </div>
             )}
             {rooms.length > 0 && <RoomBedPicker index={i} rooms={rooms} />}
-            {token && <ReturningGuestBlock index={i} deviceToken={token} />}
           </div>
         ))}
         </div>
@@ -345,6 +348,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         type: "APPLY_GUEST_PROFILE",
         index,
         preferences: applied.preferences,
+        bodyGender: applied.bodyGender,
         zones: applied.zones,
         zoneNotes: applied.zoneNotes,
         generalNote: applied.generalNote,
@@ -382,7 +386,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
   };
 
   return (
-    <div className="mt-1 max-w-md rounded-2xl border border-sand bg-oatmeal/40 p-4">
+    <div className="max-w-md rounded-2xl border border-sand bg-oatmeal/40 p-4">
       <label
         htmlFor={`guestPhone-${index}`}
         className="mb-2 block text-sm font-semibold text-charcoal"

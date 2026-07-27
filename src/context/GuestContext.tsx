@@ -225,6 +225,7 @@ function guestReducer(state: GuestState, action: GuestAction): GuestState {
           ? {
               ...g,
               preferences: { ...g.preferences, ...action.preferences },
+              bodyGender: action.bodyGender ?? g.bodyGender,
               zones: { ...g.zones, ...action.zones },
               zoneNotes: { ...g.zoneNotes, ...action.zoneNotes },
               generalNote: action.generalNote ?? g.generalNote,

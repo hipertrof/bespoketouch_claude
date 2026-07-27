@@ -84,6 +84,9 @@ export interface GuestResult {
 // consent writes a v2 blob with all three absent.
 export interface StoredPreferencesV1 {
   v: 1 | 2;
+  // Which silhouette the body map draws. Base tier, NOT health data — it is
+  // never stripped alongside zones/zoneNotes/generalNote below.
+  bodyGender?: "male" | "female";
   pressure?: string;
   oilId?: string;
   tableWarming?: boolean;
@@ -406,6 +409,7 @@ export function sanitizePreferences(input: unknown): StoredPreferencesV1 | null 
   if (!rec) return null;
 
   const out: StoredPreferencesV1 = { v: 2 };
+  if (rec.bodyGender === "male" || rec.bodyGender === "female") out.bodyGender = rec.bodyGender;
   if (typeof rec.pressure === "string") out.pressure = rec.pressure;
   if (typeof rec.oilId === "string") out.oilId = rec.oilId;
   if (typeof rec.tableWarming === "boolean") out.tableWarming = rec.tableWarming;

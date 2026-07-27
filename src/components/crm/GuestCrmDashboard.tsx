@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Download, Plus, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -238,6 +238,11 @@ function GuestDetailPanel({
   const [error, setError] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [newTag, setNewTag] = useState("");
+  // Tag failures stay local to the tag card: the panel-level `error` is rendered
+  // as an early return below, so routing a duplicate-name 409 through it would
+  // replace the whole guest view with one line of text.
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
   const [forgetConfirm, setForgetConfirm] = useState("");
   const [showForget, setShowForget] = useState(false);
 
@@ -262,6 +267,43 @@ function GuestDetailPanel({
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
+    }
+  };
+
+  const handleCreateTag = async (e?: FormEvent) => {
+    e?.preventDefault();
+    const name = newTag.trim();
+    if (!name || tagBusy) return;
+    setTagBusy(true);
+    setTagError(null);
+    try {
+      const created = await createCrmTag(accountId, name);
+      setNewTag("");
+      onTagsChanged();
+      if (created) {
+        await assignCrmTag(accountId, guestId, created.id);
+        load();
+      }
+    } catch (e2) {
+      setTagError(e2 instanceof Error ? e2.message : "Error");
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  const handleToggleTag = async (tagId: string, assigned: boolean) => {
+    if (tagBusy) return;
+    setTagBusy(true);
+    setTagError(null);
+    try {
+      await (assigned
+        ? unassignCrmTag(accountId, guestId, tagId)
+        : assignCrmTag(accountId, guestId, tagId));
+      load();
+    } catch (e2) {
+      setTagError(e2 instanceof Error ? e2.message : "Error");
+    } finally {
+      setTagBusy(false);
     }
   };
 
@@ -373,21 +415,15 @@ function GuestDetailPanel({
           <TagIcon size={16} />
           {t("guestsTags", lang)}
         </h3>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {tags.map((tg) => {
             const active = guestTagIds.has(tg.id);
             return (
               <button
                 key={tg.id}
-                onClick={() =>
-                  (active
-                    ? unassignCrmTag(accountId, guestId, tg.id)
-                    : assignCrmTag(accountId, guestId, tg.id)
-                  )
-                    .then(load)
-                    .catch((e) => setError(e.message))
-                }
-                className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                onClick={() => handleToggleTag(tg.id, active)}
+                disabled={tagBusy}
+                className={`rounded-full border px-3 py-1 text-sm transition-colors disabled:opacity-50 ${
                   active
                     ? "border-clay bg-clay/10 text-charcoal"
                     : "border-sand bg-white text-slate-light hover:border-clay"
@@ -397,26 +433,26 @@ function GuestDetailPanel({
               </button>
             );
           })}
-          <span className="flex items-center gap-1">
+          {/* Enter still submits — the button just makes that discoverable. */}
+          <form onSubmit={handleCreateTag} className="flex items-center gap-1.5">
             <input
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
               placeholder={t("guestsNewTag", lang)}
-              className="min-h-9 w-36 rounded-full border border-dashed border-sand bg-white px-3 text-sm text-charcoal outline-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newTag.trim()) {
-                  createCrmTag(accountId, newTag.trim())
-                    .then((tg) => {
-                      setNewTag("");
-                      onTagsChanged();
-                      if (tg) return assignCrmTag(accountId, guestId, tg.id).then(load);
-                    })
-                    .catch((e2) => setError(e2.message));
-                }
-              }}
+              maxLength={40}
+              className="min-h-9 w-36 rounded-full border border-dashed border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
             />
-          </span>
+            <button
+              type="submit"
+              disabled={!newTag.trim() || tagBusy}
+              className="inline-flex min-h-9 items-center gap-1 rounded-full bg-sage-dark px-3 text-sm font-semibold text-cream transition-colors hover:bg-sage disabled:bg-sand disabled:text-slate-light"
+            >
+              <Plus size={14} />
+              {t("guestsAddTag", lang)}
+            </button>
+          </form>
         </div>
+        {tagError && <p className="mt-2 text-sm text-rose-dark">{tagError}</p>}
       </div>
 
       {/* Visit timeline */}

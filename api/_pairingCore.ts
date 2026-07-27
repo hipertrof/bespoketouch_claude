@@ -15,6 +15,8 @@ const CODE_TTL_MINUTES = 15;
 // Minimum gap between re-pairs of one slot (anti-abuse: stops one paid slot
 // being rotated across many tablets).
 const REPAIR_COOLDOWN_SECONDS = 60;
+// Cap on a slot's display name — long enough for "Recepcja — tablet przy wejściu".
+const MAX_LABEL_CHARS = 60;
 
 export interface PairingEnv {
   url: string;
@@ -79,6 +81,11 @@ async function createSlot(
   if (!locationId || !isUuid(locationId)) {
     return { status: 400, json: { error: "Missing or invalid location." } };
   }
+  // A slot with no label renders as the generic "Device name" fallback in the
+  // dashboard, so two unnamed kiosks at one location are indistinguishable.
+  const label = typeof body.label === "string" ? body.label.trim().slice(0, MAX_LABEL_CHARS) : "";
+  if (!label) return { status: 400, json: { error: "label_required" } };
+
   const location = asArray(
     (await getJson(`${base}/rest/v1/locations?select=id,account_id&id=eq.${locationId}`, svc)).body,
   )[0];
@@ -109,7 +116,7 @@ async function createSlot(
       await postJson(`${base}/rest/v1/slots`, { ...svc, Prefer: "return=representation" }, {
         account_id: accountId,
         location_id: locationId,
-        label: typeof body.label === "string" && body.label.trim() ? body.label.trim() : null,
+        label,
         status: "active",
       })
     ).body,

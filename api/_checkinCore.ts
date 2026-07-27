@@ -383,12 +383,13 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
 }
 
 // Maps the CRM's StoredPreferences shape onto an intake's PersonalizationState
-// element (src/types.ts). bodyGender has no CRM equivalent — default "female"
-// like a fresh kiosk guest; reception corrects it when completing the intake
-// if needed, same as any other field on an incomplete row.
+// element (src/types.ts). bodyGender carries over from the stored profile when
+// the guest set it on a previous visit, falling back to "female" like a fresh
+// kiosk guest; reception corrects it when completing the intake if needed, same
+// as any other field on an incomplete row.
 function toPersonalizationState(prefs: StoredPreferencesV1): JsonRecord {
   return {
-    bodyGender: "female",
+    bodyGender: prefs.bodyGender ?? "female",
     zones: prefs.zones ?? {},
     zoneNotes: prefs.zoneNotes ?? {},
     generalNote: prefs.generalNote ?? "",

@@ -163,9 +163,11 @@ function AddKioskForm({
   const [error, setError] = useState<string | null>(null);
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
 
+  const named = label.trim().length > 0;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !named) return;
     setBusy(true);
     setError(null);
     try {
@@ -189,10 +191,12 @@ function AddKioskForm({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder={t("kioskLabelPlaceholder", lang)}
+            required
+            maxLength={60}
             className={inputClass}
           />
         </label>
-        <Button type="submit" disabled={busy || atCap}>
+        <Button type="submit" disabled={busy || atCap || !named}>
           <Plus size={16} />
           {t("addKiosk", lang)}
         </Button>
@@ -305,6 +309,7 @@ function pairingError(err: unknown, lang: LangCode): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg === "slot_limit_reached") return t("slotLimitReached", lang);
   if (msg === "re_pair_too_soon") return t("rePairTooSoon", lang);
+  if (msg === "label_required") return t("kioskLabelRequired", lang);
   return msg;
 }
 

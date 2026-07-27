@@ -207,6 +207,7 @@ export type GuestAction =
       type: "APPLY_GUEST_PROFILE";
       index: number;
       preferences: Partial<Preferences>;
+      bodyGender?: BodyGender;
       zones: Partial<Record<ZoneId, ZoneMark>>;
       zoneNotes?: Partial<Record<ZoneId, string>>;
       generalNote?: string;

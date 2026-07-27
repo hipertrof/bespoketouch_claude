@@ -1,4 +1,5 @@
 import type {
+  BodyGender,
   CommunicationStyle,
   MusicPreference,
   PersonalizationState,
@@ -39,6 +40,9 @@ const MAX_GENERAL_NOTE_CHARS = 1000;
 
 export interface StoredPreferences {
   v: 1 | 2;
+  // Which silhouette the body map draws — a base-tier comfort setting, not
+  // health data, and deliberately not stripped with zones/notes below.
+  bodyGender?: BodyGender;
   pressure?: PressureLevel;
   oilId?: string;
   tableWarming?: boolean;
@@ -64,6 +68,8 @@ export function toStoredPreferences(
 ): StoredPreferences {
   const stored: StoredPreferences = {
     v: 2,
+    // Sibling of `preferences` on PersonalizationState, not a field inside it.
+    bodyGender: p.bodyGender,
     pressure: p.preferences.pressure,
     oilId: p.preferences.oilId,
     tableWarming: p.preferences.tableWarming,
@@ -97,6 +103,7 @@ const PRESSURE_VALUES: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głębok
 const MUSIC_VALUES: MusicPreference[] = ["nature", "ambient", "silence"];
 const COMMUNICATION_VALUES: CommunicationStyle[] = ["silent", "guided"];
 const PILLOW_VALUES: Preferences["headrestPillow"][] = ["Standardowa", "Ultra-miękka"];
+const BODY_GENDER_VALUES: BodyGender[] = ["female", "male"];
 
 // Validate a stored blob back into a partial preference set (+ zone marks and
 // notes, when the row carries health consent) to merge into a guest.
@@ -107,6 +114,9 @@ const PILLOW_VALUES: Preferences["headrestPillow"][] = ["Standardowa", "Ultra-mi
 // the server already omits them from what it returns.
 export function applyStoredPreferences(stored: unknown): {
   preferences: Partial<Preferences>;
+  // Top-level, not inside `preferences`: bodyGender is a sibling field on
+  // PersonalizationState and isn't part of the Preferences interface.
+  bodyGender?: BodyGender;
   zones: Partial<Record<ZoneId, ZoneMark>>;
   zoneNotes: Partial<Record<ZoneId, string>>;
   generalNote?: string;
@@ -114,6 +124,8 @@ export function applyStoredPreferences(stored: unknown): {
   if (!stored || typeof stored !== "object") return null;
   const s = stored as Record<string, unknown>;
   if (s.v !== 1 && s.v !== 2) return null;
+
+  const bodyGender = isOneOf(s.bodyGender, BODY_GENDER_VALUES) ? s.bodyGender : undefined;
 
   const preferences: Partial<Preferences> = {};
   if (isOneOf(s.pressure, PRESSURE_VALUES)) preferences.pressure = s.pressure;
@@ -145,7 +157,7 @@ export function applyStoredPreferences(stored: unknown): {
       ? s.generalNote.slice(0, MAX_GENERAL_NOTE_CHARS)
       : undefined;
 
-  return { preferences, zones, zoneNotes, generalNote };
+  return { preferences, bodyGender, zones, zoneNotes, generalNote };
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: T[]): value is T {
