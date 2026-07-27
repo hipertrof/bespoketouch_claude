@@ -306,6 +306,7 @@ function RoomBedPicker({ index, rooms }: { index: number; rooms: RoomOption[] })
 // to search. All failures are non-blocking — the flow continues regardless.
 function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToken: string }) {
   const { state, dispatch } = useGuest();
+  const { comfort } = useCatalog();
   const lang = state.language;
   const crm =
     state.guestCrm[index] ??
@@ -339,7 +340,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         setStatus("missing");
         return;
       }
-      const applied = applyStoredPreferences(stored.preferences);
+      const applied = applyStoredPreferences(stored.preferences, comfort);
       if (!applied) {
         setStatus("missing");
         return;

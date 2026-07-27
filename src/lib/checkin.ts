@@ -1,4 +1,5 @@
 import type { StoredPreferences } from "./guestProfile";
+import { normalizeComfort, type ComfortConfig } from "./comfort";
 
 // ---------------------------------------------------------------------------
 // Client wrappers for /api/checkin — the QR self-check-in flow. mintCheckinCode
@@ -51,6 +52,9 @@ export async function checkinLookup(
   healthConsent: boolean;
   marketingConsent: boolean;
   name: string | null;
+  // Which comfort options the code's location offers, so the phone shows the
+  // same menu as the kiosk. Absent/unset resolves to the built-in menu.
+  comfort: ComfortConfig;
 } | null> {
   const json = (await postCheckin({ action: "lookup", code, phone })) as {
     found?: boolean;
@@ -58,6 +62,7 @@ export async function checkinLookup(
     healthConsent?: boolean;
     marketingConsent?: boolean;
     name?: unknown;
+    comfort?: unknown;
   };
   if (!json.found || !json.preferences) return null;
   return {
@@ -65,6 +70,7 @@ export async function checkinLookup(
     healthConsent: json.healthConsent === true,
     marketingConsent: json.marketingConsent === true,
     name: typeof json.name === "string" ? json.name : null,
+    comfort: normalizeComfort(json.comfort ?? null),
   };
 }
 

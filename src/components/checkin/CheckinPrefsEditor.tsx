@@ -7,14 +7,10 @@ import { BodySilhouette, figureAspectRatio } from "../BodyMap/BodySilhouette";
 import { ZoneMarker } from "../BodyMap/ZoneMarker";
 import { ZonePopover } from "../BodyMap/ZonePopover";
 import { markersForView } from "../BodyMap/markerPositions";
-import { oils } from "../../data/oils";
 import { zoneDefinitions } from "../../data/zones";
+import { comfortLabel, comfortSubtitle, type ComfortConfig } from "../../lib/comfort";
 import {
   communicationTranslations,
-  musicTranslations,
-  oilNameTranslations,
-  oilSubtitleTranslations,
-  pillowTranslations,
   pressureTranslations,
   t,
   tZone,
@@ -24,7 +20,6 @@ import type {
   BodyView,
   CommunicationStyle,
   LangCode,
-  MusicPreference,
   PressureLevel,
   ZoneId,
   ZoneMark,
@@ -41,11 +36,10 @@ import type {
 
 const pressureOrder: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
 
-const musicOptions: { value: MusicPreference; icon: ReactNode }[] = [
-  { value: "nature", icon: <Music size={16} /> },
-  { value: "ambient", icon: <Music size={16} /> },
-  { value: "silence", icon: <VolumeX size={16} /> },
-];
+// Per-location music options, so the icon is chosen by id where we know it —
+// same rule as the kiosk's PreferencesStep.
+const musicIcon = (id: string): ReactNode =>
+  id === "silence" ? <VolumeX size={16} /> : <Music size={16} />;
 
 const communicationOptions: { value: CommunicationStyle; icon: ReactNode }[] = [
   { value: "silent", icon: <VolumeX size={18} /> },
@@ -65,14 +59,30 @@ export function CheckinPrefsEditor({
   onChange,
   lang,
   healthConsent,
+  comfort,
 }: {
   value: StoredPreferences;
   onChange: (next: StoredPreferences) => void;
   lang: LangCode;
   healthConsent: boolean;
+  // The code's location's comfort options — the phone shows exactly the menu
+  // the kiosk would.
+  comfort: ComfortConfig;
 }) {
   const setField = <K extends keyof StoredPreferences>(key: K, v: StoredPreferences[K]) =>
     onChange({ ...value, [key]: v });
+
+  // A stored profile can lack a field (the location didn't offer it last time,
+  // or the guest never set it), so each control falls back to the first option
+  // this location offers. CheckinPage clamps values that are no longer offered
+  // before this renders.
+  const firstId = (options: { id: string }[]) => options[0]?.id ?? "";
+  const musicValue = value.music ?? firstId(comfort.music.options);
+  const pillowValue = value.headrestPillow ?? firstId(comfort.pillow.options);
+  // The middle card holds three independent sub-features; all three off and it
+  // has nothing left to show.
+  const showComfortCard =
+    comfort.tableWarming.enabled || comfort.pillow.enabled || comfort.music.enabled;
 
   const setZone = (zoneId: ZoneId, mark: "standard" | "priority" | "blocked") => {
     const zones = { ...(value.zones ?? {}) };
@@ -127,10 +137,12 @@ export function CheckinPrefsEditor({
         />
       </PreferenceCard>
 
+      {comfort.oil.enabled && (
       <PreferenceCard title={t("massageOil", lang)} description={t("oilCardDesc", lang)}>
         <div className="grid grid-cols-2 gap-2.5">
-          {oils.map((oil) => {
+          {comfort.oil.options.map((oil) => {
             const isSelected = value.oilId === oil.id;
+            const subtitle = comfortSubtitle(oil, lang);
             return (
               <button
                 key={oil.id}
@@ -148,67 +160,92 @@ export function CheckinPrefsEditor({
                   </span>
                 )}
                 <div className="pr-5 text-sm font-semibold text-charcoal">
-                  {oilNameTranslations[oil.id]?.[lang] ?? oil.name}
+                  {comfortLabel(oil, lang)}
                 </div>
-                <div className="text-xs text-slate-light">
-                  {oilSubtitleTranslations[oil.id]?.[lang] ?? oil.subtitle}
-                </div>
+                {subtitle && <div className="text-xs text-slate-light">{subtitle}</div>}
               </button>
             );
           })}
         </div>
       </PreferenceCard>
+      )}
 
-      <PreferenceCard title={t("tableWarming", lang)}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-            <Flame size={18} className="text-clay-dark" />
-            {value.tableWarming ? t("on", lang) : t("off", lang)}
+      {showComfortCard && (
+      <PreferenceCard
+        title={t(
+          comfort.tableWarming.enabled
+            ? "tableWarming"
+            : comfort.pillow.enabled
+              ? "headrestPillow"
+              : "backgroundMusic",
+          lang,
+        )}
+      >
+        {comfort.tableWarming.enabled && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-charcoal">
+              <Flame size={18} className="text-clay-dark" />
+              {value.tableWarming ? t("on", lang) : t("off", lang)}
+            </div>
+            <Toggle
+              checked={value.tableWarming ?? false}
+              onChange={(v) => setField("tableWarming", v)}
+              label={t("tableWarming", lang)}
+            />
           </div>
-          <Toggle
-            checked={value.tableWarming ?? false}
-            onChange={(v) => setField("tableWarming", v)}
-            label={t("tableWarming", lang)}
-          />
-        </div>
+        )}
 
-        <div className="my-4 h-px bg-sand" />
+        {comfort.pillow.enabled && (
+          <>
+            {comfort.tableWarming.enabled && <div className="my-4 h-px bg-sand" />}
+            <div className="mb-2 text-sm font-semibold text-charcoal">
+              {t("headrestPillow", lang)}
+            </div>
+            <SegmentedControl
+              options={comfort.pillow.options.map((o) => ({
+                value: o.id,
+                label: comfortLabel(o, lang),
+              }))}
+              value={pillowValue}
+              onChange={(v) => setField("headrestPillow", v)}
+            />
+          </>
+        )}
 
-        <div className="mb-2 text-sm font-semibold text-charcoal">{t("headrestPillow", lang)}</div>
-        <SegmentedControl
-          options={[
-            { value: "Standardowa", label: pillowTranslations["Standardowa"][lang] },
-            { value: "Ultra-miękka", label: pillowTranslations["Ultra-miękka"][lang] },
-          ]}
-          value={value.headrestPillow ?? "Standardowa"}
-          onChange={(v) => setField("headrestPillow", v)}
-        />
-
-        <div className="my-4 h-px bg-sand" />
-
-        <div className="mb-2 text-sm font-semibold text-charcoal">{t("backgroundMusic", lang)}</div>
-        <div className="flex flex-wrap gap-2">
-          {musicOptions.map((opt) => {
-            const isSelected = (value.music ?? "nature") === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setField("music", opt.value)}
-                className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-all duration-300 active:scale-[0.98] ${
-                  isSelected
-                    ? "border-clay bg-clay-tint text-clay-dark"
-                    : "border-sand bg-white text-slate hover:border-clay/40"
-                }`}
-              >
-                {opt.icon}
-                {musicTranslations[opt.value][lang]}
-              </button>
-            );
-          })}
-        </div>
+        {comfort.music.enabled && (
+          <>
+            {(comfort.tableWarming.enabled || comfort.pillow.enabled) && (
+              <div className="my-4 h-px bg-sand" />
+            )}
+            <div className="mb-2 text-sm font-semibold text-charcoal">
+              {t("backgroundMusic", lang)}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {comfort.music.options.map((opt) => {
+                const isSelected = musicValue === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setField("music", opt.id)}
+                    className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-all duration-300 active:scale-[0.98] ${
+                      isSelected
+                        ? "border-clay bg-clay-tint text-clay-dark"
+                        : "border-sand bg-white text-slate hover:border-clay/40"
+                    }`}
+                  >
+                    {musicIcon(opt.id)}
+                    {comfortLabel(opt, lang)}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </PreferenceCard>
+      )}
 
+      {comfort.communication.enabled && (
       <PreferenceCard title={t("communication", lang)}>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {communicationOptions.map((opt) => {
@@ -233,6 +270,7 @@ export function CheckinPrefsEditor({
           })}
         </div>
       </PreferenceCard>
+      )}
 
       {healthConsent && (
         <PreferenceCard title={t("bodyZones", lang)} description={t("checkinZonesIntro", lang)}>

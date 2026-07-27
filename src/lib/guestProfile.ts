@@ -1,14 +1,13 @@
 import type {
   BodyGender,
   CommunicationStyle,
-  MusicPreference,
   PersonalizationState,
   Preferences,
   PressureLevel,
   ZoneId,
   ZoneMark,
 } from "../types";
-import { oils } from "../data/oils";
+import { COMFORT_LIST_SECTIONS, stripDisabled, type ComfortConfig } from "./comfort";
 
 // ---------------------------------------------------------------------------
 // Opt-in guest CRM (preference memory). Client wrappers around /api/guest and
@@ -44,10 +43,12 @@ export interface StoredPreferences {
   // health data, and deliberately not stripped with zones/notes below.
   bodyGender?: BodyGender;
   pressure?: PressureLevel;
+  // Option ids from the location's comfort config (src/lib/comfort.ts). Absent
+  // when the location doesn't offer that comfort feature at all.
   oilId?: string;
   tableWarming?: boolean;
-  headrestPillow?: Preferences["headrestPillow"];
-  music?: MusicPreference;
+  headrestPillow?: string;
+  music?: string;
   communication?: CommunicationStyle;
   zones?: Partial<Record<ZoneId, Extract<ZoneMark, "priority" | "blocked">>>;
   zoneNotes?: Partial<Record<ZoneId, string>>;
@@ -65,17 +66,16 @@ export interface StoredPreferences {
 export function toStoredPreferences(
   p: PersonalizationState,
   includeHealthData: boolean,
+  config: ComfortConfig,
 ): StoredPreferences {
   const stored: StoredPreferences = {
     v: 2,
     // Sibling of `preferences` on PersonalizationState, not a field inside it.
     bodyGender: p.bodyGender,
-    pressure: p.preferences.pressure,
-    oilId: p.preferences.oilId,
-    tableWarming: p.preferences.tableWarming,
-    headrestPillow: p.preferences.headrestPillow,
-    music: p.preferences.music,
-    communication: p.preferences.communication,
+    // Comfort features this location doesn't offer are omitted, not defaulted —
+    // remembering "music: nature" for a spa with no sound system would re-apply
+    // a setting the guest never made.
+    ...stripDisabled(p.preferences, config),
   };
 
   if (includeHealthData) {
@@ -100,9 +100,7 @@ export function toStoredPreferences(
 }
 
 const PRESSURE_VALUES: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
-const MUSIC_VALUES: MusicPreference[] = ["nature", "ambient", "silence"];
 const COMMUNICATION_VALUES: CommunicationStyle[] = ["silent", "guided"];
-const PILLOW_VALUES: Preferences["headrestPillow"][] = ["Standardowa", "Ultra-miękka"];
 const BODY_GENDER_VALUES: BodyGender[] = ["female", "male"];
 
 // Validate a stored blob back into a partial preference set (+ zone marks and
@@ -112,7 +110,10 @@ const BODY_GENDER_VALUES: BodyGender[] = ["female", "male"];
 // that isn't a v1 or v2 blob. A row without health consent (or a v1 row, saved
 // before zones/notes existed) simply yields no zones/zoneNotes/generalNote —
 // the server already omits them from what it returns.
-export function applyStoredPreferences(stored: unknown): {
+export function applyStoredPreferences(
+  stored: unknown,
+  config: ComfortConfig,
+): {
   preferences: Partial<Preferences>;
   // Top-level, not inside `preferences`: bodyGender is a sibling field on
   // PersonalizationState and isn't part of the Preferences interface.
@@ -129,13 +130,24 @@ export function applyStoredPreferences(stored: unknown): {
 
   const preferences: Partial<Preferences> = {};
   if (isOneOf(s.pressure, PRESSURE_VALUES)) preferences.pressure = s.pressure;
-  if (typeof s.oilId === "string" && oils.some((o) => o.id === s.oilId)) {
-    preferences.oilId = s.oilId;
+  // The three id-valued fields are validated against what this location offers
+  // right now: an oil/music/pillow that was removed (or that a disabled section
+  // no longer exposes) is dropped, so the guest keeps the kiosk's default for
+  // it instead of a choice nobody can honour.
+  for (const key of COMFORT_LIST_SECTIONS) {
+    const field = ({ oil: "oilId", music: "music", pillow: "headrestPillow" } as const)[key];
+    const value = s[field];
+    const section = config[key];
+    if (section.enabled && typeof value === "string" && section.options.some((o) => o.id === value)) {
+      preferences[field] = value;
+    }
   }
-  if (typeof s.tableWarming === "boolean") preferences.tableWarming = s.tableWarming;
-  if (isOneOf(s.headrestPillow, PILLOW_VALUES)) preferences.headrestPillow = s.headrestPillow;
-  if (isOneOf(s.music, MUSIC_VALUES)) preferences.music = s.music;
-  if (isOneOf(s.communication, COMMUNICATION_VALUES)) preferences.communication = s.communication;
+  if (typeof s.tableWarming === "boolean" && config.tableWarming.enabled) {
+    preferences.tableWarming = s.tableWarming;
+  }
+  if (isOneOf(s.communication, COMMUNICATION_VALUES) && config.communication.enabled) {
+    preferences.communication = s.communication;
+  }
 
   const zones: Partial<Record<ZoneId, ZoneMark>> = {};
   if (s.zones && typeof s.zones === "object") {
@@ -226,6 +238,7 @@ export async function saveGuestProfile(
   phone: string,
   personalization: PersonalizationState,
   healthConsent: boolean,
+  config: ComfortConfig,
   identity?: { name: string; email?: string },
 ): Promise<void> {
   await postGuest({
@@ -239,7 +252,7 @@ export async function saveGuestProfile(
     marketingConsent: identity !== undefined,
     name: identity?.name,
     email: identity?.email || undefined,
-    preferences: toStoredPreferences(personalization, healthConsent),
+    preferences: toStoredPreferences(personalization, healthConsent, config),
   });
 }
 

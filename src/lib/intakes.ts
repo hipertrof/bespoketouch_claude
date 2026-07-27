@@ -1,7 +1,7 @@
 import type {
   PartySize,
-  PersonalizationState,
   RoomAssignment,
+  SubmittedPersonalization,
   TherapistAssignment,
   TreatmentSelection,
 } from "../types";
@@ -38,7 +38,7 @@ export interface IntakeRow {
   party_size: number;
   guest_names: string[];
   treatment_selections: TreatmentSnapshot[];
-  personalizations: PersonalizationState[];
+  personalizations: SubmittedPersonalization[];
   // Index-aligned with guest_names; null = no therapist assigned. Absent on
   // rows written before 0009 — treat as [].
   therapists: (TherapistAssignment | null)[] | null;
@@ -104,7 +104,7 @@ export async function saveIntake(input: {
   partySize: PartySize;
   guestNames: string[];
   treatmentSelections: TreatmentSnapshot[];
-  personalizations: PersonalizationState[];
+  personalizations: SubmittedPersonalization[];
   therapists: (TherapistAssignment | null)[];
   roomAssignments: (RoomAssignment | null)[];
   // Index-aligned raw phones for guests who engaged the CRM this session

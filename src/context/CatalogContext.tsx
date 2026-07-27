@@ -10,6 +10,7 @@ import {
   type TherapistOption,
 } from "../lib/kiosk";
 import { fetchBranding, type LocationBranding } from "../lib/branding";
+import { defaultComfortConfig, fetchComfort, type ComfortConfig } from "../lib/comfort";
 
 // Where the kiosk's offer came from. "db" = live catalogue for a paired
 // location; "bundled" = the built-in Nusa catalogue (unpaired ?demo run, or the
@@ -35,6 +36,10 @@ interface CatalogContextValue {
   // Per-location kiosk branding (logo + accent colors). Null = stock look
   // (bundled/?demo run, nothing configured, or the lookup failed).
   branding: LocationBranding | null;
+  // Which comfort options this location offers. Never null: an unpaired/?demo
+  // run, an unconfigured location, and a failed lookup all resolve to the
+  // built-in menu, so no consumer has to branch on where it came from.
+  comfort: ComfortConfig;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -59,6 +64,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [branding, setBranding] = useState<LocationBranding | null>(null);
+  const [comfort, setComfort] = useState<ComfortConfig>(() => defaultComfortConfig());
 
   useEffect(() => {
     // Unpaired → run on the bundled catalogue (local dev / ?demo).
@@ -70,6 +76,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       setTherapists([]);
       setRooms([]);
       setBranding(null);
+      setComfort(defaultComfortConfig());
       return;
     }
 
@@ -84,6 +91,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     setTherapists([]);
     setRooms([]);
     setBranding(null);
+    setComfort(defaultComfortConfig());
     fetchCatalog(locationId)
       .then((rows) => {
         if (cancelled) return;
@@ -129,6 +137,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setBranding(b);
       })
       .catch((err) => console.warn("[kiosk] branding unavailable:", err));
+    // Failure keeps the built-in menu set above rather than hiding comfort
+    // options the location does offer.
+    fetchComfort(locationId)
+      .then((c) => {
+        if (!cancelled) setComfort(c);
+      })
+      .catch((err) => console.warn("[kiosk] comfort options unavailable:", err));
 
     return () => {
       cancelled = true;
@@ -137,7 +152,17 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   return (
     <CatalogContext.Provider
-      value={{ catalog, loading, source, locationId, locationInfo, therapists, rooms, branding }}
+      value={{
+        catalog,
+        loading,
+        source,
+        locationId,
+        locationInfo,
+        therapists,
+        rooms,
+        branding,
+        comfort,
+      }}
     >
       {children}
     </CatalogContext.Provider>

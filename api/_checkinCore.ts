@@ -205,10 +205,65 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   // email/phone/birthday.
   const marketingConsent = typeof row.marketing_consent_version === "string";
   const name = marketingConsent && typeof row.display_name === "string" ? row.display_name : null;
+  // The phone renders the same comfort menu as the kiosk, so it needs the
+  // location's config (0027). Raw jsonb — src/lib/comfort.ts normalizes it, and
+  // `{}` means the built-in menu.
+  const comfort = await fetchComfortConfig(base, svc, locationId);
   return {
     status: 200,
-    json: { found: true, preferences: prefs ?? null, healthConsent, marketingConsent, name },
+    json: {
+      found: true,
+      preferences: prefs ?? null,
+      healthConsent,
+      marketingConsent,
+      name,
+      comfort,
+    },
   };
+}
+
+// location_settings.comfort for a location, or {} when unset/unreadable — the
+// same "no config = built-in menu" default the client normalizer applies.
+async function fetchComfortConfig(
+  base: string,
+  svc: Record<string, string>,
+  locationId: string,
+): Promise<JsonRecord> {
+  const rows = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/location_settings?select=comfort&location_id=eq.${locationId}`,
+        svc,
+      )
+    ).body,
+  );
+  const comfort = asRecord(rows[0]?.comfort);
+  return comfort ?? {};
+}
+
+// Which comfort fields the location actually offers, plus the Polish label for
+// each id-valued one. Mirrors stripDisabled()/comfortLabelsFor() in
+// src/lib/comfort.ts — kept dependency-free here rather than shared, like every
+// other duplication between api/ and src/.
+function comfortGate(comfort: JsonRecord): {
+  offers: (key: "oil" | "music" | "pillow" | "tableWarming" | "communication") => boolean;
+  labelOf: (key: "oil" | "music" | "pillow", id: string | undefined) => string | undefined;
+} {
+  const section = (key: string): JsonRecord | null => asRecord(comfort[key]);
+  const offers = (key: "oil" | "music" | "pillow" | "tableWarming" | "communication") => {
+    const enabled = section(key)?.enabled;
+    // Absent section = the built-in default, which offers everything.
+    return typeof enabled === "boolean" ? enabled : true;
+  };
+  const labelOf = (key: "oil" | "music" | "pillow", id: string | undefined) => {
+    if (!id) return undefined;
+    const options = asArray(section(key)?.options);
+    const match = options.find((o) => asRecord(o)?.id === id);
+    const names = asRecord(asRecord(match)?.name_i18n);
+    const pl = names?.pl;
+    return typeof pl === "string" && pl ? pl : undefined;
+  };
+  return { offers, labelOf };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +308,17 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
 
   const accountId = await resolveAccount(base, svc, locationId);
   if (!accountId) return { status: 403, json: { error: "Unknown or inactive location." } };
+
+  // Per-location comfort options (0027). sanitizePreferences is structural
+  // only, so a phone could post a field this location switched off — drop it
+  // here, the same way stripDisabled does on the kiosk, so neither the stored
+  // profile nor the intake carries a setting the spa can't honour.
+  const gate = comfortGate(await fetchComfortConfig(base, svc, locationId));
+  if (!gate.offers("oil")) delete preferences.oilId;
+  if (!gate.offers("music")) delete preferences.music;
+  if (!gate.offers("pillow")) delete preferences.headrestPillow;
+  if (!gate.offers("tableWarming")) delete preferences.tableWarming;
+  if (!gate.offers("communication")) delete preferences.communication;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const existing = asArray(
@@ -347,7 +413,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       party_size: 1,
       guest_names: [""],
       treatment_selections: [{ treatmentId: null, minutes: null, nameI18n: null, price: null }],
-      personalizations: [toPersonalizationState(preferences)],
+      personalizations: [toPersonalizationState(preferences, gate)],
       therapists: [null],
       expires_at: new Date(Date.now() + INTAKE_RETENTION_HOURS * 3600 * 1000).toISOString(),
     }),
@@ -387,20 +453,36 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
 // the guest set it on a previous visit, falling back to "female" like a fresh
 // kiosk guest; reception corrects it when completing the intake if needed, same
 // as any other field on an incomplete row.
-function toPersonalizationState(prefs: StoredPreferencesV1): JsonRecord {
+function toPersonalizationState(
+  prefs: StoredPreferencesV1,
+  gate: ReturnType<typeof comfortGate>,
+): JsonRecord {
+  // Absent = the location doesn't offer it (already gated above), so the field
+  // is omitted rather than defaulted — /queue then prints no row for it.
+  const preferences: JsonRecord = { pressure: prefs.pressure ?? "Średni" };
+  if (prefs.oilId !== undefined) preferences.oilId = prefs.oilId;
+  if (prefs.tableWarming !== undefined) preferences.tableWarming = prefs.tableWarming;
+  if (prefs.headrestPillow !== undefined) preferences.headrestPillow = prefs.headrestPillow;
+  if (prefs.music !== undefined) preferences.music = prefs.music;
+  if (prefs.communication !== undefined) preferences.communication = prefs.communication;
+
+  // Polish label snapshot for the id-valued fields, same as the kiosk writes at
+  // handoff, so /queue still reads correctly after the option list is edited.
+  const comfortLabels: JsonRecord = {};
+  const oil = gate.labelOf("oil", prefs.oilId);
+  const music = gate.labelOf("music", prefs.music);
+  const pillow = gate.labelOf("pillow", prefs.headrestPillow);
+  if (oil) comfortLabels.oil = oil;
+  if (music) comfortLabels.music = music;
+  if (pillow) comfortLabels.pillow = pillow;
+
   return {
     bodyGender: prefs.bodyGender ?? "female",
     zones: prefs.zones ?? {},
     zoneNotes: prefs.zoneNotes ?? {},
     generalNote: prefs.generalNote ?? "",
-    preferences: {
-      pressure: prefs.pressure ?? "Średni",
-      oilId: prefs.oilId ?? "",
-      tableWarming: prefs.tableWarming ?? false,
-      headrestPillow: prefs.headrestPillow ?? "Standardowa",
-      music: prefs.music ?? "nature",
-      communication: prefs.communication ?? "silent",
-    },
+    preferences,
+    comfortLabels,
   };
 }
 

@@ -52,7 +52,13 @@ export type PressureLevel = "Lekki" | "Średni" | "Mocny" | "Głęboki";
 
 export type CommunicationStyle = "silent" | "guided";
 
+// The built-in music/pillow option ids. Since per-location comfort options
+// (migration 0027) a location can define its own, so these are only the seeds
+// for defaultComfortConfig() and the keys of the bundled translation maps —
+// Preferences below stores a plain option id, not one of these unions.
 export type MusicPreference = "nature" | "ambient" | "silence";
+
+export type PillowPreference = "Standardowa" | "Ultra-miękka";
 
 // 1 = single-person treatment, 2 = couple's treatment (two guests personalize
 // one after another on the same tablet).
@@ -88,13 +94,32 @@ export interface ZoneDefinition {
   view: BodyView;
 }
 
+// The comfort settings a guest picks. The three list-valued fields hold an
+// option id from the location's comfort config (src/lib/comfort.ts) — built-in
+// ids like "nature" / "Standardowa" are preserved verbatim, so rows written
+// before 0027 keep resolving.
 export interface Preferences {
   pressure: PressureLevel;
   oilId: string;
   tableWarming: boolean;
-  headrestPillow: "Standardowa" | "Ultra-miękka";
-  music: MusicPreference;
+  headrestPillow: string;
+  music: string;
   communication: CommunicationStyle;
+}
+
+// What survives stripDisabled(): comfort features the location switched off are
+// absent entirely rather than carrying a meaningless default. Pressure is
+// per-service (0023) and always offered, so it alone stays required.
+export type OfferedPreferences = Pick<Preferences, "pressure"> & Partial<Preferences>;
+
+// Polish labels for the id-valued comfort fields, snapshotted onto the intake
+// at handoff — the same name-snapshot idiom as TherapistAssignment /
+// RoomAssignment, so an archived visit still reads correctly after the manager
+// renames or removes an option.
+export interface ComfortLabels {
+  oil?: string;
+  music?: string;
+  pillow?: string;
 }
 
 // Everything one guest personalizes themselves. Couples get one of these per
@@ -105,6 +130,14 @@ export interface PersonalizationState {
   zoneNotes: Partial<Record<ZoneId, string>>;
   generalNote: string;
   preferences: Preferences;
+}
+
+// One guest's personalization as written to intakes.personalizations and read
+// back by /queue: disabled comfort fields dropped, plus the label snapshot. A
+// live PersonalizationState is assignable to it (every field present).
+export interface SubmittedPersonalization extends Omit<PersonalizationState, "preferences"> {
+  preferences: OfferedPreferences;
+  comfortLabels?: ComfortLabels;
 }
 
 export interface TreatmentSelection {

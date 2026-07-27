@@ -1,6 +1,16 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, BedDouble, GripVertical, Hand, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BedDouble,
+  GripVertical,
+  Hand,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -18,6 +28,7 @@ import { Button } from "../Button";
 import { DashboardShell } from "../DashboardShell";
 import { SubscriptionBanner } from "../billing/SubscriptionBanner";
 import { BrandingEditor } from "./BrandingEditor";
+import { ComfortEditor } from "./ComfortEditor";
 import { RoomsEditor } from "./RoomsEditor";
 
 interface LocationLite {
@@ -264,6 +275,15 @@ export function OfferCMS() {
               <p className="mt-1 text-sm text-slate">{t("cmsRoomsHint", lang)}</p>
             </div>
             {locationId && <RoomsEditor locationId={locationId} />}
+
+            {/* Section break, same pattern as the sections above. */}
+            <div className="mt-10 mb-4 border-t border-sand pt-8">
+              <h2 className="flex items-center gap-2 font-serif text-xl text-charcoal">
+                <Sparkles size={18} className="text-slate-light" />
+                {t("cmsComfortHeading", lang)}
+              </h2>
+            </div>
+            {locationId && <ComfortEditor locationId={locationId} />}
           </>
         )}
     </DashboardShell>

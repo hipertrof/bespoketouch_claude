@@ -2,21 +2,18 @@ import { useEffect, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Flame, MessageCircle, Music, VolumeX } from "lucide-react";
 import { useGuest, useActiveGuest } from "../../context/GuestContext";
 import { useDevice } from "../../context/DeviceContext";
+import { useCatalog } from "../../context/CatalogContext";
 import { Button } from "../Button";
 import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
 import { Toggle } from "../Toggle";
-import { oils } from "../../data/oils";
+import { clampComfortId, comfortLabel, comfortSubtitle } from "../../lib/comfort";
 import {
   communicationTranslations,
-  musicTranslations,
-  oilNameTranslations,
-  oilSubtitleTranslations,
-  pillowTranslations,
   pressureTranslations,
   t,
 } from "../../i18n/translations";
-import type { CommunicationStyle, MusicPreference, PressureLevel } from "../../types";
+import type { CommunicationStyle, PressureLevel } from "../../types";
 
 const pressureOrder: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
 
@@ -27,11 +24,10 @@ const pressureDescKey: Record<PressureLevel, string> = {
   Głęboki: "pressureDescDeep",
 };
 
-const musicOptions: { value: MusicPreference; icon: ReactNode }[] = [
-  { value: "nature", icon: <Music size={16} /> },
-  { value: "ambient", icon: <Music size={16} /> },
-  { value: "silence", icon: <VolumeX size={16} /> },
-];
+// Music options are per-location now, so the icon is chosen by id where we know
+// it and falls back to the generic note for anything a manager added.
+const musicIcon = (id: string): ReactNode =>
+  id === "silence" ? <VolumeX size={16} /> : <Music size={16} />;
 
 const communicationOptions: { value: CommunicationStyle; subtitleKey: string; icon: ReactNode }[] = [
   { value: "silent", subtitleKey: "commSilentSubtitle", icon: <VolumeX size={18} /> },
@@ -43,6 +39,8 @@ export function PreferencesStep() {
   // Only a paired kiosk can store preferences, so the consent card is hidden in
   // the bundled demo rather than offering an opt-in that would 401 on save.
   const { token } = useDevice();
+  // Which comfort options this location offers (built-in menu when unpaired).
+  const { comfort } = useCatalog();
   const lang = state.language;
   const activeGuest = useActiveGuest();
   const { preferences } = activeGuest;
@@ -95,6 +93,25 @@ export function PreferencesStep() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowedPressures.join(","), preferences.pressure]);
 
+  // Same idea for the three id-valued fields: a default, a CRM prefill, or a
+  // config edited mid-session can leave a value this location doesn't offer, so
+  // snap it to the first option. Disabled sections are left alone — the field is
+  // dropped at submit (stripDisabled) rather than shown.
+  const oilFix = clampComfortId(comfort.oil, preferences.oilId);
+  const musicFix = clampComfortId(comfort.music, preferences.music);
+  const pillowFix = clampComfortId(comfort.pillow, preferences.headrestPillow);
+  useEffect(() => {
+    if (oilFix) setPref("oilId", oilFix);
+    if (musicFix) setPref("music", musicFix);
+    if (pillowFix) setPref("headrestPillow", pillowFix);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oilFix, musicFix, pillowFix]);
+
+  // The middle card holds three independent sub-features; with all three off it
+  // has no content left, so it doesn't render at all.
+  const showComfortCard =
+    comfort.tableWarming.enabled || comfort.pillow.enabled || comfort.music.enabled;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       {isCouple && (
@@ -125,13 +142,15 @@ export function PreferencesStep() {
           </p>
         </PreferenceCard>
 
+        {comfort.oil.enabled && (
         <PreferenceCard
           title={t("massageOil", lang)}
           description={t("oilCardDesc", lang)}
         >
           <div className="grid grid-cols-2 gap-2.5">
-            {oils.map((oil) => {
+            {comfort.oil.options.map((oil) => {
               const isSelected = preferences.oilId === oil.id;
+              const subtitle = comfortSubtitle(oil, lang);
               return (
                 <button
                   key={oil.id}
@@ -149,74 +168,96 @@ export function PreferencesStep() {
                     </span>
                   )}
                   <div className="pr-5 text-sm font-semibold text-charcoal">
-                    {oilNameTranslations[oil.id]?.[lang] ?? oil.name}
+                    {comfortLabel(oil, lang)}
                   </div>
-                  <div className="text-xs text-slate-light">
-                    {oilSubtitleTranslations[oil.id]?.[lang] ?? oil.subtitle}
-                  </div>
+                  {subtitle && <div className="text-xs text-slate-light">{subtitle}</div>}
                 </button>
               );
             })}
           </div>
         </PreferenceCard>
+        )}
 
+        {showComfortCard && (
         <PreferenceCard
-          title={t("tableWarming", lang)}
-          description={t("tableWarmingCardDesc", lang)}
+          // The card groups three independent sub-features; whichever of them is
+          // switched on first names it, so a location without a heated table
+          // doesn't get a card headed "Podgrzewanie stołu".
+          title={t(
+            comfort.tableWarming.enabled
+              ? "tableWarming"
+              : comfort.pillow.enabled
+                ? "headrestPillow"
+                : "backgroundMusic",
+            lang,
+          )}
+          description={comfort.tableWarming.enabled ? t("tableWarmingCardDesc", lang) : ""}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-              <Flame size={18} className="text-clay-dark" />
-              {preferences.tableWarming ? t("on", lang) : t("off", lang)}
+          {comfort.tableWarming.enabled && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-charcoal">
+                <Flame size={18} className="text-clay-dark" />
+                {preferences.tableWarming ? t("on", lang) : t("off", lang)}
+              </div>
+              <Toggle
+                checked={preferences.tableWarming}
+                onChange={(v) => setPref("tableWarming", v)}
+                label={t("tableWarming", lang)}
+              />
             </div>
-            <Toggle
-              checked={preferences.tableWarming}
-              onChange={(v) => setPref("tableWarming", v)}
-              label={t("tableWarming", lang)}
-            />
-          </div>
+          )}
 
-          <div className="my-4 h-px bg-sand" />
+          {comfort.pillow.enabled && (
+            <>
+              {comfort.tableWarming.enabled && <div className="my-4 h-px bg-sand" />}
+              <div className="mb-2 text-sm font-semibold text-charcoal">
+                {t("headrestPillow", lang)}
+              </div>
+              <SegmentedControl
+                options={comfort.pillow.options.map((o) => ({
+                  value: o.id,
+                  label: comfortLabel(o, lang),
+                }))}
+                value={preferences.headrestPillow}
+                onChange={(v) => setPref("headrestPillow", v)}
+              />
+            </>
+          )}
 
-          <div className="mb-2 text-sm font-semibold text-charcoal">
-            {t("headrestPillow", lang)}
-          </div>
-          <SegmentedControl
-            options={[
-              { value: "Standardowa", label: pillowTranslations["Standardowa"][lang] },
-              { value: "Ultra-miękka", label: pillowTranslations["Ultra-miękka"][lang] },
-            ]}
-            value={preferences.headrestPillow}
-            onChange={(v) => setPref("headrestPillow", v)}
-          />
-
-          <div className="my-4 h-px bg-sand" />
-
-          <div className="mb-2 text-sm font-semibold text-charcoal">
-            {t("backgroundMusic", lang)}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {musicOptions.map((opt) => {
-              const isSelected = preferences.music === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setPref("music", opt.value)}
-                  className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-all duration-300 active:scale-[0.98] ${
-                    isSelected
-                      ? "border-clay bg-clay-tint text-clay-dark"
-                      : "border-sand bg-white text-slate hover:border-clay/40"
-                  }`}
-                >
-                  {opt.icon}
-                  {musicTranslations[opt.value][lang]}
-                </button>
-              );
-            })}
-          </div>
+          {comfort.music.enabled && (
+            <>
+              {(comfort.tableWarming.enabled || comfort.pillow.enabled) && (
+                <div className="my-4 h-px bg-sand" />
+              )}
+              <div className="mb-2 text-sm font-semibold text-charcoal">
+                {t("backgroundMusic", lang)}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {comfort.music.options.map((opt) => {
+                  const isSelected = preferences.music === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPref("music", opt.id)}
+                      className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-all duration-300 active:scale-[0.98] ${
+                        isSelected
+                          ? "border-clay bg-clay-tint text-clay-dark"
+                          : "border-sand bg-white text-slate hover:border-clay/40"
+                      }`}
+                    >
+                      {musicIcon(opt.id)}
+                      {comfortLabel(opt, lang)}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </PreferenceCard>
+        )}
 
+        {comfort.communication.enabled && (
         <PreferenceCard
           title={t("communication", lang)}
           description={t("communicationCardDesc", lang)}
@@ -249,6 +290,7 @@ export function PreferencesStep() {
             })}
           </div>
         </PreferenceCard>
+        )}
       </div>
 
       {token && (

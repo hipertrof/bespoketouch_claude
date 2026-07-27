@@ -15,9 +15,8 @@ import {
 import { StaticBodyMap } from "./BodyMap/StaticBodyMap";
 import { GuestNoteCard } from "./GuestNoteCard";
 import { formatPrice } from "../data/massageTypes";
-import { oils } from "../data/oils";
 import { guestDisplayName } from "../utils/guestName";
-import type { PartySize, PersonalizationState, RoomAssignment } from "../types";
+import type { PartySize, RoomAssignment, SubmittedPersonalization } from "../types";
 import type { TreatmentSnapshot } from "../lib/intakes";
 import {
   communicationTranslations,
@@ -37,7 +36,7 @@ export interface IntakePanelView {
   partySize: PartySize;
   separateTreatments: boolean;
   guestNames: string[];
-  guests: PersonalizationState[];
+  guests: SubmittedPersonalization[];
   // Index-aligned with `guests`: the treatment snapshot each guest chose.
   treatments: TreatmentSnapshot[];
   // Index-aligned with `guests`: the room/bed each guest was assigned, if any.
@@ -79,8 +78,23 @@ export function IntakePanel({ view, initialLang, actions, footerNote, deviceToke
 
   const roomAssignment = view.rooms?.[selectedGuestIndex] ?? null;
 
-  const oil = oils.find((o) => o.id === preferences.oilId);
-  const oilName = oil ? oilNameTranslations[oil.id]?.[lang] ?? oil.name : null;
+  // Comfort options are per-location since 0027, so an id can name something
+  // this panel has no table for. The intake carries a Polish label snapshot
+  // written at handoff; fall back to the built-in translation for that id (a
+  // row written before 0027, or the live kiosk session), then to the id itself.
+  const comfortValue = (
+    id: string | undefined,
+    snapshot: string | undefined,
+    builtin: Record<string, Record<string, string>>,
+  ): string | null => {
+    if (id === undefined) return null;
+    // A snapshot that differs from the built-in Polish label means the manager
+    // renamed the option or added their own, so it wins; an untouched built-in
+    // keeps its translations and still follows the language switch below.
+    if (snapshot && snapshot !== builtin[id]?.pl) return snapshot;
+    return builtin[id]?.[lang] ?? snapshot ?? id;
+  };
+  const labels = activeGuest.comfortLabels;
   const zoneNoteEntries = useMemo(
     () =>
       Object.entries(activeGuest.zoneNotes).filter(
@@ -89,38 +103,54 @@ export function IntakePanel({ view, initialLang, actions, footerNote, deviceToke
     [activeGuest.zoneNotes],
   );
 
-  const summaryItems = [
+  // A comfort feature the location doesn't offer is absent from the intake
+  // (stripDisabled at handoff), so its row is skipped rather than printed with
+  // a default the guest never chose.
+  const oilValue = comfortValue(preferences.oilId, labels?.oil, oilNameTranslations);
+  const musicValue = comfortValue(preferences.music, labels?.music, musicTranslations);
+  const pillowValue = comfortValue(preferences.headrestPillow, labels?.pillow, pillowTranslations);
+  const summaryItems: { icon: ReactNode; label: string; value: string }[] = [
     {
       icon: <Gauge size={20} />,
       label: t("pressure", lang),
       value: pressureTranslations[preferences.pressure][lang],
     },
-    {
+  ];
+  if (oilValue) {
+    summaryItems.push({
       icon: <Droplet size={20} />,
       label: t("massageOil", lang),
-      value: oilName ?? "—",
-    },
-    {
+      value: oilValue,
+    });
+  }
+  if (preferences.communication) {
+    summaryItems.push({
       icon: preferences.communication === "silent" ? <VolumeX size={20} /> : <Sparkles size={20} />,
       label: t("communication", lang),
       value: communicationTranslations[preferences.communication][lang],
-    },
-    {
+    });
+  }
+  if (preferences.tableWarming !== undefined) {
+    summaryItems.push({
       icon: <Flame size={20} />,
       label: t("tableWarming", lang),
       value: preferences.tableWarming ? t("on", lang) : t("off", lang),
-    },
-    {
+    });
+  }
+  if (pillowValue) {
+    summaryItems.push({
       icon: <Moon size={20} />,
       label: t("headrestPillow", lang),
-      value: pillowTranslations[preferences.headrestPillow]?.[lang] ?? preferences.headrestPillow,
-    },
-    {
+      value: pillowValue,
+    });
+  }
+  if (musicValue) {
+    summaryItems.push({
       icon: <Music size={20} />,
       label: t("backgroundMusic", lang),
-      value: musicTranslations[preferences.music][lang],
-    },
-  ];
+      value: musicValue,
+    });
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">

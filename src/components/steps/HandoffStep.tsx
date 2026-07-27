@@ -8,10 +8,11 @@ import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
 import { forgetGuestProfile, saveGuestProfile } from "../../lib/guestProfile";
+import { comfortLabelsFor, stripDisabled } from "../../lib/comfort";
 
 export function HandoffStep() {
   const { state } = useGuest();
-  const { catalog, loading } = useCatalog();
+  const { catalog, loading, comfort } = useCatalog();
   const { token } = useDevice();
   const lang = state.language;
   const isCouple = state.partySize === 2;
@@ -56,7 +57,9 @@ export function HandoffStep() {
           crm.marketingConsent && crm.name.trim()
             ? { name: crm.name.trim(), email: crm.email.trim() || undefined }
             : undefined;
-        return [saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent, identity)];
+        return [
+          saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent, comfort, identity),
+        ];
       }
       if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];
       return [];
@@ -76,7 +79,15 @@ export function HandoffStep() {
             size,
             catalog,
           ),
-          personalizations: state.guests.slice(0, size),
+          // Comfort features this location doesn't offer are dropped, and the
+          // three id-valued ones get a Polish label snapshot alongside — same
+          // rule as the therapist/room name snapshots, so an archived intake
+          // still reads correctly after the manager edits the option list.
+          personalizations: state.guests.slice(0, size).map((g) => {
+            const preferences = stripDisabled(g.preferences, comfort);
+            const comfortLabels = comfortLabelsFor(preferences, comfort);
+            return { ...g, preferences, comfortLabels };
+          }),
           therapists: state.guestTherapists.slice(0, size),
           roomAssignments: state.guestRooms.slice(0, size),
           // Only consenting guests get a visit-history row; others send null.
@@ -98,7 +109,7 @@ export function HandoffStep() {
         savedRef.current = false; // allow a retry on the next render
         setSaveError(true);
       });
-  }, [loading, token, catalog, state]);
+  }, [loading, token, catalog, comfort, state]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl flex-col items-center justify-center px-4 py-14 text-center sm:px-6">

@@ -4,6 +4,12 @@ import { ArrowRight, Check, Search, Sparkles } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
 import { checkinLookup, checkinSave } from "../../lib/checkin";
 import type { StoredPreferences } from "../../lib/guestProfile";
+import {
+  clampComfortId,
+  defaultComfortConfig,
+  COMFORT_LIST_SECTIONS,
+  type ComfortConfig,
+} from "../../lib/comfort";
 import { t } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
@@ -12,6 +18,20 @@ import { CheckinPrefsEditor } from "./CheckinPrefsEditor";
 import type { LangCode } from "../../types";
 
 type Stage = "phone" | "looking" | "notFound" | "editing" | "saving" | "saved" | "linkInvalid" | "error";
+
+// Snap the three id-valued comfort fields onto what this location offers now —
+// the phone-side counterpart of the kiosk's clamp in PreferencesStep. Fields
+// for disabled sections are left as-is; the server drops them on save.
+function clampStoredToComfort(prefs: StoredPreferences, comfort: ComfortConfig): StoredPreferences {
+  const field = { oil: "oilId", music: "music", pillow: "headrestPillow" } as const;
+  const next = { ...prefs };
+  for (const key of COMFORT_LIST_SECTIONS) {
+    const current = next[field[key]];
+    const fix = clampComfortId(comfort[key], current ?? "");
+    if (fix) next[field[key]] = fix;
+  }
+  return next;
+}
 
 // The two-consent card, identical in wording and nesting to the kiosk's
 // PreferencesStep — this page now captures consent itself (see
@@ -164,6 +184,9 @@ export function CheckinPage() {
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState<Stage>(code ? "phone" : "linkInvalid");
   const [prefs, setPrefs] = useState<StoredPreferences | null>(null);
+  // Comfort options of the code's location, resolved by the lookup. The
+  // built-in menu until then — nothing renders it before `editing` anyway.
+  const [comfort, setComfort] = useState<ComfortConfig>(() => defaultComfortConfig());
   // A profile existing at all IS standing base consent, so a successful
   // lookup starts both toggles from what the row already carries — consent
   // true, healthConsent from the lookup response. Switching base off forces
@@ -185,7 +208,10 @@ export function CheckinPage() {
         setStage("notFound");
         return;
       }
-      setPrefs(found.preferences);
+      // Clamp once, here: a stored oil/music/pillow the location has since
+      // removed would otherwise stay selected-but-invisible and be saved back.
+      setPrefs(clampStoredToComfort(found.preferences, found.comfort));
+      setComfort(found.comfort);
       setConsent(true);
       setHealthConsent(found.healthConsent);
       setMarketingConsent(found.marketingConsent);
@@ -289,7 +315,13 @@ export function CheckinPage() {
               onEmailChange={setCrmEmail}
               lang={lang}
             />
-            <CheckinPrefsEditor value={prefs} onChange={setPrefs} lang={lang} healthConsent={healthConsent} />
+            <CheckinPrefsEditor
+              value={prefs}
+              onChange={setPrefs}
+              lang={lang}
+              healthConsent={healthConsent}
+              comfort={comfort}
+            />
             <Button onClick={handleSave} disabled={stage === "saving"} className="w-full sm:w-auto sm:self-end">
               {t("checkinSave", lang)}
               <ArrowRight size={18} />
