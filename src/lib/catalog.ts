@@ -45,6 +45,25 @@ function normalizePressureLevels(raw: string[] | null): PressureLevel[] | undefi
   return valid.length > 0 && valid.length < ALL_PRESSURE_LEVELS.length ? valid : undefined;
 }
 
+// The level to snap to when `current` isn't among `allowed`, or null when it
+// already is. Nearest by position in ALL_PRESSURE_LEVELS, ties resolved toward
+// the softer option — offering someone MORE pressure than they asked for is the
+// worse error. Shared by the kiosk's PreferencesStep and the QR check-in editor
+// so the two surfaces can't drift apart.
+export function nearestPressure(
+  current: PressureLevel,
+  allowed: PressureLevel[],
+): PressureLevel | null {
+  if (allowed.length === 0 || allowed.includes(current)) return null;
+  const rankOf = (p: PressureLevel) => ALL_PRESSURE_LEVELS.indexOf(p);
+  const currentRank = rankOf(current);
+  return allowed.reduce((best, level) => {
+    const dist = Math.abs(rankOf(level) - currentRank);
+    const bestDist = Math.abs(rankOf(best) - currentRank);
+    return dist < bestDist || (dist === bestDist && rankOf(level) < rankOf(best)) ? level : best;
+  }, allowed[0]);
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------

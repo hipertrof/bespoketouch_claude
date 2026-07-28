@@ -34,8 +34,6 @@ import type {
 // true — CheckinPage now captures both consents itself before rendering this
 // with a granted health consent, mirroring the kiosk's PreferencesStep.
 
-const pressureOrder: PressureLevel[] = ["Lekki", "Średni", "Mocny", "Głęboki"];
-
 // Per-location music options, so the icon is chosen by id where we know it —
 // same rule as the kiosk's PreferencesStep.
 const musicIcon = (id: string): ReactNode =>
@@ -60,6 +58,7 @@ export function CheckinPrefsEditor({
   lang,
   healthConsent,
   comfort,
+  pressureLevels,
 }: {
   value: StoredPreferences;
   onChange: (next: StoredPreferences) => void;
@@ -68,6 +67,10 @@ export function CheckinPrefsEditor({
   // The code's location's comfort options — the phone shows exactly the menu
   // the kiosk would.
   comfort: ComfortConfig;
+  // Pressure levels the location's active services actually offer. No treatment
+  // is picked on this page, so this is the union across them (resolved by the
+  // lookup) rather than one service's list as on the kiosk.
+  pressureLevels: PressureLevel[];
 }) {
   const setField = <K extends keyof StoredPreferences>(key: K, v: StoredPreferences[K]) =>
     onChange({ ...value, [key]: v });
@@ -131,8 +134,8 @@ export function CheckinPrefsEditor({
     <div className="grid grid-cols-1 gap-5">
       <PreferenceCard title={t("pressureCardTitle", lang)} description={t("pressureCardDesc", lang)}>
         <SegmentedControl
-          options={pressureOrder.map((v) => ({ value: v, label: pressureTranslations[v][lang] }))}
-          value={value.pressure ?? "Średni"}
+          options={pressureLevels.map((v) => ({ value: v, label: pressureTranslations[v][lang] }))}
+          value={value.pressure ?? pressureLevels[0] ?? "Średni"}
           onChange={(v) => setField("pressure", v)}
         />
       </PreferenceCard>

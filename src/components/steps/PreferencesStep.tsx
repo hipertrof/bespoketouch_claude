@@ -8,6 +8,7 @@ import { SegmentedControl } from "../SegmentedControl";
 import { PreferenceCard } from "../PreferenceCard";
 import { Toggle } from "../Toggle";
 import { clampComfortId, comfortLabel, comfortSubtitle } from "../../lib/comfort";
+import { nearestPressure } from "../../lib/catalog";
 import {
   communicationTranslations,
   pressureTranslations,
@@ -77,18 +78,9 @@ export function PreferencesStep() {
   );
 
   // Snap an out-of-range pressure (stale default, CRM prefill, or a massage
-  // switch after the fact) to the closest still-offered level; ties resolve
-  // toward the softer option (lower index in pressureOrder).
+  // switch after the fact) to the closest still-offered level.
   useEffect(() => {
-    if (allowedPressures.includes(preferences.pressure)) return;
-    const currentRank = pressureOrder.indexOf(preferences.pressure);
-    const nearest = allowedPressures.reduce((best, level) => {
-      const rank = pressureOrder.indexOf(level);
-      const bestRank = pressureOrder.indexOf(best);
-      const dist = Math.abs(rank - currentRank);
-      const bestDist = Math.abs(bestRank - currentRank);
-      return dist < bestDist || (dist === bestDist && rank < bestRank) ? level : best;
-    }, allowedPressures[0]);
+    const nearest = nearestPressure(preferences.pressure, allowedPressures);
     if (nearest) setPref("pressure", nearest);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowedPressures.join(","), preferences.pressure]);

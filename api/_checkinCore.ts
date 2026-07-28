@@ -209,6 +209,7 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
   // location's config (0027). Raw jsonb — src/lib/comfort.ts normalizes it, and
   // `{}` means the built-in menu.
   const comfort = await fetchComfortConfig(base, svc, locationId);
+  const pressureLevels = await fetchOfferedPressureLevels(base, svc, locationId);
   return {
     status: 200,
     json: {
@@ -218,8 +219,41 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
       marketingConsent,
       name,
       comfort,
+      pressureLevels,
     },
   };
+}
+
+// Pressure is restricted per SERVICE (services.pressure_levels, 0023), but this
+// page has no treatment — reception picks it later when completing the
+// incomplete intake. So the phone offers the UNION across the location's active
+// services: a level no service offers can't be honoured whatever the guest is
+// eventually booked for, while a level some service offers might be. Returns
+// null (= all four, the column's own "no restriction" value) as soon as any
+// active service is unrestricted, and also when the location has no services
+// yet — the same permissive default the kiosk falls back to.
+async function fetchOfferedPressureLevels(
+  base: string,
+  svc: Record<string, string>,
+  locationId: string,
+): Promise<string[] | null> {
+  const rows = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/services?select=pressure_levels&location_id=eq.${locationId}&active=is.true`,
+        svc,
+      )
+    ).body,
+  );
+  if (rows.length === 0) return null;
+  const union = new Set<string>();
+  for (const row of rows) {
+    if (!Array.isArray(row.pressure_levels)) return null;
+    for (const level of row.pressure_levels) {
+      if (typeof level === "string") union.add(level);
+    }
+  }
+  return union.size > 0 ? [...union] : null;
 }
 
 // location_settings.comfort for a location, or {} when unset/unreadable — the

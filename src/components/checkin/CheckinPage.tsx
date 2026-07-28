@@ -10,19 +10,24 @@ import {
   COMFORT_LIST_SECTIONS,
   type ComfortConfig,
 } from "../../lib/comfort";
+import { ALL_PRESSURE_LEVELS, nearestPressure } from "../../lib/catalog";
 import { t } from "../../i18n/translations";
 import { Button } from "../Button";
 import { LanguageSelector } from "../LanguageSelector";
 import { Toggle } from "../Toggle";
 import { CheckinPrefsEditor } from "./CheckinPrefsEditor";
-import type { LangCode } from "../../types";
+import type { LangCode, PressureLevel } from "../../types";
 
 type Stage = "phone" | "looking" | "notFound" | "editing" | "saving" | "saved" | "linkInvalid" | "error";
 
-// Snap the three id-valued comfort fields onto what this location offers now —
-// the phone-side counterpart of the kiosk's clamp in PreferencesStep. Fields
-// for disabled sections are left as-is; the server drops them on save.
-function clampStoredToComfort(prefs: StoredPreferences, comfort: ComfortConfig): StoredPreferences {
+// Snap the stored preferences onto what this location offers now — the
+// phone-side counterpart of the kiosk's clamps in PreferencesStep. Comfort
+// fields for disabled sections are left as-is; the server drops them on save.
+function clampStoredToOffer(
+  prefs: StoredPreferences,
+  comfort: ComfortConfig,
+  pressureLevels: PressureLevel[],
+): StoredPreferences {
   const field = { oil: "oilId", music: "music", pillow: "headrestPillow" } as const;
   const next = { ...prefs };
   for (const key of COMFORT_LIST_SECTIONS) {
@@ -30,6 +35,8 @@ function clampStoredToComfort(prefs: StoredPreferences, comfort: ComfortConfig):
     const fix = clampComfortId(comfort[key], current ?? "");
     if (fix) next[field[key]] = fix;
   }
+  const pressureFix = nearestPressure(next.pressure ?? "Średni", pressureLevels);
+  if (pressureFix) next.pressure = pressureFix;
   return next;
 }
 
@@ -187,6 +194,9 @@ export function CheckinPage() {
   // Comfort options of the code's location, resolved by the lookup. The
   // built-in menu until then — nothing renders it before `editing` anyway.
   const [comfort, setComfort] = useState<ComfortConfig>(() => defaultComfortConfig());
+  // Pressure is per-service, and this page has no treatment picked — the lookup
+  // returns the union across the location's active services.
+  const [pressureLevels, setPressureLevels] = useState<PressureLevel[]>(ALL_PRESSURE_LEVELS);
   // A profile existing at all IS standing base consent, so a successful
   // lookup starts both toggles from what the row already carries — consent
   // true, healthConsent from the lookup response. Switching base off forces
@@ -208,10 +218,12 @@ export function CheckinPage() {
         setStage("notFound");
         return;
       }
-      // Clamp once, here: a stored oil/music/pillow the location has since
-      // removed would otherwise stay selected-but-invisible and be saved back.
-      setPrefs(clampStoredToComfort(found.preferences, found.comfort));
+      // Clamp once, here: a stored pressure/oil/music/pillow the location no
+      // longer offers would otherwise stay selected-but-invisible and be saved
+      // straight back.
+      setPrefs(clampStoredToOffer(found.preferences, found.comfort, found.pressureLevels));
       setComfort(found.comfort);
+      setPressureLevels(found.pressureLevels);
       setConsent(true);
       setHealthConsent(found.healthConsent);
       setMarketingConsent(found.marketingConsent);
@@ -321,6 +333,7 @@ export function CheckinPage() {
               lang={lang}
               healthConsent={healthConsent}
               comfort={comfort}
+              pressureLevels={pressureLevels}
             />
             <Button onClick={handleSave} disabled={stage === "saving"} className="w-full sm:w-auto sm:self-end">
               {t("checkinSave", lang)}

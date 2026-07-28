@@ -1,5 +1,7 @@
 import type { StoredPreferences } from "./guestProfile";
 import { normalizeComfort, type ComfortConfig } from "./comfort";
+import { ALL_PRESSURE_LEVELS } from "./catalog";
+import type { PressureLevel } from "../types";
 
 // ---------------------------------------------------------------------------
 // Client wrappers for /api/checkin — the QR self-check-in flow. mintCheckinCode
@@ -55,6 +57,10 @@ export async function checkinLookup(
   // Which comfort options the code's location offers, so the phone shows the
   // same menu as the kiosk. Absent/unset resolves to the built-in menu.
   comfort: ComfortConfig;
+  // Union of the pressure levels the location's active services offer (see
+  // fetchOfferedPressureLevels in api/_checkinCore.ts). All four when
+  // unrestricted, matching the kiosk's no-treatment-picked case.
+  pressureLevels: PressureLevel[];
 } | null> {
   const json = (await postCheckin({ action: "lookup", code, phone })) as {
     found?: boolean;
@@ -63,14 +69,19 @@ export async function checkinLookup(
     marketingConsent?: boolean;
     name?: unknown;
     comfort?: unknown;
+    pressureLevels?: unknown;
   };
   if (!json.found || !json.preferences) return null;
+  // Order comes from ALL_PRESSURE_LEVELS, not the server's set iteration, so
+  // the control always reads soft → firm.
+  const offered = Array.isArray(json.pressureLevels) ? json.pressureLevels : null;
   return {
     preferences: json.preferences as StoredPreferences,
     healthConsent: json.healthConsent === true,
     marketingConsent: json.marketingConsent === true,
     name: typeof json.name === "string" ? json.name : null,
     comfort: normalizeComfort(json.comfort ?? null),
+    pressureLevels: ALL_PRESSURE_LEVELS.filter((p) => !offered || offered.includes(p)),
   };
 }
 
