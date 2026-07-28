@@ -157,8 +157,8 @@ export async function updateIntakeStatus(id: string, status: string): Promise<vo
 // supplies the pieces the guest's phone couldn't — name, therapist, treatment
 // — and the row flips to "submitted" so it renders exactly like a kiosk
 // handoff from then on. Direct client write (not a serverless endpoint): RLS's
-// intakes_update_auth (has_location_access + can_view_all_intakes, migration
-// 0017) already permits any owner/manager/front-desk to update the row.
+// intakes_update_auth (has_location_access, migration 0028) already permits
+// any staffer at the location — including a therapist — to update the row.
 export async function completeIntake(
   id: string,
   fields: {

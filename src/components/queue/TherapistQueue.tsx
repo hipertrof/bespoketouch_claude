@@ -46,7 +46,7 @@ function toView(row: IntakeRow): IntakePanelView {
 // the signed-in user (therapist / manager / owner) belongs to. UI language is
 // the global staff language.
 export function TherapistQueue() {
-  const { user, loading, rolesReady, canAccessLocation, canViewAllIntakes } = useAuth();
+  const { user, loading, rolesReady, canAccessLocation } = useAuth();
   const { lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -129,18 +129,12 @@ export function TherapistQueue() {
   if (loading) return <Centered>{t("loading", lang)}</Centered>;
   if (!user) return null;
 
-  // A pure therapist may only see the visits assigned to them; owners, managers,
-  // and front-desk see the whole location queue. RLS enforces the same split
-  // server-side (migration 0017) — this mirrors it so the UI never shows a row
-  // the therapist has no business seeing.
-  const selectedLoc = locations.find((l) => l.id === locationId) ?? null;
-  const seeAll = selectedLoc ? canViewAllIntakes(selectedLoc) : false;
-  const scopedIntakes = seeAll
-    ? intakes
-    : intakes.filter((row) => (row.therapists ?? []).some((tp) => tp?.id === user.id));
+  // Every therapist at a location sees every submitted intake there (0028) —
+  // RLS already scopes `intakes` to locations the user has staff access to
+  // (has_location_access), so no further client-side filtering is needed.
   // Archive = done (manually, by survey auto-done, or the 24h cron sweep — all
   // three land here the same way). Active is everything still outstanding.
-  const visibleIntakes = scopedIntakes.filter((row) =>
+  const visibleIntakes = intakes.filter((row) =>
     tab === "archive" ? row.status === "done" : row.status !== "done",
   );
 
