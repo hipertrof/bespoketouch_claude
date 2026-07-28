@@ -105,7 +105,7 @@ export function SurveyReport() {
   if (!user) return null;
 
   return (
-    <DashboardShell title={t("surveyReportTitle", lang)} width="max-w-4xl">
+    <DashboardShell title={t("surveyReportTitle", lang)}>
       <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}

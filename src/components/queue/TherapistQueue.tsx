@@ -169,7 +169,7 @@ export function TherapistQueue() {
   }
 
   return (
-    <DashboardShell title={t("queueTitle", lang)} width="max-w-4xl">
+    <DashboardShell title={t("queueTitle", lang)}>
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 
         <Link

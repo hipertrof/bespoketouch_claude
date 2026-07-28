@@ -30,13 +30,10 @@ const NAV_ITEMS = [
 export function DashboardShell({
   title,
   subtitle,
-  width = "max-w-4xl",
   children,
 }: {
   title: string;
   subtitle?: string;
-  /** Tailwind max-width class for the content column (match the screen's prior container). */
-  width?: string;
   children: ReactNode;
 }) {
   const { user, canManage, isPlatformAdmin, signOut } = useAuth();
@@ -92,7 +89,7 @@ export function DashboardShell({
         )}
       </header>
 
-      <main className={`mx-auto ${width} px-6 py-8 lg:px-8`}>
+      <main className="mx-auto max-w-6xl px-6 py-8 lg:px-8">
         <div className="mb-8">
           <h1 className="font-serif text-3xl text-charcoal">{title}</h1>
           {(subtitle ?? user?.email) && (

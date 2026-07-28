@@ -111,7 +111,7 @@ export function GuestCrmDashboard() {
   if (!user) return null;
 
   return (
-    <DashboardShell title={t("guestsTitle", lang)} width="max-w-5xl">
+    <DashboardShell title={t("guestsTitle", lang)}>
       <SubscriptionBanner />
       {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
 

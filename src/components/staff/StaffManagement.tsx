@@ -165,7 +165,7 @@ export function StaffManagement() {
   if (!user || !canManage) return null;
 
   return (
-    <DashboardShell title={t("staffTitle", lang)} width="max-w-3xl">
+    <DashboardShell title={t("staffTitle", lang)}>
       <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}

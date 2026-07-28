@@ -188,7 +188,7 @@ export function OfferCMS() {
   if (!user || !canManage) return null;
 
   return (
-    <DashboardShell title={t("offer", lang)} width="max-w-4xl">
+    <DashboardShell title={t("offer", lang)}>
       <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}

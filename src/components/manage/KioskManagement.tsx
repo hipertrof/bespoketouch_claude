@@ -89,7 +89,7 @@ export function KioskManagement() {
   if (!user || !canManage) return null;
 
   return (
-    <DashboardShell title={t("kiosksTitle", lang)} width="max-w-4xl">
+    <DashboardShell title={t("kiosksTitle", lang)}>
       <SubscriptionBanner />
 
         {error && <p className="mb-4 text-sm text-rose-dark">{error}</p>}
