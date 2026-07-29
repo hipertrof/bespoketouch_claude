@@ -12,9 +12,25 @@ export interface CrmGuestListItem {
   marketingConsent: boolean;
   visitCount: number;
   lastVisitAt: string | null;
+  totalSpend: number;
   lastSeenAt: string | null;
   createdAt: string | null;
   tagIds: string[];
+}
+
+// Sorting and segmenting happen server-side over aggregates computed from the
+// whole account, not over one page — see _crmCore.listGuests for why that has
+// to be the endpoint's job rather than the client's.
+export type CrmSort = "lastVisit" | "visits" | "spend" | "name" | "newest";
+export type CrmSegment = "all" | "regulars" | "new" | "lapsed" | "health";
+
+export interface CrmGuestPage {
+  guests: CrmGuestListItem[];
+  // Matches after filtering, before pagination — what the UI counts.
+  total: number;
+  // The account holds more profiles than one scan returns, so `total` is a
+  // floor rather than the truth. Surfaced so the UI can say so out loud.
+  capped: boolean;
 }
 
 export interface CrmVisit {
@@ -106,16 +122,30 @@ async function postCrm<T>(payload: Record<string, unknown>): Promise<T> {
 
 export async function listCrmGuests(
   accountId: string,
-  opts: { search?: string; limit?: number; offset?: number } = {},
-): Promise<CrmGuestListItem[]> {
-  const json = await postCrm<{ guests: CrmGuestListItem[] }>({
+  opts: {
+    search?: string;
+    sort?: CrmSort;
+    segment?: CrmSegment;
+    tagId?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<CrmGuestPage> {
+  const json = await postCrm<{ guests?: CrmGuestListItem[]; total?: number; capped?: boolean }>({
     action: "list",
     accountId,
     search: opts.search,
+    sort: opts.sort,
+    segment: opts.segment,
+    tagId: opts.tagId,
     limit: opts.limit,
     offset: opts.offset,
   });
-  return json.guests ?? [];
+  return {
+    guests: json.guests ?? [],
+    total: json.total ?? 0,
+    capped: json.capped === true,
+  };
 }
 
 export async function getCrmGuest(accountId: string, guestId: string): Promise<CrmGuestDetail> {

@@ -15,6 +15,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const env = {
     url: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? "",
     serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+    // Lets the guest search resolve a typed phone number to its phone_hash.
+    // Optional — without it the search falls back to name-only matching.
+    hashSecret: process.env.GUEST_HASH_SECRET ?? "",
   };
 
   const result = await handleCrm(req.headers.authorization, req.body, env);

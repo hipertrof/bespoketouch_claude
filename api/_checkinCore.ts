@@ -48,7 +48,8 @@ import {
   normalizePhone,
   phoneHash,
   resolveAccount,
-  sanitizeIdentity,
+  sanitizeContact,
+  sanitizeDisplayName,
   sanitizePreferences,
 } from "./_guestCore.js";
 import type { StoredPreferencesV1 } from "./_guestCore.js";
@@ -200,11 +201,11 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
     delete prefs.zoneNotes;
     delete prefs.generalNote;
   }
-  // Marketing tier (0025, merged 0026): same exposure rule as the kiosk
-  // lookup — the display name and the consent flag, never contact
-  // email/phone/birthday.
+  // Same exposure rule as the kiosk lookup: the name is base-tier since v4 so
+  // it always comes back, the marketing flag comes back, and the contact
+  // e-mail/phone/birthday never do — those stay manager-only via /api/crm.
   const marketingConsent = typeof row.marketing_consent_version === "string";
-  const name = marketingConsent && typeof row.display_name === "string" ? row.display_name : null;
+  const name = typeof row.display_name === "string" ? row.display_name : null;
   // The phone renders the same comfort menu as the kiosk, so it needs the
   // location's config (0027). Raw jsonb — src/lib/comfort.ts normalizes it, and
   // `{}` means the built-in menu.
@@ -386,10 +387,12 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
       return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
     }
   } else {
-    // Marketing tier (0025, merged 0026), same withdrawal-erases rule as
-    // _guestCore.saveGuest: no marketing consent (or no name) nulls every
-    // identity + marketing column.
-    const identity = body.marketingConsent === true ? sanitizeIdentity(body) : null;
+    // Same split as _guestCore.saveGuest: the name rides on base consent (so
+    // it survives a marketing withdrawal), the contact columns ride on the
+    // marketing tier and are nulled without it. The phone always sends the
+    // name field, so blanking it here is a deliberate edit, not an omission.
+    const displayName = sanitizeDisplayName(body.name);
+    const contact = body.marketingConsent === true ? sanitizeContact(body) : null;
     const patch = await fetch(
       `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
       {
@@ -401,12 +404,12 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
           consent_at: now,
           health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
           health_consent_at: healthConsent ? now : null,
-          display_name: identity?.name ?? null,
-          contact_phone: identity ? phone : null,
-          contact_email: identity?.email ?? null,
-          birthday: identity?.birthday ?? null,
-          marketing_consent_version: identity ? MARKETING_CONSENT_VERSION : null,
-          marketing_consent_at: identity ? now : null,
+          display_name: displayName,
+          contact_phone: contact ? phone : null,
+          contact_email: contact?.email ?? null,
+          birthday: contact?.birthday ?? null,
+          marketing_consent_version: contact ? MARKETING_CONSENT_VERSION : null,
+          marketing_consent_at: contact ? now : null,
           last_seen_at: now,
         }),
       },

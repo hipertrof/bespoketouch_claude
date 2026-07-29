@@ -357,8 +357,9 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
         marketingConsent: stored.marketingConsent,
         name: stored.name,
       });
-      // Greeting bonus: a marketing-consented guest's stored name can prefill
-      // the (still-editable) intake name field if it's empty.
+      // Greeting bonus: a returning guest's stored name (base tier since v4,
+      // so it comes back on every hit) can prefill the still-editable intake
+      // name field if it's empty.
       if (stored.name && !(state.guestNames[index] ?? "").trim()) {
         dispatch({ type: "SET_GUEST_NAME", index, name: stored.name });
       }

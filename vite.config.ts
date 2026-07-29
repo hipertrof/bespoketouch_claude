@@ -64,6 +64,7 @@ export default defineConfig(({ command, mode }) => {
       crmProxyPlugin({
         url: env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? "",
         serviceKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+        hashSecret: env.GUEST_HASH_SECRET ?? "",
       }),
     ],
   }

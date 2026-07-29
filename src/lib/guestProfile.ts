@@ -230,16 +230,18 @@ export async function lookupGuestProfile(
 // Upsert the reusable preference subset under the phone pseudonym. Requires
 // explicit base consent (the server rejects consent !== true); the Art. 9
 // zone marks + notes are sent — and stamped — only under the separate health
-// consent. `identity` (name + optional email) is sent only under the
-// marketing tier, which covers both storing that name/contact info and
-// permission to use it — there's no separate "stored but unused" state.
+// consent. `name` rides on that base consent since v4 (recognising a
+// returning guest is not a marketing act, and an unnamed row is one the spa
+// cannot honour an Art. 15/17 request against); `contact` is the separate
+// marketing tier, covering the raw contact details and permission to use them.
 export async function saveGuestProfile(
   deviceToken: string,
   phone: string,
   personalization: PersonalizationState,
   healthConsent: boolean,
   config: ComfortConfig,
-  identity?: { name: string; email?: string },
+  name: string,
+  contact?: { email?: string },
 ): Promise<void> {
   await postGuest({
     action: "save",
@@ -247,11 +249,12 @@ export async function saveGuestProfile(
     phone,
     consent: true,
     healthConsent,
-    // Marketing tier: sent only when the guest opted in AND typed a name (the
-    // server rejects a nameless grant by nulling the tier).
-    marketingConsent: identity !== undefined,
-    name: identity?.name,
-    email: identity?.email || undefined,
+    // Base tier: omitted only when no name was captured at all, which leaves
+    // the profile unnamed rather than refusing to save it.
+    name: name.trim() || undefined,
+    // Marketing tier: the contact e-mail and permission to use it.
+    marketingConsent: contact !== undefined,
+    email: contact?.email || undefined,
     preferences: toStoredPreferences(personalization, healthConsent, config),
   });
 }

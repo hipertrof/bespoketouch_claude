@@ -53,12 +53,21 @@ export function HandoffStep() {
     const crmOps = state.guestCrm.slice(0, size).flatMap((crm, i) => {
       if (crm.phone.replace(/\D/g, "").length < 6) return [];
       if (crm.consent) {
-        const identity =
-          crm.marketingConsent && crm.name.trim()
-            ? { name: crm.name.trim(), email: crm.email.trim() || undefined }
-            : undefined;
+        // The name is base-tier, so it saves with the profile; only the
+        // contact e-mail waits on the marketing opt-in.
+        const contact = crm.marketingConsent
+          ? { email: crm.email.trim() || undefined }
+          : undefined;
         return [
-          saveGuestProfile(token, crm.phone, state.guests[i], crm.healthConsent, comfort, identity),
+          saveGuestProfile(
+            token,
+            crm.phone,
+            state.guests[i],
+            crm.healthConsent,
+            comfort,
+            crm.name,
+            contact,
+          ),
         ];
       }
       if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];

@@ -14,11 +14,14 @@ function readBody(req: IncomingMessage): Promise<string> {
 interface CrmProxyEnv {
   url: string;
   serviceKey: string;
+  // Optional, mirrors api/crm.ts: only used so the guest search can resolve a
+  // typed phone number to its phone_hash. Absent = name-only search.
+  hashSecret?: string;
 }
 
 // Dev-only Guest 360 CRM proxy: the serverless api/crm.ts equivalent while
 // running `vite dev`. Needs SUPABASE_SERVICE_ROLE_KEY in the local .env (same
-// secret Vercel uses in production).
+// secret Vercel uses in production), plus GUEST_HASH_SECRET for phone search.
 export function crmProxyPlugin(env: CrmProxyEnv): Plugin {
   return {
     name: "guest-crm-proxy",

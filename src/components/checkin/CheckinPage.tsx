@@ -89,6 +89,20 @@ function ConsentSection({
         </p>
       )}
       {consent && (
+        <div className="mt-4">
+          <label htmlFor="checkinCrmName" className="mb-2 block text-sm font-semibold text-charcoal">
+            {t("consentNameLabel", lang)}
+          </label>
+          <input
+            id="checkinCrmName"
+            type="text"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+          />
+        </div>
+      )}
+      {consent && (
         <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -136,18 +150,6 @@ function ConsentSection({
           )}
           {marketingConsent && (
             <div className="mt-4 flex flex-col gap-3">
-              <div>
-                <label htmlFor="checkinCrmName" className="mb-2 block text-sm font-semibold text-charcoal">
-                  {t("consentMarketingNameLabel", lang)}
-                </label>
-                <input
-                  id="checkinCrmName"
-                  type="text"
-                  value={name}
-                  onChange={(e) => onNameChange(e.target.value)}
-                  className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
-                />
-              </div>
               <div>
                 <label htmlFor="checkinCrmEmail" className="mb-2 block text-sm font-semibold text-charcoal">
                   {t("consentMarketingEmailLabel", lang)}
@@ -247,11 +249,18 @@ export function CheckinPage() {
     if (!code || !prefs) return;
     setStage("saving");
     try {
-      const identity =
-        consent && marketingConsent && crmName.trim()
-          ? { name: crmName.trim(), email: crmEmail.trim() || undefined }
-          : undefined;
-      const ok = await checkinSave(code, phone, prefs, consent, healthConsent, identity);
+      // The name goes with base consent; only the e-mail waits on marketing.
+      const contact =
+        consent && marketingConsent ? { email: crmEmail.trim() || undefined } : undefined;
+      const ok = await checkinSave(
+        code,
+        phone,
+        prefs,
+        consent,
+        healthConsent,
+        consent ? crmName.trim() : "",
+        contact,
+      );
       if (!ok) {
         setStage("notFound");
         return;

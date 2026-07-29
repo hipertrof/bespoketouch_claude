@@ -101,7 +101,12 @@ export async function checkinSave(
   preferences: StoredPreferences,
   consent: boolean,
   healthConsent: boolean,
-  identity?: { name: string; email?: string },
+  // Base tier since v4 — sent whenever base consent stands, independent of
+  // marketing. An empty string clears the stored name, which is a deliberate
+  // edit here (the phone always renders the field), not an omission.
+  name: string,
+  // Marketing tier — the presence of this object IS the outreach opt-in.
+  contact?: { email?: string },
 ): Promise<boolean> {
   const json = (await postCheckin({
     action: "save",
@@ -109,9 +114,9 @@ export async function checkinSave(
     phone,
     consent,
     healthConsent,
-    marketingConsent: identity !== undefined,
-    name: identity?.name,
-    email: identity?.email || undefined,
+    marketingConsent: contact !== undefined,
+    name: name.trim() || undefined,
+    email: contact?.email || undefined,
     preferences,
   })) as {
     ok?: boolean;

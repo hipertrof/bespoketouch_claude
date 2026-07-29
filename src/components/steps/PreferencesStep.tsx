@@ -298,9 +298,18 @@ export function PreferencesStep() {
             </div>
             <Toggle
               checked={crm.consent}
-              onChange={(v) =>
-                dispatch({ type: "SET_GUEST_CONSENT", index: activeIndex, consent: v })
-              }
+              onChange={(v) => {
+                dispatch({ type: "SET_GUEST_CONSENT", index: activeIndex, consent: v });
+                // The name rides on BASE consent since v4, so prefill it from
+                // the intake name here rather than on the marketing toggle —
+                // reception already typed it on the welcome step.
+                if (v && !crm.name.trim()) {
+                  const intakeName = (state.guestNames[activeIndex] ?? "").trim();
+                  if (intakeName) {
+                    dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: intakeName });
+                  }
+                }
+              }}
               label={t("consentSaveTitle", lang)}
             />
           </div>
@@ -308,6 +317,25 @@ export function PreferencesStep() {
             <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
               {t("consentWithdrawHint", lang)}
             </p>
+          )}
+          {crm.consent && (
+            <div className="mt-4">
+              <label
+                htmlFor={`crmName-${activeIndex}`}
+                className="mb-2 block text-sm font-semibold text-charcoal"
+              >
+                {t("consentNameLabel", lang)}
+              </label>
+              <input
+                id={`crmName-${activeIndex}`}
+                type="text"
+                value={crm.name}
+                onChange={(e) =>
+                  dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: e.target.value })
+                }
+                className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
+              />
+            </div>
           )}
           {crm.consent && (
             <div className="mt-4 rounded-xl border border-sand bg-oatmeal/40 p-4">
@@ -352,20 +380,13 @@ export function PreferencesStep() {
                 </div>
                 <Toggle
                   checked={crm.marketingConsent}
-                  onChange={(v) => {
+                  onChange={(v) =>
                     dispatch({
                       type: "SET_GUEST_MARKETING_CONSENT",
                       index: activeIndex,
                       marketingConsent: v,
-                    });
-                    // Prefill the display name from the intake name on first opt-in.
-                    if (v && !crm.name.trim()) {
-                      const intakeName = (state.guestNames[activeIndex] ?? "").trim();
-                      if (intakeName) {
-                        dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: intakeName });
-                      }
-                    }
-                  }}
+                    })
+                  }
                   label={t("consentMarketingTitle", lang)}
                 />
               </div>
@@ -376,23 +397,6 @@ export function PreferencesStep() {
               )}
               {crm.marketingConsent && (
                 <div className="mt-4 flex flex-col gap-3">
-                  <div>
-                    <label
-                      htmlFor={`crmName-${activeIndex}`}
-                      className="mb-2 block text-sm font-semibold text-charcoal"
-                    >
-                      {t("consentMarketingNameLabel", lang)}
-                    </label>
-                    <input
-                      id={`crmName-${activeIndex}`}
-                      type="text"
-                      value={crm.name}
-                      onChange={(e) =>
-                        dispatch({ type: "SET_GUEST_CRM_NAME", index: activeIndex, name: e.target.value })
-                      }
-                      className="min-h-11 w-full max-w-sm rounded-xl border border-sand bg-white px-3 text-base text-charcoal placeholder:text-sm placeholder:text-slate-light/70 outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
-                    />
-                  </div>
                   <div>
                     <label
                       htmlFor={`crmEmail-${activeIndex}`}

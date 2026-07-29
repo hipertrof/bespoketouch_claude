@@ -18,9 +18,15 @@
 // THAT account before touching anything — the client names the account, the
 // server decides whether that's allowed.
 
+import { normalizePhone, phoneHash } from "./_guestCore.js";
+
 interface CrmEnv {
   url: string;
   serviceKey: string;
+  // Only used to resolve a phone typed into the guest search back to its
+  // phone_hash. Optional: without it the search silently falls back to
+  // name-only matching rather than failing the whole endpoint.
+  hashSecret?: string;
 }
 
 export interface CrmResult {
@@ -38,6 +44,8 @@ interface CrmBody {
   name?: unknown;
   color?: unknown;
   search?: unknown;
+  sort?: unknown;
+  segment?: unknown;
   limit?: unknown;
   offset?: unknown;
 }
@@ -48,6 +56,19 @@ type JsonRecord = Record<string, unknown>;
 const MAX_NOTE_CHARS = 2000;
 const MAX_TAG_CHARS = 40;
 const DEFAULT_PAGE = 50;
+
+// Sorting and the segment filters run over aggregates — visit count, lifetime
+// spend, last visit — that are computed from embedded rows rather than stored
+// as columns, so they cannot be pushed into PostgREST's own order=/limit=.
+// listGuests therefore scans the account's profiles once, aggregates, then
+// filters/sorts/paginates in memory and reports the true total. That is also
+// what makes the tag filter and the segments CORRECT rather than page-local:
+// the filter used to run client-side over one 50-row page and silently missed
+// every match past it.
+const MAX_SCAN = 1000;
+const REGULAR_MIN_VISITS = 3;
+const NEW_MAX_VISITS = 1;
+const LAPSED_DAYS = 90;
 
 export async function handleCrm(
   authorization: string | undefined,
@@ -66,7 +87,7 @@ export async function handleCrm(
 
   switch (body?.action) {
     case "list":
-      return listGuests(body, accountId, base, svc);
+      return listGuests(body, accountId, base, svc, env);
     case "get":
       return getGuest(body, accountId, base, svc);
     case "addNote":
@@ -164,42 +185,128 @@ async function guestInAccount(
 // list / get
 // ---------------------------------------------------------------------------
 
-async function listGuests(body: CrmBody, accountId: string, base: string, svc: Headers): Promise<CrmResult> {
+async function listGuests(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
   const limit = Math.min(Math.max(intOr(body.limit, DEFAULT_PAGE), 1), 200);
   const offset = Math.max(intOr(body.offset, 0), 0);
 
   let url =
     `${base}/rest/v1/guest_profiles?select=id,display_name,consent_version,health_consent_version,` +
     `marketing_consent_version,created_at,last_seen_at,` +
-    `guest_visits(id,visited_at),guest_tag_assignments(tag_id)` +
-    `&account_id=eq.${accountId}&order=last_seen_at.desc.nullslast&limit=${limit}&offset=${offset}`;
-  // Name search only means anything over identity-consented rows — anonymous
-  // rows have no name to match.
+    `guest_visits(id,visited_at,treatment_price),guest_tag_assignments(tag_id)` +
+    `&account_id=eq.${accountId}&order=last_seen_at.desc.nullslast&limit=${MAX_SCAN}`;
+
+  // Search matches a name OR an exact phone. The phone branch is the one that
+  // matters for a GDPR request: the manager is usually holding a number from
+  // an e-mail, and before v4 a guest who withheld marketing consent had no
+  // stored name to match on at all. Hashing happens HERE, server-side — the
+  // secret never reaches a browser, and phone_hash stays the only way a phone
+  // is ever queried. A search containing any letter is a name, never a phone.
   const search = typeof body.search === "string" ? body.search.trim().slice(0, 80) : "";
-  if (search) url += `&display_name=ilike.${encodeURIComponent(`*${search}*`)}`;
+  const searchPhone = search && !/\p{L}/u.test(search) ? normalizePhone(search) : null;
+  if (searchPhone && env.hashSecret) {
+    url += `&phone_hash=eq.${phoneHash(searchPhone, accountId, env.hashSecret)}`;
+  } else if (search) {
+    url += `&display_name=ilike.${encodeURIComponent(`*${search}*`)}`;
+  }
 
   const res = await getJson(url, svc);
   if (!res.ok) return { status: 502, json: { error: `Could not load guests (${res.status}).` } };
 
-  const guests = asArray(res.body).map((r) => {
+  const rows = asArray(res.body);
+  let guests = rows.map((r) => {
     const visits = asArray(r.guest_visits);
     const visitDates = visits
       .map((v) => (typeof v.visited_at === "string" ? v.visited_at : null))
       .filter((d): d is string => d !== null)
       .sort();
     return {
-      id: r.id,
+      id: String(r.id),
       name: typeof r.display_name === "string" ? r.display_name : null,
       healthConsent: typeof r.health_consent_version === "string",
       marketingConsent: typeof r.marketing_consent_version === "string",
       visitCount: visits.length,
       lastVisitAt: visitDates[visitDates.length - 1] ?? null,
-      lastSeenAt: r.last_seen_at ?? null,
-      createdAt: r.created_at ?? null,
-      tagIds: asArray(r.guest_tag_assignments).map((t) => t.tag_id),
+      // The number that makes this a CRM rather than a contact list. Same
+      // reduce as getGuest's stats — it just was not in the list payload, so
+      // lifetime value was invisible until you opened one guest at a time.
+      totalSpend: visits.reduce(
+        (sum, v) => sum + (typeof v.treatment_price === "number" ? v.treatment_price : 0),
+        0,
+      ),
+      lastSeenAt: typeof r.last_seen_at === "string" ? r.last_seen_at : null,
+      createdAt: typeof r.created_at === "string" ? r.created_at : null,
+      tagIds: asArray(r.guest_tag_assignments).map((t) => String(t.tag_id)),
     };
   });
-  return { status: 200, json: { guests } };
+
+  const tagId =
+    typeof body.tagId === "string" && /^[0-9a-f-]{36}$/i.test(body.tagId) ? body.tagId : null;
+  if (tagId) guests = guests.filter((g) => g.tagIds.includes(tagId));
+
+  // The segments are the questions a spa owner actually opens this screen
+  // with, expressed over aggregates that already exist. "Lapsed" deliberately
+  // requires at least one past visit — a guest who has never been in is new,
+  // not lost.
+  const nowMs = Date.now();
+  const daysSince = (iso: string | null) => (iso ? (nowMs - Date.parse(iso)) / 86_400_000 : Infinity);
+  switch (body.segment) {
+    case "regulars":
+      guests = guests.filter((g) => g.visitCount >= REGULAR_MIN_VISITS);
+      break;
+    case "new":
+      guests = guests.filter((g) => g.visitCount <= NEW_MAX_VISITS);
+      break;
+    case "lapsed":
+      guests = guests.filter((g) => g.visitCount > 0 && daysSince(g.lastVisitAt) > LAPSED_DAYS);
+      break;
+    case "health":
+      guests = guests.filter((g) => g.healthConsent);
+      break;
+    default:
+      break;
+  }
+
+  const byDateDesc = (a: string | null, b: string | null) =>
+    (b ? Date.parse(b) : 0) - (a ? Date.parse(a) : 0);
+  // Unnamed rows sink to the bottom of a name sort rather than clumping at the
+  // top under an empty string.
+  const byName = (a: string | null, b: string | null) => {
+    if (!a && !b) return 0;
+    if (!a) return 1;
+    if (!b) return -1;
+    return a.localeCompare(b, "pl", { sensitivity: "base" });
+  };
+  guests.sort((a, b) => {
+    switch (body.sort) {
+      case "visits":
+        return b.visitCount - a.visitCount || byDateDesc(a.lastVisitAt, b.lastVisitAt);
+      case "spend":
+        return b.totalSpend - a.totalSpend || byDateDesc(a.lastVisitAt, b.lastVisitAt);
+      case "name":
+        return byName(a.name, b.name);
+      case "newest":
+        return byDateDesc(a.createdAt, b.createdAt);
+      default:
+        return byDateDesc(a.lastVisitAt, b.lastVisitAt);
+    }
+  });
+
+  return {
+    status: 200,
+    json: {
+      guests: guests.slice(offset, offset + limit),
+      total: guests.length,
+      // True when the account has more profiles than one scan returns, so the
+      // UI can say the totals are partial instead of under-reporting silently.
+      capped: rows.length >= MAX_SCAN,
+    },
+  };
 }
 
 async function getGuest(body: CrmBody, accountId: string, base: string, svc: Headers): Promise<CrmResult> {
@@ -249,7 +356,9 @@ async function getGuest(body: CrmBody, accountId: string, base: string, svc: Hea
     json: {
       guest: {
         id: guestId,
-        name: marketingIdentity && typeof row.display_name === "string" ? row.display_name : null,
+        // Base tier since v4 — the name is present whenever the row is. Only
+        // the contact columns below still wait on the marketing stamp.
+        name: typeof row.display_name === "string" ? row.display_name : null,
         contactPhone: marketingIdentity && typeof row.contact_phone === "string" ? row.contact_phone : null,
         contactEmail: marketingIdentity && typeof row.contact_email === "string" ? row.contact_email : null,
         birthday: marketingIdentity && typeof row.birthday === "string" ? row.birthday : null,

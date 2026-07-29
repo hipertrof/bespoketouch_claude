@@ -29,28 +29,44 @@ import { createHmac } from "node:crypto";
 import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceAuth.js";
 
 // Two consents since v3 (migration 0024). Base consent gates the profile
-// existing at all (structured comfort prefs ONLY — consentSaveBody in i18n);
-// health consent additionally gates the body-zone marks AND the free-text
-// zoneNotes/generalNote (GDPR Art. 9 — a marked zone reveals health-relevant
-// info even with no text attached — consentHealthBody). Bump the matching
-// constant whenever its disclosure copy materially changes. Rows saved under
-// the single "2026-07-v2" consent (whose copy already named the marked areas
-// and notes as health data) were backfilled with health_consent_version =
-// consent_version in 0024.
-export const BASE_CONSENT_VERSION = "2026-07-v3-base";
+// existing at all; health consent additionally gates the body-zone marks AND
+// the free-text zoneNotes/generalNote (GDPR Art. 9 — a marked zone reveals
+// health-relevant info even with no text attached — consentHealthBody). Bump
+// the matching constant whenever its disclosure copy materially changes. Rows
+// saved under the single "2026-07-v2" consent (whose copy already named the
+// marked areas and notes as health data) were backfilled with
+// health_consent_version = consent_version in 0024.
+//
+// v4 widens BASE to cover the guest's display name alongside the structured
+// comfort prefs (consentSaveBody names it). Recognising a returning guest is
+// part of remembering them, not a marketing act — and the previous split had
+// a real cost: a profile with no name is one the spa cannot search, cannot
+// verify, and therefore cannot honour an Art. 15/17 request against, which
+// made the guest's own rights HARDER to exercise, not easier. Opting out is
+// still a clean binary: base off deletes the row entirely.
+//
+// No backfill: the v3 base copy did not mention the name, so pre-v4 rows
+// genuinely did not consent to it under this tier — and they have no name
+// stored anyway (it was nulled), so there is nothing to legitimise after the
+// fact. Legacy rows that DO carry a name got it under the marketing copy
+// below, which covered storing it, so they stay lawful as they are. Nameless
+// rows heal on the guest's next visit, and the 540-day expiry ages out the
+// rest.
+export const BASE_CONSENT_VERSION = "2026-07-v4-base";
 export const HEALTH_CONSENT_VERSION = "2026-07-v3-health";
 
-// A third tier since migration 0025, collapsed to one (from two) in 0026.
-// Marketing consent (nested under base, sibling of health) gates BOTH storing
-// the guest's real identity — display name, raw contact phone/email,
-// optional birthday — AND the permission to CONTACT them with it. Originally
-// modeled as two separate nested opt-ins (identity, then marketing); merged
-// into one because "we remember your name but may not use it" wasn't a
-// meaningful state guests cared to distinguish, and four consent decisions
-// was one too many. Sending itself isn't built yet. Stamped server-side; a
-// save with marketingConsent !== true nulls every identity + marketing column
-// (withdrawal-erases, same guarantee as the health tier).
-export const MARKETING_CONSENT_VERSION = "2026-07-v5-marketing";
+// A third tier since migration 0025, collapsed to one (from two) in 0026, and
+// narrowed in v6 (see BASE above). It now covers only what its name says: the
+// raw contact phone/e-mail, optional birthday, and permission to CONTACT the
+// guest with them. The display name moved down to base. 0026's finding still
+// holds — "we remember your name but may not contact you" is not a state
+// guests care to distinguish — but the fix was to merge the name DOWN into
+// base rather than up into marketing, which is what v6 does. Do not re-add a
+// separate identity tier. Sending itself isn't built yet. Stamped
+// server-side; a save with marketingConsent !== true nulls every contact +
+// marketing column (withdrawal-erases, same guarantee as the health tier) —
+// it just no longer takes the guest's name with it.
+export const MARKETING_CONSENT_VERSION = "2026-07-v6-marketing";
 
 // ~18 months. A lookup that finds a row older than this deletes it and reports
 // a miss (lazy GDPR storage-limitation; a sweep job comes later).
@@ -196,11 +212,12 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
     preferences = rest;
   }
 
-  // Marketing tier: the kiosk gets the display name (for the greeting and to
-  // prefill the consent card) plus the consent flag — never the contact
-  // email/phone/birthday, which only the manager-facing /api/crm may read.
+  // The name is base-tier since v4, so it comes back whenever the row does —
+  // the kiosk needs it to greet a returning guest and to prefill the consent
+  // card. Contact data (e-mail/phone/birthday) is still manager-only: it never
+  // leaves /api/crm, so the kiosk gets the marketing flag but not its payload.
   const marketingConsent = typeof row.marketing_consent_version === "string";
-  const name = marketingConsent && typeof row.display_name === "string" ? row.display_name : null;
+  const name = typeof row.display_name === "string" ? row.display_name : null;
 
   // Return preferences only — never the hash or any identifier.
   return {
@@ -238,14 +255,19 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   if (!auth.ok) return auth.result;
   const accountId = auth.accountId;
 
-  // Marketing is a third opt-in (requires base, which is already checked
-  // above), covering BOTH storing the guest's name/contact AND permission to
-  // use it. Without it (or without a name — a nameless grant is meaningless)
-  // every identity + marketing column is nulled in the upsert, so withdrawal
-  // erases the stored name/contact data. contact_phone is the
-  // already-normalized phone — stored RAW under this tier for future
-  // outreach; phone_hash stays the only lookup key.
-  const identity = body.marketingConsent === true ? sanitizeIdentity(body) : null;
+  // Base tier (v4): the display name is stored whenever the profile is, so a
+  // returning guest can be greeted and — the part that actually matters — so
+  // the spa can find the row when that guest exercises Art. 15/17. Null only
+  // when no name was captured at all.
+  const displayName = sanitizeDisplayName(body.name);
+
+  // Marketing is the third opt-in (requires base, checked above) and now
+  // covers only outreach: the raw contact phone/e-mail, optional birthday,
+  // and permission to use them. Without it every contact + marketing column
+  // is nulled in the upsert, so withdrawal still erases — it just no longer
+  // takes the guest's name with it. contact_phone is the already-normalized
+  // phone, stored RAW under this tier; phone_hash stays the only lookup key.
+  const contact = body.marketingConsent === true ? sanitizeContact(body) : null;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
   const now = new Date().toISOString();
@@ -266,12 +288,12 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
         consent_at: now,
         health_consent_version: healthConsent ? HEALTH_CONSENT_VERSION : null,
         health_consent_at: healthConsent ? now : null,
-        display_name: identity?.name ?? null,
-        contact_phone: identity ? phone : null,
-        contact_email: identity?.email ?? null,
-        birthday: identity?.birthday ?? null,
-        marketing_consent_version: identity ? MARKETING_CONSENT_VERSION : null,
-        marketing_consent_at: identity ? now : null,
+        display_name: displayName,
+        contact_phone: contact ? phone : null,
+        contact_email: contact?.email ?? null,
+        birthday: contact?.birthday ?? null,
+        marketing_consent_version: contact ? MARKETING_CONSENT_VERSION : null,
+        marketing_consent_at: contact ? now : null,
         last_seen_at: now,
       }),
     },
@@ -443,15 +465,13 @@ export function sanitizePreferences(input: unknown): StoredPreferencesV1 | null 
   return out;
 }
 
-// Structural whitelist for the identity fields under the marketing tier,
-// consent-blind like sanitizePreferences — callers gate on
-// marketingConsent === true before using it. A profile needs at least a
-// non-empty name to count as identified;
-// email/birthday are optional and dropped when malformed rather than
-// rejecting the save. Exported for api/_checkinCore.ts (same sharing pattern
-// as sanitizePreferences).
-export interface SanitizedIdentity {
-  name: string;
+// Structural whitelists for the two halves of a guest's identity, split in
+// v4/v6 along the tier they now belong to: the display name rides on BASE
+// consent, the contact fields on the marketing tier. Both are consent-blind
+// like sanitizePreferences — callers gate on the right flag before using
+// them. Exported for api/_checkinCore.ts (same sharing pattern as
+// sanitizePreferences).
+export interface SanitizedContact {
   email: string | null;
   birthday: string | null;
 }
@@ -459,14 +479,18 @@ export interface SanitizedIdentity {
 const MAX_DISPLAY_NAME_CHARS = 120;
 const MAX_EMAIL_CHARS = 254;
 
-export function sanitizeIdentity(body: {
-  name?: unknown;
-  email?: unknown;
-  birthday?: unknown;
-}): SanitizedIdentity | null {
-  const name = typeof body.name === "string" ? body.name.trim().slice(0, MAX_DISPLAY_NAME_CHARS) : "";
-  if (!name) return null;
+// Base tier. Null when no name was captured at all — the profile still saves,
+// keyed by phone hash, and stays unnamed until a later visit supplies one. A
+// missing name must never cost the guest their remembered preferences.
+export function sanitizeDisplayName(name: unknown): string | null {
+  const trimmed = typeof name === "string" ? name.trim().slice(0, MAX_DISPLAY_NAME_CHARS) : "";
+  return trimmed || null;
+}
 
+// Marketing tier. Both fields optional and dropped when malformed rather than
+// rejecting the save — the consent is the thing being recorded, and a typo'd
+// e-mail must not cost the guest their profile.
+export function sanitizeContact(body: { email?: unknown; birthday?: unknown }): SanitizedContact {
   let email: string | null = null;
   if (typeof body.email === "string") {
     const trimmed = body.email.trim().slice(0, MAX_EMAIL_CHARS);
@@ -480,7 +504,7 @@ export function sanitizeIdentity(body: {
     if (!Number.isNaN(ms) && ms < Date.now()) birthday = body.birthday;
   }
 
-  return { name, email, birthday };
+  return { email, birthday };
 }
 
 function isExpired(seen: string | null): boolean {
