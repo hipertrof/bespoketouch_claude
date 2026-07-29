@@ -36,14 +36,20 @@ export function DashboardShell({
   subtitle?: string;
   children: ReactNode;
 }) {
-  const { user, canManage, isPlatformAdmin, signOut } = useAuth();
+  const { user, canManage, memberships, isPlatformAdmin, signOut } = useAuth();
   const { lang } = useLanguage();
   const { pathname } = useLocation();
+  const isFrontDesk = memberships.some((m) => m.role === "frontdesk");
 
   // Managers/owners/platform-admins get the full account nav; a pure therapist
-  // only has the queue. Platform admins additionally get a link back to /admin,
-  // which otherwise has no inbound route from the account screens.
-  const navItems = canManage ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.to === "/queue");
+  // only has the queue. Front desk additionally gets /guests, cut down to the
+  // consent desk there (GuestCrmDashboard branches on canManage) — this is
+  // the only nav item that isn't all-or-nothing with canManage. Platform
+  // admins additionally get a link back to /admin, which otherwise has no
+  // inbound route from the account screens.
+  const navItems = canManage
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter((i) => i.to === "/queue" || (i.to === "/guests" && isFrontDesk));
   const items = isPlatformAdmin
     ? [...navItems, { to: "/admin", labelKey: "adminNav" as const }]
     : navItems;
