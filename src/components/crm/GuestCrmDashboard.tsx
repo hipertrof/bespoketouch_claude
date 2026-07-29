@@ -9,12 +9,16 @@ import {
   assignCrmTag,
   createCrmTag,
   deleteCrmNote,
+  deleteCrmTag,
   exportCrmGuest,
+  exportCrmGuestList,
   forgetCrmGuest,
   getCrmGuest,
   listCrmGuests,
   listCrmTags,
   unassignCrmTag,
+  type CrmConsent,
+  type CrmFilters,
   type CrmGuestDetail,
   type CrmGuestListItem,
   type CrmSegment,
@@ -74,7 +78,15 @@ const SEGMENTS: { value: CrmSegment; key: string }[] = [
   { value: "regulars", key: "guestsSegRegulars" },
   { value: "new", key: "guestsSegNew" },
   { value: "lapsed", key: "guestsSegLapsed" },
-  { value: "health", key: "guestsSegHealth" },
+];
+
+// ANDed. Filtering on the base consent matches every profile — a row cannot
+// exist without it — so it reads as "everyone in the CRM" rather than
+// narrowing. Kept anyway so the filters mirror the three chips on the guest.
+const CONSENTS: { value: CrmConsent; key: string }[] = [
+  { value: "base", key: "guestsConsentBase" },
+  { value: "health", key: "guestsConsentHealth" },
+  { value: "marketing", key: "guestsConsentMarketing" },
 ];
 
 interface AccountLite {
@@ -82,14 +94,26 @@ interface AccountLite {
   name: string;
 }
 
-interface Query {
-  search: string;
-  sort: CrmSort;
-  segment: CrmSegment;
-  tagId: string;
-}
+type Query = Required<Omit<CrmFilters, "consents">> & { consents: CrmConsent[] };
 
-const EMPTY_QUERY: Query = { search: "", sort: "lastVisit", segment: "all", tagId: "" };
+const EMPTY_QUERY: Query = {
+  search: "",
+  sort: "lastVisit",
+  segment: "all",
+  tagId: "",
+  consents: [],
+};
+
+// Semicolons, not commas: Polish Excel splits on `;` by default, and a comma
+// file opens as one column per row. The BOM is what makes Excel read the
+// accents as UTF-8 instead of mangling "Zofia Kowalczyk".
+function toCsv(rows: string[][]): string {
+  const esc = (v: string) => (/[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  // The BOM is written as an escape, not as a literal character — an
+  // invisible byte in source is the kind of thing an editor silently eats.
+  const bom = "\uFEFF";
+  return bom + rows.map((r) => r.map(esc).join(";")).join("\r\n");
+}
 
 // ---------------------------------------------------------------------------
 // Formatting — every one of these takes `lang`. The screen previously called
@@ -233,6 +257,61 @@ export function GuestCrmDashboard() {
     setSearchInput("");
     setGuests([]);
     selectGuest(null);
+  };
+
+  // Downloads exactly what the current filters produced — the endpoint runs
+  // the same pipeline as the list, unpaginated. Contact columns are null in
+  // the database without marketing consent, so filtering on that consent is
+  // what turns this into a mailable list.
+  const handleExportList = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const rows = await exportCrmGuestList(accountId, query);
+      const header = [
+        t("guestsSortName", lang),
+        t("guestsCsvPhone", lang),
+        t("guestsCsvEmail", lang),
+        t("guestsCsvBirthday", lang),
+        t("guestsColVisits", lang),
+        t("guestsColSpend", lang),
+        t("guestsColLastVisit", lang),
+        t("guestsConsentFilterLabel", lang),
+        t("guestsTags", lang),
+      ];
+      const body = rows.map((r) => [
+        displayNameOf(r, lang),
+        r.contactPhone ?? "",
+        r.contactEmail ?? "",
+        r.birthday ?? "",
+        String(r.visitCount),
+        String(r.totalSpend),
+        r.lastVisitAt ? fmtDate(r.lastVisitAt, lang) : "",
+        [
+          t("guestsConsentBase", lang),
+          r.healthConsent ? t("guestsConsentHealth", lang) : "",
+          r.marketingConsent ? t("guestsConsentMarketing", lang) : "",
+        ]
+          .filter(Boolean)
+          .join(", "),
+        r.tagIds.map((id) => tagById.get(id)?.name).filter(Boolean).join(", "),
+      ]);
+      const url = URL.createObjectURL(
+        new Blob([toCsv([header, ...body])], { type: "text/csv;charset=utf-8" }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${t("guestsNav", lang).toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const msg = tf("guestsExportListDone", lang, { count: String(rows.length) });
+      setFlash(msg);
+      setAnnouncement(msg);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleRowTag = async (guestId: string, tagId: string, assigned: boolean) => {
@@ -414,9 +493,52 @@ export function GuestCrmDashboard() {
             })}
           </div>
 
-          <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {/* Consent filters, ANDed with everything above. "Marketing" is the
+              one that answers "who may I actually e-mail?" — pair it with the
+              export below and you have a mailable list. */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs font-semibold text-slate">
+              {t("guestsConsentFilterLabel", lang)}
+            </span>
+            {CONSENTS.map((c) => {
+              const active = query.consents.includes(c.value);
+              return (
+                <button
+                  key={c.value}
+                  onClick={() =>
+                    setQuery((q) => ({
+                      ...q,
+                      consents: active
+                        ? q.consents.filter((x) => x !== c.value)
+                        : [...q.consents, c.value],
+                    }))
+                  }
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                    active
+                      ? "border-sage bg-sage-tint font-medium text-sage-dark"
+                      : "border-sand bg-white text-slate-light hover:border-clay"
+                  }`}
+                >
+                  {t(c.key, lang)}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-sm text-slate">{tf("guestsCountLabel", lang, { count: String(total) })}</p>
             {capped && <p className="text-xs text-slate-light">{t("guestsCapped", lang)}</p>}
+            {total > 0 && (
+              <button
+                onClick={handleExportList}
+                disabled={busy}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-sand bg-white px-3 py-1.5 text-sm text-charcoal transition-colors hover:border-clay disabled:opacity-50"
+              >
+                <Download size={14} />
+                {t("guestsExportList", lang)}
+              </button>
+            )}
           </div>
 
           {guests.length === 0 ? (
@@ -582,6 +704,8 @@ function GuestDetailPanel({
   const [newTag, setNewTag] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
+  const [manageTags, setManageTags] = useState(false);
+  const [confirmTagId, setConfirmTagId] = useState<string | null>(null);
   const [forgetConfirm, setForgetConfirm] = useState("");
   const [showForget, setShowForget] = useState(false);
 
@@ -669,6 +793,24 @@ function GuestDetailPanel({
       await (assigned
         ? unassignCrmTag(accountId, guestId, tagId)
         : assignCrmTag(accountId, guestId, tagId));
+      load();
+    } catch (e2) {
+      setTagError(e2 instanceof Error ? e2.message : "Error");
+    } finally {
+      setTagBusy(false);
+    }
+  };
+
+  // Account-wide, not per-guest: this removes the tag from the vocabulary and
+  // from every guest carrying it, which is why it sits behind its own
+  // disclosure and an explicit confirm rather than next to the assign pills.
+  const handleDeleteTag = async (tagId: string) => {
+    setConfirmTagId(null);
+    setTagBusy(true);
+    setTagError(null);
+    try {
+      await deleteCrmTag(accountId, tagId);
+      onTagsChanged();
       load();
     } catch (e2) {
       setTagError(e2 instanceof Error ? e2.message : "Error");
@@ -821,6 +963,56 @@ function GuestDetailPanel({
           </form>
         </div>
         {tagError && <p className="mt-2 text-sm text-rose-dark">{tagError}</p>}
+
+        <button
+          onClick={() => {
+            setManageTags((v) => !v);
+            setConfirmTagId(null);
+          }}
+          aria-expanded={manageTags}
+          className="mt-3 text-xs text-slate-light hover:underline"
+        >
+          {t("guestsManageTags", lang)}
+        </button>
+        {manageTags && (
+          <ul className="mt-2 flex flex-col gap-1.5 border-t border-sand/60 pt-3">
+            {tags.map((tg) => (
+              <li key={tg.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-charcoal">{tg.name}</span>
+                {confirmTagId === tg.id ? (
+                  <span className="flex items-center gap-2 text-xs">
+                    <span className="text-rose-dark">
+                      {tf("guestsDeleteTagConfirm", lang, { name: tg.name })}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteTag(tg.id)}
+                      disabled={tagBusy}
+                      className="font-semibold text-rose-dark hover:underline disabled:opacity-50"
+                    >
+                      {t("guestsConfirmDelete", lang)}
+                    </button>
+                    <button
+                      onClick={() => setConfirmTagId(null)}
+                      className="text-slate-light hover:underline"
+                    >
+                      {t("guestsCancel", lang)}
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setConfirmTagId(tg.id)}
+                    className="text-xs text-rose-dark hover:underline"
+                  >
+                    {t("guestsConfirmDelete", lang)}
+                  </button>
+                )}
+              </li>
+            ))}
+            {tags.length === 0 && (
+              <li className="text-xs text-slate-light">{t("guestsNoResults", lang)}</li>
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Visit timeline */}

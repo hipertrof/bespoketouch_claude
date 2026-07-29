@@ -22,7 +22,18 @@ export interface CrmGuestListItem {
 // whole account, not over one page — see _crmCore.listGuests for why that has
 // to be the endpoint's job rather than the client's.
 export type CrmSort = "lastVisit" | "visits" | "spend" | "name" | "newest";
-export type CrmSegment = "all" | "regulars" | "new" | "lapsed" | "health";
+export type CrmSegment = "all" | "regulars" | "new" | "lapsed";
+// ANDed together. "base" matches every profile (a row cannot exist without
+// base consent), so it reads as "everyone in the CRM" rather than narrowing.
+export type CrmConsent = "base" | "health" | "marketing";
+
+export interface CrmFilters {
+  search?: string;
+  sort?: CrmSort;
+  segment?: CrmSegment;
+  consents?: CrmConsent[];
+  tagId?: string;
+}
 
 export interface CrmGuestPage {
   guests: CrmGuestListItem[];
@@ -31,6 +42,16 @@ export interface CrmGuestPage {
   // The account holds more profiles than one scan returns, so `total` is a
   // floor rather than the truth. Surfaced so the UI can say so out loud.
   capped: boolean;
+}
+
+// A list-export row: everything the list shows, plus the marketing-tier
+// contact columns. Those are null in the database unless the guest gave
+// marketing consent, so an export can never carry a detail that was never
+// granted — filter by the marketing consent to get a mailable list.
+export interface CrmExportRow extends CrmGuestListItem {
+  contactPhone: string | null;
+  contactEmail: string | null;
+  birthday: string | null;
 }
 
 export interface CrmVisit {
@@ -122,14 +143,7 @@ async function postCrm<T>(payload: Record<string, unknown>): Promise<T> {
 
 export async function listCrmGuests(
   accountId: string,
-  opts: {
-    search?: string;
-    sort?: CrmSort;
-    segment?: CrmSegment;
-    tagId?: string;
-    limit?: number;
-    offset?: number;
-  } = {},
+  opts: CrmFilters & { limit?: number; offset?: number } = {},
 ): Promise<CrmGuestPage> {
   const json = await postCrm<{ guests?: CrmGuestListItem[]; total?: number; capped?: boolean }>({
     action: "list",
@@ -137,6 +151,7 @@ export async function listCrmGuests(
     search: opts.search,
     sort: opts.sort,
     segment: opts.segment,
+    consents: opts.consents,
     tagId: opts.tagId,
     limit: opts.limit,
     offset: opts.offset,
@@ -146,6 +161,25 @@ export async function listCrmGuests(
     total: json.total ?? 0,
     capped: json.capped === true,
   };
+}
+
+// Every guest matching the CURRENT filters, unpaginated, for a CSV download.
+// Shares the endpoint's one filter pipeline with `list`, so what downloads is
+// exactly what was on screen.
+export async function exportCrmGuestList(
+  accountId: string,
+  filters: CrmFilters = {},
+): Promise<CrmExportRow[]> {
+  const json = await postCrm<{ guests?: CrmExportRow[] }>({
+    action: "exportList",
+    accountId,
+    search: filters.search,
+    sort: filters.sort,
+    segment: filters.segment,
+    consents: filters.consents,
+    tagId: filters.tagId,
+  });
+  return json.guests ?? [];
 }
 
 export async function getCrmGuest(accountId: string, guestId: string): Promise<CrmGuestDetail> {

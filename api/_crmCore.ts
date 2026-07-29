@@ -46,6 +46,7 @@ interface CrmBody {
   search?: unknown;
   sort?: unknown;
   segment?: unknown;
+  consents?: unknown;
   limit?: unknown;
   offset?: unknown;
 }
@@ -88,6 +89,8 @@ export async function handleCrm(
   switch (body?.action) {
     case "list":
       return listGuests(body, accountId, base, svc, env);
+    case "exportList":
+      return exportGuestList(body, accountId, base, svc, env);
     case "get":
       return getGuest(body, accountId, base, svc);
     case "addNote":
@@ -185,19 +188,49 @@ async function guestInAccount(
 // list / get
 // ---------------------------------------------------------------------------
 
-async function listGuests(
+interface ScannedGuest {
+  id: string;
+  name: string | null;
+  baseConsent: boolean;
+  healthConsent: boolean;
+  marketingConsent: boolean;
+  visitCount: number;
+  lastVisitAt: string | null;
+  totalSpend: number;
+  lastSeenAt: string | null;
+  createdAt: string | null;
+  tagIds: string[];
+  // Marketing tier, and ONLY populated on the export path — the list view
+  // renders none of it, so it must not ride along to the browser on every
+  // page render. These columns are already null in the DB unless the guest
+  // gave marketing consent, so the export cannot leak a contact detail that
+  // was never granted.
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  birthday?: string | null;
+}
+
+type ScanResult =
+  | { ok: true; guests: ScannedGuest[]; capped: boolean }
+  | { ok: false; result: CrmResult };
+
+// The single filter + sort pipeline, shared by `list` (which paginates it)
+// and `exportList` (which returns all of it). Keeping both on one code path
+// is what guarantees the exported file is EXACTLY the list the manager was
+// looking at — a second implementation would drift from it the first time
+// either changed.
+async function scanGuests(
   body: CrmBody,
   accountId: string,
   base: string,
   svc: Headers,
   env: CrmEnv,
-): Promise<CrmResult> {
-  const limit = Math.min(Math.max(intOr(body.limit, DEFAULT_PAGE), 1), 200);
-  const offset = Math.max(intOr(body.offset, 0), 0);
-
+  includeContact: boolean,
+): Promise<ScanResult> {
   let url =
     `${base}/rest/v1/guest_profiles?select=id,display_name,consent_version,health_consent_version,` +
     `marketing_consent_version,created_at,last_seen_at,` +
+    (includeContact ? `contact_phone,contact_email,birthday,` : "") +
     `guest_visits(id,visited_at,treatment_price),guest_tag_assignments(tag_id)` +
     `&account_id=eq.${accountId}&order=last_seen_at.desc.nullslast&limit=${MAX_SCAN}`;
 
@@ -216,10 +249,12 @@ async function listGuests(
   }
 
   const res = await getJson(url, svc);
-  if (!res.ok) return { status: 502, json: { error: `Could not load guests (${res.status}).` } };
+  if (!res.ok) {
+    return { ok: false, result: { status: 502, json: { error: `Could not load guests (${res.status}).` } } };
+  }
 
   const rows = asArray(res.body);
-  let guests = rows.map((r) => {
+  let guests: ScannedGuest[] = rows.map((r) => {
     const visits = asArray(r.guest_visits);
     const visitDates = visits
       .map((v) => (typeof v.visited_at === "string" ? v.visited_at : null))
@@ -228,6 +263,7 @@ async function listGuests(
     return {
       id: String(r.id),
       name: typeof r.display_name === "string" ? r.display_name : null,
+      baseConsent: typeof r.consent_version === "string",
       healthConsent: typeof r.health_consent_version === "string",
       marketingConsent: typeof r.marketing_consent_version === "string",
       visitCount: visits.length,
@@ -242,12 +278,29 @@ async function listGuests(
       lastSeenAt: typeof r.last_seen_at === "string" ? r.last_seen_at : null,
       createdAt: typeof r.created_at === "string" ? r.created_at : null,
       tagIds: asArray(r.guest_tag_assignments).map((t) => String(t.tag_id)),
+      ...(includeContact
+        ? {
+            contactPhone: typeof r.contact_phone === "string" ? r.contact_phone : null,
+            contactEmail: typeof r.contact_email === "string" ? r.contact_email : null,
+            birthday: typeof r.birthday === "string" ? r.birthday : null,
+          }
+        : {}),
     };
   });
 
   const tagId =
     typeof body.tagId === "string" && /^[0-9a-f-]{36}$/i.test(body.tagId) ? body.tagId : null;
   if (tagId) guests = guests.filter((g) => g.tagIds.includes(tagId));
+
+  // Consent filters, ANDed: "who may I actually e-mail?" is the question that
+  // turns this list into a usable marketing list, and "who has health data on
+  // file?" is the one that matters before a treatment. Base is set on every
+  // row that exists (a profile cannot be created without it), so filtering on
+  // it returns everyone — which is the honest answer, not a bug.
+  const consents = Array.isArray(body.consents) ? body.consents : [];
+  if (consents.includes("base")) guests = guests.filter((g) => g.baseConsent);
+  if (consents.includes("health")) guests = guests.filter((g) => g.healthConsent);
+  if (consents.includes("marketing")) guests = guests.filter((g) => g.marketingConsent);
 
   // The segments are the questions a spa owner actually opens this screen
   // with, expressed over aggregates that already exist. "Lapsed" deliberately
@@ -264,9 +317,6 @@ async function listGuests(
       break;
     case "lapsed":
       guests = guests.filter((g) => g.visitCount > 0 && daysSince(g.lastVisitAt) > LAPSED_DAYS);
-      break;
-    case "health":
-      guests = guests.filter((g) => g.healthConsent);
       break;
     default:
       break;
@@ -297,14 +347,53 @@ async function listGuests(
     }
   });
 
+  // True when the account has more profiles than one scan returns, so the UI
+  // can say the totals are partial instead of under-reporting silently.
+  return { ok: true, guests, capped: rows.length >= MAX_SCAN };
+}
+
+async function listGuests(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
+  const scan = await scanGuests(body, accountId, base, svc, env, false);
+  if (!scan.ok) return scan.result;
+
+  const limit = Math.min(Math.max(intOr(body.limit, DEFAULT_PAGE), 1), 200);
+  const offset = Math.max(intOr(body.offset, 0), 0);
   return {
     status: 200,
     json: {
-      guests: guests.slice(offset, offset + limit),
-      total: guests.length,
-      // True when the account has more profiles than one scan returns, so the
-      // UI can say the totals are partial instead of under-reporting silently.
-      capped: rows.length >= MAX_SCAN,
+      guests: scan.guests.slice(offset, offset + limit),
+      total: scan.guests.length,
+      capped: scan.capped,
+    },
+  };
+}
+
+// The whole filtered list, unpaginated, with the marketing-tier contact
+// columns attached. Same filters as the screen the manager is looking at —
+// "export what I am seeing" is the entire point, so this deliberately shares
+// scanGuests rather than re-deriving anything.
+async function exportGuestList(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
+  const scan = await scanGuests(body, accountId, base, svc, env, true);
+  if (!scan.ok) return scan.result;
+  return {
+    status: 200,
+    json: {
+      guests: scan.guests,
+      total: scan.guests.length,
+      capped: scan.capped,
+      exportedAt: new Date().toISOString(),
     },
   };
 }
