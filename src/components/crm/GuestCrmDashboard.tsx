@@ -422,7 +422,7 @@ export function GuestCrmDashboard() {
               e.preventDefault();
               setQuery((q) => ({ ...q, search: searchInput.trim() }));
             }}
-            className="mb-3 flex flex-wrap items-end gap-2"
+            className="mb-5 flex flex-wrap items-end gap-2"
           >
             <div>
               <label htmlFor="crmSearch" className="mb-1.5 block text-xs font-semibold text-slate">
@@ -482,7 +482,7 @@ export function GuestCrmDashboard() {
               consents are independent toggles that AND together — so they are
               styled differently and split by a divider rather than pretending
               to be one uniform set. */}
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <div className="mb-5 flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-xs font-semibold text-slate">
               {t("guestsFiltersLabel", lang)}
             </span>
@@ -743,7 +743,7 @@ function TagManager({
   };
 
   return (
-    <div className="mb-3">
+    <div className="mb-5">
       <button
         onClick={() => {
           setOpen((v) => !v);
