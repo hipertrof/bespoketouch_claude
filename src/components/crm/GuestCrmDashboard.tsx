@@ -92,6 +92,18 @@ const CONSENTS: { value: CrmConsent; key: string }[] = [
   { value: "marketing", key: "guestsConsentMarketing" },
 ];
 
+// One accent hue per tier — the theme only has three (clay/sage/rose), which
+// happens to match the three tiers exactly. Health keeps the terracotta dot
+// it already had; base and marketing get the other two. Purely a colour key,
+// not a good/bad signal — the filter pill and the row dot share a colour so
+// the two are visibly the same thing, and each dot carries its tier name in
+// a title/aria-label since colour alone must never be the only cue.
+const CONSENT_COLORS: Record<CrmConsent, { dot: string; activePill: string }> = {
+  base: { dot: "bg-sage", activePill: "border-sage bg-sage-tint font-medium text-sage-dark" },
+  health: { dot: "bg-clay", activePill: "border-clay bg-clay/10 font-medium text-clay-dark" },
+  marketing: { dot: "bg-rose", activePill: "border-rose bg-rose-tint font-medium text-rose-dark" },
+};
+
 interface AccountLite {
   id: string;
   name: string;
@@ -521,9 +533,7 @@ export function GuestCrmDashboard() {
                   }
                   aria-pressed={active}
                   className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                    active
-                      ? "border-sage bg-sage-tint font-medium text-sage-dark"
-                      : "border-sand bg-white text-slate-light hover:border-clay"
+                    active ? CONSENT_COLORS[c.value].activePill : "border-sand bg-white text-slate-light hover:border-clay"
                   }`}
                 >
                   {t(c.key, lang)}
@@ -601,13 +611,24 @@ export function GuestCrmDashboard() {
                             <span className="truncate text-sm font-semibold text-charcoal">
                               {displayNameOf(g, lang)}
                             </span>
-                            {g.healthConsent && (
-                              <span
-                                title={t("guestsHealthOnFile", lang)}
-                                aria-label={t("guestsHealthOnFile", lang)}
-                                className="h-1.5 w-1.5 shrink-0 rounded-full bg-clay"
-                              />
-                            )}
+                            {/* One dot per VARYING consent tier, same colour
+                                as its filter pill — a quick glance says which
+                                optional consents this guest has on. Base is
+                                excluded on purpose: every row in this list
+                                already has it (a profile can't exist without
+                                it), so a base dot would show on ~100% of rows
+                                and say nothing. Colour is never the only
+                                cue: each dot names its tier. */}
+                            <span className="flex shrink-0 items-center gap-1">
+                              {CONSENTS.filter((c) => c.value !== "base" && g[`${c.value}Consent`]).map((c) => (
+                                <span
+                                  key={c.value}
+                                  title={t(c.key, lang)}
+                                  aria-label={t(c.key, lang)}
+                                  className={`h-1.5 w-1.5 rounded-full ${CONSENT_COLORS[c.value].dot}`}
+                                />
+                              ))}
+                            </span>
                           </span>
                         </span>
                       </button>
