@@ -1171,43 +1171,6 @@ function GuestDetailPanel({
           the guest walks in — fetched all along and previously never shown. */}
       <PreferencesCard preferences={guest.preferences} lang={lang} />
 
-      {/* Tags — ASSIGNMENT ONLY. Creating and deleting a tag changes the whole
-          account's vocabulary, so it lives on the list screen instead: doing
-          it from inside one guest made a global edit look like a local one,
-          which is exactly how "delete" here read as "remove from this guest"
-          when it actually removed the tag from everybody. */}
-      <div className="rounded-2xl border border-sand bg-white p-5 shadow-soft">
-        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-charcoal">
-          <TagIcon size={16} />
-          {t("guestsTags", lang)}
-        </h3>
-        {tags.length === 0 ? (
-          <p className="text-sm text-slate-light">{t("guestsNoTagsYet", lang)}</p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            {tags.map((tg) => {
-              const active = guestTagIds.has(tg.id);
-              return (
-                <button
-                  key={tg.id}
-                  onClick={() => handleToggleTag(tg.id, active)}
-                  disabled={tagBusy}
-                  aria-pressed={active}
-                  className={`rounded-full border px-3 py-1 text-sm transition-colors disabled:opacity-50 ${
-                    active
-                      ? "border-clay bg-clay/10 text-charcoal"
-                      : "border-sand bg-white text-slate-light hover:border-clay"
-                  }`}
-                >
-                  {tg.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {tagError && <p className="mt-2 text-sm text-rose-dark">{tagError}</p>}
-      </div>
-
       {/* Visit timeline */}
       <div className="rounded-2xl border border-sand bg-white p-5 shadow-soft">
         <h3 className="mb-3 text-sm font-semibold text-charcoal">{t("guestsVisits", lang)}</h3>
@@ -1313,6 +1276,43 @@ function GuestDetailPanel({
             ))}
           </ul>
         )}
+      </div>
+
+      {/* Tags — ASSIGNMENT ONLY. Creating and deleting a tag changes the whole
+          account's vocabulary, so it lives on the list screen instead: doing
+          it from inside one guest made a global edit look like a local one,
+          which is exactly how "delete" here read as "remove from this guest"
+          when it actually removed the tag from everybody. */}
+      <div className="rounded-2xl border border-sand bg-white p-5 shadow-soft">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-charcoal">
+          <TagIcon size={16} />
+          {t("guestsTags", lang)}
+        </h3>
+        {tags.length === 0 ? (
+          <p className="text-sm text-slate-light">{t("guestsNoTagsYet", lang)}</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((tg) => {
+              const active = guestTagIds.has(tg.id);
+              return (
+                <button
+                  key={tg.id}
+                  onClick={() => handleToggleTag(tg.id, active)}
+                  disabled={tagBusy}
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors disabled:opacity-50 ${
+                    active
+                      ? "border-clay bg-clay/10 text-charcoal"
+                      : "border-sand bg-white text-slate-light hover:border-clay"
+                  }`}
+                >
+                  {tg.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {tagError && <p className="mt-2 text-sm text-rose-dark">{tagError}</p>}
       </div>
 
       {/* GDPR actions, grouped by domain and separated by RISK — an export and
