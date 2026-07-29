@@ -53,6 +53,13 @@ import {
   sanitizePreferences,
 } from "./_guestCore.js";
 import type { StoredPreferencesV1 } from "./_guestCore.js";
+import {
+  FULL_SCOPE,
+  clearSuppression,
+  recordErasure,
+  suppressContact,
+  type ErasureScope,
+} from "./_erasureLog.js";
 
 export interface CheckinEnv extends DeviceAuthEnv {
   hashSecret: string;
@@ -356,10 +363,14 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   if (!gate.offers("communication")) delete preferences.communication;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
+  // The consent stamps come back alongside the id so a tier being switched off
+  // below can be recognised as the withdrawal it is (see _erasureLog.ts) —
+  // widening this read rather than adding a second query.
   const existing = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=id,health_consent_version,marketing_consent_version` +
+          `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
         svc,
       )
     ).body,
@@ -371,6 +382,9 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   }
 
   const now = new Date().toISOString();
+  const hadHealth = typeof existing[0]?.health_consent_version === "string";
+  const hadMarketing = typeof existing[0]?.marketing_consent_version === "string";
+  const verification = "Guest's own phone, authenticated by the one-time check-in code from the kiosk QR";
 
   if (!consent) {
     // Base consent withdrawn: as effective as the grant (GDPR Art. 7(3)),
@@ -386,6 +400,15 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     if (!del.ok) {
       return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
     }
+    await recordErasure(base, svc, {
+      accountId,
+      subjectRef: hash,
+      channel: "checkin",
+      identityVerification: verification,
+      scope: FULL_SCOPE,
+      executedBySystem: "checkin-code",
+    });
+    await suppressContact(base, svc, accountId, hash, "erasure");
   } else {
     // Same split as _guestCore.saveGuest: the name rides on base consent (so
     // it survives a marketing withdrawal), the contact columns ride on the
@@ -416,6 +439,29 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     );
     if (!patch.ok) {
       return { status: 500, json: { error: `Could not update preferences (${patch.status}).` } };
+    }
+
+    // Same ON -> OFF rule as the kiosk save: only a tier that was standing and
+    // is now gone erased anything.
+    const scope: ErasureScope[] = [];
+    if (hadHealth && !healthConsent) scope.push("health");
+    if (hadMarketing && !contact) scope.push("marketing", "contact");
+    if (scope.length > 0) {
+      await recordErasure(base, svc, {
+        accountId,
+        subjectRef: hash,
+        channel: "checkin",
+        identityVerification: verification,
+        scope,
+        outcome: "partial",
+        executedBySystem: "checkin-code",
+      });
+    }
+    if (hadMarketing && !contact) {
+      await suppressContact(base, svc, accountId, hash, "marketing_withdrawal");
+    } else if (contact) {
+      // A fresh opt-in on the guest's own phone supersedes an earlier objection.
+      await clearSuppression(base, svc, accountId, hash);
     }
   }
 

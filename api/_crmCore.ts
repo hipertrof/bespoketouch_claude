@@ -19,6 +19,12 @@
 // server decides whether that's allowed.
 
 import { normalizePhone, phoneHash } from "./_guestCore.js";
+import {
+  FULL_SCOPE,
+  recordErasure,
+  suppressContact,
+  type ErasureScope,
+} from "./_erasureLog.js";
 
 interface CrmEnv {
   url: string;
@@ -96,7 +102,7 @@ export async function handleCrm(
     if (!staffAuth.ok) return staffAuth.result;
     return body.action === "lookupConsentByPhone"
       ? lookupConsentByPhone(body, staffAuth.accountId, base, svc, env)
-      : withdrawConsent(body, staffAuth.accountId, base, svc);
+      : withdrawConsent(body, staffAuth.accountId, staffAuth.callerId, staffAuth.callerName, base, svc);
   }
 
   const auth = await authorizeManager(authorization, body?.accountId, base, svc, env);
@@ -127,7 +133,7 @@ export async function handleCrm(
     case "listTags":
       return listTags(accountId, base, svc);
     case "forget":
-      return forgetGuestById(body, accountId, base, svc);
+      return forgetGuestById(body, accountId, callerId, callerName, base, svc);
     case "export":
       return exportGuest(body, accountId, base, svc);
     default:
@@ -190,7 +196,12 @@ async function authorizeManager(
 // Authorization — receptionist-and-up, for consent lookup/withdrawal only.
 // ---------------------------------------------------------------------------
 
-type StaffAuth = { ok: true; accountId: string } | { ok: false; result: CrmResult };
+// Resolves the caller's id and name like authorizeManager does, not just the
+// account: a consent-desk withdrawal is an erasure, and "who executed it" is
+// the first field a regulator asks about (erasure_log.executed_by).
+type StaffAuth =
+  | { ok: true; accountId: string; callerId: string; callerName: string }
+  | { ok: false; result: CrmResult };
 
 async function authorizeStaff(
   authorization: string | undefined,
@@ -214,9 +225,15 @@ async function authorizeStaff(
   }
 
   const profRows = asArray(
-    (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`, svc)).body,
+    (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin,full_name,email&user_id=eq.${callerId}`, svc))
+      .body,
   );
-  if (profRows[0]?.is_platform_admin) return { ok: true, accountId };
+  const prof = profRows[0];
+  const callerName =
+    (typeof prof?.full_name === "string" && prof.full_name) ||
+    (typeof prof?.email === "string" && prof.email) ||
+    "Staff";
+  if (prof?.is_platform_admin) return { ok: true, accountId, callerId, callerName };
 
   // "Receptionist and above": owner, manager, or front desk. Deliberately
   // excludes therapist — nothing about a guest's consent state is a
@@ -230,7 +247,7 @@ async function authorizeStaff(
   if (asArray(mem.body).length === 0) {
     return { ok: false, result: { status: 403, json: { error: "Not authorized for this account's guests." } } };
   }
-  return { ok: true, accountId };
+  return { ok: true, accountId, callerId, callerName };
 }
 
 // Every per-guest action re-checks the guest belongs to the authorized account
@@ -699,17 +716,38 @@ async function unassignTag(body: CrmBody, accountId: string, base: string, svc: 
 // forget / export — GDPR Art. 17 / 15+20 for manager-received requests.
 // ---------------------------------------------------------------------------
 
-async function forgetGuestById(body: CrmBody, accountId: string, base: string, svc: Headers): Promise<CrmResult> {
+async function forgetGuestById(
+  body: CrmBody,
+  accountId: string,
+  callerId: string,
+  callerName: string,
+  base: string,
+  svc: Headers,
+): Promise<CrmResult> {
   const guest = await guestInAccount(body.guestId, accountId, base, svc);
   if (!guest) return { status: 404, json: { error: "Guest not found." } };
+  const subjectRef = typeof guest.phone_hash === "string" ? guest.phone_hash : "";
   // FKs cascade visits/notes/tag assignments; survey_responses.guest_id
-  // reverts to null.
+  // reverts to null. 0030's before-delete trigger folds the visits into the
+  // anonymous visit_stats totals first.
   const del = await fetch(`${base}/rest/v1/guest_profiles?id=eq.${String(guest.id)}&account_id=eq.${accountId}`, {
     method: "DELETE",
     headers: { ...svc, Prefer: "return=minimal" },
   });
   if (!del.ok) return { status: 502, json: { error: `Could not erase the guest (${del.status}).` } };
-  return { status: 200, json: { ok: true } };
+
+  // AFTER the delete, and never allowed to undo it: see api/_erasureLog.ts.
+  const logged = await recordErasure(base, svc, {
+    accountId,
+    subjectRef,
+    channel: "dashboard",
+    identityVerification: "Staff-initiated in the guest dashboard, guest name typed to confirm",
+    scope: FULL_SCOPE,
+    executedBy: callerId,
+    executedByName: callerName,
+  });
+  await suppressContact(base, svc, accountId, subjectRef, "erasure");
+  return { status: 200, json: { ok: true, logged } };
 }
 
 async function exportGuest(body: CrmBody, accountId: string, base: string, svc: Headers): Promise<CrmResult> {
@@ -771,12 +809,18 @@ async function lookupConsentByPhone(
 async function withdrawConsent(
   body: CrmBody,
   accountId: string,
+  callerId: string,
+  callerName: string,
   base: string,
   svc: Headers,
 ): Promise<CrmResult> {
   const guest = await guestInAccount(body.guestId, accountId, base, svc);
   if (!guest) return { status: 404, json: { error: "Guest not found." } };
   const guestId = String(guest.id);
+  const subjectRef = typeof guest.phone_hash === "string" ? guest.phone_hash : "";
+  // The desk identifies the caller by the number they are phoning from, which
+  // is what lookupConsentByPhone matched on to find this row at all.
+  const verification = "Phone call to reception, guest identified by the number given and matched on phone_hash";
 
   // This action can only WITHDRAW, never grant. Granting a tier requires
   // showing the guest the disclosure copy first, which only the kiosk and
@@ -798,7 +842,17 @@ async function withdrawConsent(
       headers: { ...svc, Prefer: "return=minimal" },
     });
     if (!del.ok) return { status: 502, json: { error: `Could not withdraw consent (${del.status}).` } };
-    return { status: 200, json: { ok: true, erased: true } };
+    const logged = await recordErasure(base, svc, {
+      accountId,
+      subjectRef,
+      channel: "consent_desk",
+      identityVerification: verification,
+      scope: FULL_SCOPE,
+      executedBy: callerId,
+      executedByName: callerName,
+    });
+    await suppressContact(base, svc, accountId, subjectRef, "erasure");
+    return { status: 200, json: { ok: true, erased: true, logged } };
   }
 
   const patch: JsonRecord = {};
@@ -827,7 +881,25 @@ async function withdrawConsent(
     body: JSON.stringify(patch),
   });
   if (!res.ok) return { status: 502, json: { error: `Could not withdraw consent (${res.status}).` } };
-  return { status: 200, json: { ok: true, erased: false } };
+
+  // A tier withdrawal erases real data (the Art. 9 marks and notes, or the
+  // contact details) while the profile survives — so it is recorded as a
+  // PARTIAL erasure rather than not at all.
+  const scope: ErasureScope[] = [];
+  if (withdrawHealth) scope.push("health");
+  if (withdrawMarketing) scope.push("marketing", "contact");
+  const logged = await recordErasure(base, svc, {
+    accountId,
+    subjectRef,
+    channel: "consent_desk",
+    identityVerification: verification,
+    scope,
+    outcome: "partial",
+    executedBy: callerId,
+    executedByName: callerName,
+  });
+  if (withdrawMarketing) await suppressContact(base, svc, accountId, subjectRef, "marketing_withdrawal");
+  return { status: 200, json: { ok: true, erased: false, logged } };
 }
 
 // ---------------------------------------------------------------------------

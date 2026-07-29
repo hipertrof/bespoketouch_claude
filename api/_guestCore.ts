@@ -27,6 +27,13 @@
 
 import { createHmac } from "node:crypto";
 import { checkDeviceConfig, resolveDevice, type DeviceAuthEnv } from "./_deviceAuth.js";
+import {
+  FULL_SCOPE,
+  clearSuppression,
+  recordErasure,
+  suppressContact,
+  type ErasureScope,
+} from "./_erasureLog.js";
 
 // Two consents since v3 (migration 0024). Base consent gates the profile
 // existing at all; health consent additionally gates the body-zone marks AND
@@ -188,6 +195,18 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
   const seen = row.last_seen_at ?? row.updated_at;
   if (isExpired(typeof seen === "string" ? seen : null)) {
     await deleteById(base, svc, String(row.id));
+    // An erasure the spa never asked for still has to be demonstrable — this
+    // is the storage-limitation promise being kept, and it is exactly the kind
+    // of deletion a guest later asks about ("why is my profile gone?").
+    // No suppression entry: the guest never objected, the clock simply ran out.
+    await recordErasure(base, svc, {
+      accountId,
+      subjectRef: hash,
+      channel: "retention",
+      identityVerification: "n/a — automatic, no request received",
+      scope: FULL_SCOPE,
+      executedBySystem: `retention-${EXPIRY_DAYS}d`,
+    });
     return { status: 200, json: { found: false } };
   }
 
@@ -270,6 +289,26 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   const contact = body.marketingConsent === true ? sanitizeContact(body) : null;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
+
+  // Read the existing stamps before overwriting them. The upsert below is a
+  // whole-row merge, so a save with a tier switched off silently ERASES that
+  // tier's data — which is a withdrawal, and the most common one in daily use
+  // (the guest un-ticks a box at handoff). Without this read the write cannot
+  // tell a brand-new guest from someone withdrawing, and the erasure would go
+  // unrecorded. One extra request on the kiosk save path, deliberately paid.
+  const priorRows = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/guest_profiles?select=health_consent_version,marketing_consent_version` +
+          `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        svc,
+      )
+    ).body,
+  );
+  const prior = priorRows[0];
+  const hadHealth = typeof prior?.health_consent_version === "string";
+  const hadMarketing = typeof prior?.marketing_consent_version === "string";
+
   const now = new Date().toISOString();
   const upsert = await fetch(
     `${base}/rest/v1/guest_profiles?on_conflict=account_id,phone_hash`,
@@ -301,6 +340,31 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   if (!upsert.ok) {
     return { status: 500, json: { error: `Could not save preferences (${upsert.status}).` } };
   }
+
+  // Record only tiers that went ON -> OFF. A first-time save, or a save that
+  // leaves a tier off that was already off, erases nothing and is not an
+  // erasure event.
+  const scope: ErasureScope[] = [];
+  if (hadHealth && !healthConsent) scope.push("health");
+  if (hadMarketing && !contact) scope.push("marketing", "contact");
+  if (scope.length > 0) {
+    await recordErasure(base, svc, {
+      accountId,
+      subjectRef: hash,
+      channel: "kiosk",
+      identityVerification: "In person at the kiosk, guest entered their own phone number",
+      scope,
+      outcome: "partial",
+      executedBySystem: "kiosk-device",
+    });
+  }
+  if (hadMarketing && !contact) {
+    await suppressContact(base, svc, accountId, hash, "marketing_withdrawal");
+  } else if (contact) {
+    // A fresh, in-person marketing opt-in supersedes any earlier objection —
+    // the one and only way off the do-not-contact list.
+    await clearSuppression(base, svc, accountId, hash);
+  }
   return { status: 200, json: { ok: true } };
 }
 
@@ -322,6 +386,19 @@ async function forgetGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
   if (!del.ok) {
     return { status: 500, json: { error: `Could not delete preferences (${del.status}).` } };
   }
+  // Recorded unconditionally, without checking whether a row existed: probing
+  // for one would rebuild the existence oracle this endpoint deliberately
+  // refuses to be. A record against a phone that was never stored is harmless
+  // — it attests to a request, and the request was genuinely made.
+  await recordErasure(base, svc, {
+    accountId,
+    subjectRef: hash,
+    channel: "kiosk",
+    identityVerification: "In person at the kiosk, guest entered their own phone number",
+    scope: FULL_SCOPE,
+    executedBySystem: "kiosk-device",
+  });
+  await suppressContact(base, svc, accountId, hash, "erasure");
   // No existence oracle beyond what lookup already gives — always report ok.
   return { status: 200, json: { ok: true } };
 }
