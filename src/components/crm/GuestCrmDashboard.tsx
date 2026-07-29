@@ -171,12 +171,12 @@ export function GuestCrmDashboard() {
   const [capped, setCapped] = useState(false);
   const [tags, setTags] = useState<CrmTag[]>([]);
   const [searchInput, setSearchInput] = useState("");
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
   const [query, setQuery] = useState<Query>(EMPTY_QUERY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
-  const [tagRowId, setTagRowId] = useState<string | null>(null);
 
   // The selected guest lives in the URL, not in state: browser back works, a
   // manager can bookmark or share a guest mid-GDPR-request, and a refresh
@@ -321,26 +321,6 @@ export function GuestCrmDashboard() {
     }
   };
 
-  const handleRowTag = async (guestId: string, tagId: string, assigned: boolean) => {
-    try {
-      if (assigned) await unassignCrmTag(accountId, guestId, tagId);
-      else await assignCrmTag(accountId, guestId, tagId);
-      setGuests((prev) =>
-        prev.map((g) =>
-          g.id === guestId
-            ? {
-                ...g,
-                tagIds: assigned ? g.tagIds.filter((x) => x !== tagId) : [...g.tagIds, tagId],
-              }
-            : g,
-        ),
-      );
-      setAnnouncement(`${tagById.get(tagId)?.name ?? ""} ${assigned ? "−" : "+"}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
-    }
-  };
-
   if (loading || !rolesReady) {
     return <div className="flex min-h-screen items-center justify-center bg-cream text-slate">{t("loading", lang)}</div>;
   }
@@ -475,6 +455,15 @@ export function GuestCrmDashboard() {
                 </select>
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => setTagManagerOpen((v) => !v)}
+              aria-expanded={tagManagerOpen}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sand bg-white px-3 text-sm text-charcoal transition-colors hover:border-clay"
+            >
+              <TagIcon size={14} />
+              {t("guestsManageTags", lang)}
+            </button>
           </form>
 
           {/* One filter row. The two halves behave differently on purpose —
@@ -532,17 +521,21 @@ export function GuestCrmDashboard() {
 
           {/* Tag vocabulary lives here, at account level, because that is what
               it is: creating or deleting a tag affects every guest. Assigning
-              one to a guest stays inside that guest. */}
-          <TagManager
-            accountId={accountId}
-            tags={tags}
-            lang={lang}
-            onChanged={() => {
-              refreshTags();
-              load(accountId, query, 0);
-            }}
-            onError={setError}
-          />
+              one to a guest stays inside that guest. The trigger button sits
+              next to the tag filter select above; only the panel renders
+              here, controlled by that same open state. */}
+          {tagManagerOpen && (
+            <TagManager
+              accountId={accountId}
+              tags={tags}
+              lang={lang}
+              onChanged={() => {
+                refreshTags();
+                load(accountId, query, 0);
+              }}
+              onError={setError}
+            />
+          )}
 
           <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sand/60 pb-4">
             <p className="text-sm text-slate">{tf("guestsCountLabel", lang, { count: String(total) })}</p>
@@ -603,19 +596,6 @@ export function GuestCrmDashboard() {
                               />
                             )}
                           </span>
-                          <span className="flex flex-wrap gap-1 pt-0.5">
-                            {g.tagIds.map((id) => {
-                              const tg = tagById.get(id);
-                              return tg ? (
-                                <span
-                                  key={id}
-                                  className="rounded-full bg-oatmeal px-1.5 py-px text-[11px] text-charcoal"
-                                >
-                                  {tg.name}
-                                </span>
-                              ) : null;
-                            })}
-                          </span>
                         </span>
                       </button>
                       <span className="hidden w-16 shrink-0 text-right text-sm tabular-nums text-charcoal sm:block">
@@ -627,41 +607,7 @@ export function GuestCrmDashboard() {
                       <span className="hidden w-28 shrink-0 text-right text-sm tabular-nums text-slate-light sm:block">
                         {fmtDate(g.lastVisitAt, lang)}
                       </span>
-                      {tags.length > 0 && (
-                        <button
-                          onClick={() => setTagRowId((prev) => (prev === g.id ? null : g.id))}
-                          aria-expanded={tagRowId === g.id}
-                          className="shrink-0 rounded-full border border-sand px-2.5 py-1 text-xs text-slate-light transition-colors hover:border-clay"
-                        >
-                          <TagIcon size={13} className="inline" />
-                          <span className="ml-1 hidden sm:inline">{t("guestsQuickTags", lang)}</span>
-                        </button>
-                      )}
                     </div>
-                    {/* Tagging is the one action with real batch character and
-                        no risk, so it belongs on the row rather than costing a
-                        trip into the panel and back. */}
-                    {tagRowId === g.id && (
-                      <div className="flex flex-wrap gap-1.5 border-t border-sand/60 px-4 py-2.5">
-                        {tags.map((tg) => {
-                          const assigned = g.tagIds.includes(tg.id);
-                          return (
-                            <button
-                              key={tg.id}
-                              onClick={() => handleRowTag(g.id, tg.id, assigned)}
-                              aria-pressed={assigned}
-                              className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-                                assigned
-                                  ? "border-clay bg-clay/10 text-charcoal"
-                                  : "border-sand bg-white text-slate-light hover:border-clay"
-                              }`}
-                            >
-                              {tg.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                     {/* The columns collapse below sm, so restate them inline. */}
                     <div className="flex flex-wrap gap-x-3 border-t border-sand/60 px-4 py-1.5 text-xs text-slate-light sm:hidden">
                       <span>{tf("guestsVisitCount", lang, { count: String(g.visitCount) })}</span>
@@ -708,7 +654,6 @@ function TagManager({
   onChanged: () => void;
   onError: (msg: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -743,78 +688,60 @@ function TagManager({
   };
 
   return (
-    <div className="mb-5">
-      <button
-        onClick={() => {
-          setOpen((v) => !v);
-          setConfirmId(null);
-        }}
-        aria-expanded={open}
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-light transition-colors hover:text-slate"
-      >
-        <TagIcon size={13} />
-        {t("guestsManageTags", lang)}
-      </button>
-      {open && (
-        <div className="mt-2 rounded-xl border border-sand bg-white p-4">
-          <p className="mb-3 text-xs text-slate-light">{t("guestsManageTagsHint", lang)}</p>
-          {tags.length > 0 && (
-            <ul className="mb-3 flex flex-col gap-1.5">
-              {tags.map((tg) => (
-                <li key={tg.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span className="text-charcoal">{tg.name}</span>
-                  {confirmId === tg.id ? (
-                    <span className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="text-rose-dark">
-                        {tf("guestsDeleteTagConfirm", lang, { name: tg.name })}
-                      </span>
-                      <button
-                        onClick={() => remove(tg.id)}
-                        disabled={busy}
-                        className="font-semibold text-rose-dark hover:underline disabled:opacity-50"
-                      >
-                        {t("guestsConfirmDelete", lang)}
-                      </button>
-                      <button
-                        onClick={() => setConfirmId(null)}
-                        className="text-slate-light hover:underline"
-                      >
-                        {t("guestsCancel", lang)}
-                      </button>
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmId(tg.id)}
-                      className="text-xs text-rose-dark hover:underline"
-                    >
-                      {t("guestsConfirmDelete", lang)}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* Enter still submits — the button just makes that discoverable. */}
-          <form onSubmit={create} className="flex flex-wrap items-center gap-1.5">
-            <input
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              placeholder={t("guestsNewTag", lang)}
-              aria-label={t("guestsNewTag", lang)}
-              maxLength={40}
-              className="min-h-9 w-40 rounded-full border border-dashed border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
-            />
-            <button
-              type="submit"
-              disabled={!newTag.trim() || busy}
-              className="inline-flex min-h-9 items-center gap-1 rounded-full bg-sage-dark px-3 text-sm font-semibold text-cream transition-colors hover:bg-sage disabled:bg-sand disabled:text-slate-light"
-            >
-              <Plus size={14} />
-              {t("guestsAddTag", lang)}
-            </button>
-          </form>
-        </div>
+    <div className="mb-5 rounded-xl border border-sand bg-white p-4">
+      <p className="mb-3 text-xs text-slate-light">{t("guestsManageTagsHint", lang)}</p>
+      {tags.length > 0 && (
+        <ul className="mb-3 flex flex-col gap-1.5">
+          {tags.map((tg) => (
+            <li key={tg.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-charcoal">{tg.name}</span>
+              {confirmId === tg.id ? (
+                <span className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-rose-dark">
+                    {tf("guestsDeleteTagConfirm", lang, { name: tg.name })}
+                  </span>
+                  <button
+                    onClick={() => remove(tg.id)}
+                    disabled={busy}
+                    className="font-semibold text-rose-dark hover:underline disabled:opacity-50"
+                  >
+                    {t("guestsConfirmDelete", lang)}
+                  </button>
+                  <button onClick={() => setConfirmId(null)} className="text-slate-light hover:underline">
+                    {t("guestsCancel", lang)}
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setConfirmId(tg.id)}
+                  className="text-xs text-rose-dark hover:underline"
+                >
+                  {t("guestsConfirmDelete", lang)}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
+      {/* Enter still submits — the button just makes that discoverable. */}
+      <form onSubmit={create} className="flex flex-wrap items-center gap-1.5">
+        <input
+          value={newTag}
+          onChange={(e) => setNewTag(e.target.value)}
+          placeholder={t("guestsNewTag", lang)}
+          aria-label={t("guestsNewTag", lang)}
+          maxLength={40}
+          className="min-h-9 w-40 rounded-full border border-dashed border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
+        />
+        <button
+          type="submit"
+          disabled={!newTag.trim() || busy}
+          className="inline-flex min-h-9 items-center gap-1 rounded-full bg-sage-dark px-3 text-sm font-semibold text-cream transition-colors hover:bg-sage disabled:bg-sand disabled:text-slate-light"
+        >
+          <Plus size={14} />
+          {t("guestsAddTag", lang)}
+        </button>
+      </form>
     </div>
   );
 }

@@ -158,7 +158,6 @@ export const ui: Record<string, Dict> = {
   guestsColVisits: { pl: "Wizyty", en: "Visits", uk: "Візити", it: "Visite", fr: "Visites", de: "Besuche", es: "Visitas", id: "Kunjungan" },
   guestsColSpend: { pl: "Wydatki", en: "Spend", uk: "Витрати", it: "Spesa", fr: "Dépenses", de: "Umsatz", es: "Gasto", id: "Belanja" },
   guestsColLastVisit: { pl: "Ostatnia", en: "Last", uk: "Останній", it: "Ultima", fr: "Dernière", de: "Letzter", es: "Última", id: "Terakhir" },
-  guestsQuickTags: { pl: "Tagi", en: "Tags", uk: "Теги", it: "Tag", fr: "Étiquettes", de: "Tags", es: "Etiquetas", id: "Tag" },
   guestsNoResults: { pl: "Żaden gość nie pasuje do tych filtrów.", en: "No guests match these filters.", uk: "Жоден гість не відповідає цим фільтрам.", it: "Nessun ospite corrisponde a questi filtri.", fr: "Aucun invité ne correspond à ces filtres.", de: "Kein Gast entspricht diesen Filtern.", es: "Ningún huésped coincide con estos filtros.", id: "Tidak ada tamu yang cocok dengan filter ini." },
   guestsAnonymousHandle: { pl: "Gość #{code}", en: "Guest #{code}", uk: "Гість #{code}", it: "Ospite #{code}", fr: "Invité #{code}", de: "Gast #{code}", es: "Huésped #{code}", id: "Tamu #{code}" },
   guestsHealthOnFile: { pl: "Dane zdrowotne w kartotece", en: "Health data on file", uk: "Медичні дані в картці", it: "Dati sanitari in archivio", fr: "Données de santé au dossier", de: "Gesundheitsdaten hinterlegt", es: "Datos de salud en ficha", id: "Data kesehatan tersimpan" },
