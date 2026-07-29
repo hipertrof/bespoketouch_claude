@@ -16,8 +16,11 @@ import {
   getCrmGuest,
   listCrmGuests,
   listCrmTags,
+  lookupCrmConsentByPhone,
   unassignCrmTag,
+  withdrawCrmConsent,
   type CrmConsent,
+  type CrmConsentLookup,
   type CrmFilters,
   type CrmGuestDetail,
   type CrmGuestListItem,
@@ -159,7 +162,11 @@ function displayNameOf(guest: { id: string; name: string | null }, lang: Lang): 
 }
 
 export function GuestCrmDashboard() {
-  const { user, loading, canManage, rolesReady } = useAuth();
+  const { user, loading, canManage, memberships, rolesReady } = useAuth();
+  // Receptionist and above may reach the consent desk (phone lookup +
+  // withdrawal only); full guest history/notes/export/forget stay
+  // manager-and-up. Therapist has neither.
+  const isFrontDesk = memberships.some((m) => m.role === "frontdesk");
   const { lang } = useLanguage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -202,8 +209,8 @@ export function GuestCrmDashboard() {
     if (!loading && !user) navigate("/login");
   }, [loading, user, navigate]);
   useEffect(() => {
-    if (rolesReady && !canManage) navigate("/queue");
-  }, [rolesReady, canManage, navigate]);
+    if (rolesReady && !canManage && !isFrontDesk) navigate("/queue");
+  }, [rolesReady, canManage, isFrontDesk, navigate]);
 
   // Accounts the caller can see (RLS-scoped read, same approach as /reports'
   // locations query). Managers usually have exactly one.
@@ -240,15 +247,17 @@ export function GuestCrmDashboard() {
   }, []);
 
   // Filters and sort apply immediately; only the free-text search waits for
-  // submit (a keystroke-per-request would hammer the endpoint).
+  // submit (a keystroke-per-request would hammer the endpoint). Guarded by
+  // canManage: front desk isn't authorized for `list`/`listTags` at all, and
+  // firing them anyway would just paint a 403 into the error banner.
   useEffect(() => {
-    if (accountId) load(accountId, query, 0);
-  }, [accountId, query, load]);
+    if (accountId && canManage) load(accountId, query, 0);
+  }, [accountId, canManage, query, load]);
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!accountId || !canManage) return;
     listCrmTags(accountId).then(setTags).catch(() => {});
-  }, [accountId]);
+  }, [accountId, canManage]);
 
   const refreshTags = useCallback(() => {
     if (accountId) listCrmTags(accountId).then(setTags).catch(() => {});
@@ -374,7 +383,11 @@ export function GuestCrmDashboard() {
         </div>
       )}
 
-      {selectedId ? (
+      {!canManage ? (
+        // Front desk stops here: consent lookup + withdrawal only, none of
+        // the manager-and-up dashboard below it.
+        <ConsentDesk accountId={accountId} lang={lang} />
+      ) : selectedId ? (
         <GuestDetailPanel
           accountId={accountId}
           guestId={selectedId}
@@ -633,6 +646,217 @@ export function GuestCrmDashboard() {
         </>
       )}
     </DashboardShell>
+  );
+}
+
+// Receptionist-and-up view of /guests: find a guest by the phone they're
+// calling from and withdraw a consent tier. Nothing else about the guest
+// (visits, notes, spend, tags) is fetched or shown — the server enforces the
+// same narrowing (see api/_crmCore.ts's authorizeStaff), this is just the UI
+// side of that boundary.
+function ConsentDesk({ accountId, lang }: { accountId: string; lang: Lang }) {
+  const [phone, setPhone] = useState("");
+  const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<CrmConsentLookup | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmBase, setConfirmBase] = useState(false);
+  const [baseConfirmName, setBaseConfirmName] = useState("");
+  const [confirmTier, setConfirmTier] = useState<"health" | "marketing" | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const search = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!phone.trim() || !accountId) return;
+    setStatus("looking");
+    setErrorMsg(null);
+    setResult(null);
+    setDone(null);
+    setConfirmBase(false);
+    setConfirmTier(null);
+    try {
+      const json = await lookupCrmConsentByPhone(accountId, phone.trim());
+      setResult(json);
+      setStatus(json.found ? "found" : "missing");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Error");
+      setStatus("error");
+    }
+  };
+
+  const displayName =
+    result?.name ?? (result?.guestId ? tf("guestsAnonymousHandle", lang, { code: result.guestId.slice(0, 4).toUpperCase() }) : "");
+
+  const withdrawBase = async () => {
+    if (!result?.guestId || baseConfirmName.trim() !== displayName) return;
+    setBusy(true);
+    setErrorMsg(null);
+    try {
+      await withdrawCrmConsent(accountId, result.guestId, { base: true });
+      setDone(tf("guestsForgetDone", lang, { name: displayName }));
+      setResult(null);
+      setStatus("idle");
+      setPhone("");
+      setConfirmBase(false);
+      setBaseConfirmName("");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const withdrawTier = async (tier: "health" | "marketing") => {
+    if (!result?.guestId) return;
+    setBusy(true);
+    setErrorMsg(null);
+    try {
+      await withdrawCrmConsent(accountId, result.guestId, { [tier]: true });
+      setResult((r) =>
+        r?.consent
+          ? { ...r, consent: { ...r.consent, [tier]: { version: null, at: null } } }
+          : r,
+      );
+      setConfirmTier(null);
+      setDone(tf("consentDeskTierWithdrawn", lang, { tier: t(`guestsConsent${tier === "health" ? "Health" : "Marketing"}`, lang) }));
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tierRow = (
+    key: "health" | "marketing",
+    label: string,
+    stamp: { version: string | null; at: string | null } | undefined,
+  ) => {
+    const active = !!stamp?.version;
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-oatmeal/40 p-3">
+        <span className="text-sm font-medium text-charcoal">{label}</span>
+        {!active ? (
+          <span className="text-xs text-slate-light">{t("consentDeskAlreadyOff", lang)}</span>
+        ) : confirmTier === key ? (
+          <span className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-rose-dark">{t("consentDeskWithdrawTierConfirm", lang)}</span>
+            <button
+              onClick={() => withdrawTier(key)}
+              disabled={busy}
+              className="font-semibold text-rose-dark hover:underline disabled:opacity-50"
+            >
+              {t("guestsConfirmDelete", lang)}
+            </button>
+            <button onClick={() => setConfirmTier(null)} className="text-slate-light hover:underline">
+              {t("guestsCancel", lang)}
+            </button>
+          </span>
+        ) : (
+          <button onClick={() => setConfirmTier(key)} className="text-xs font-medium text-rose-dark hover:underline">
+            {t("consentDeskWithdraw", lang)}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="max-w-xl">
+      <p className="mb-4 text-sm text-slate">{t("consentDeskIntro", lang)}</p>
+
+      {done && (
+        <div className="mb-4 rounded-xl border border-sage bg-sage-tint px-4 py-3">
+          <p className="text-sm text-sage-dark">{done}</p>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-dark/40 bg-white px-4 py-3">
+          <p className="text-sm text-rose-dark">{errorMsg}</p>
+          <button onClick={() => setErrorMsg(null)} className="text-xs text-rose-dark hover:underline">
+            {t("guestsDismiss", lang)}
+          </button>
+        </div>
+      )}
+
+      <form onSubmit={search} className="mb-5 flex flex-wrap items-end gap-2">
+        <div>
+          <label htmlFor="consentDeskPhone" className="mb-1.5 block text-xs font-semibold text-slate">
+            {t("consentDeskPhoneLabel", lang)}
+          </label>
+          <div className="flex items-center gap-2 rounded-xl border border-sand bg-white px-3">
+            <Search size={16} className="text-slate-light" />
+            <input
+              id="consentDeskPhone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="min-h-10 w-56 bg-transparent text-sm text-charcoal outline-none"
+            />
+          </div>
+        </div>
+        <Button type="submit" variant="secondary" disabled={status === "looking" || !phone.trim()}>
+          {t("consentDeskSearch", lang)}
+        </Button>
+      </form>
+
+      {status === "looking" && <p className="text-slate">{t("loading", lang)}</p>}
+      {status === "missing" && <p className="text-slate">{t("consentDeskNotFound", lang)}</p>}
+
+      {status === "found" && result?.consent && (
+        <div className="rounded-2xl border border-sand bg-white p-5 shadow-soft">
+          <h2 className="mb-4 font-serif text-xl text-charcoal">{displayName}</h2>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-oatmeal/40 p-3">
+              <span className="text-sm font-medium text-charcoal">{t("guestsConsentBase", lang)}</span>
+              {confirmBase ? (
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  <label htmlFor="consentDeskBaseConfirm" className="sr-only">
+                    {t("guestsForgetInputLabel", lang)}
+                  </label>
+                  <input
+                    id="consentDeskBaseConfirm"
+                    value={baseConfirmName}
+                    onChange={(e) => setBaseConfirmName(e.target.value)}
+                    placeholder={displayName}
+                    className="min-h-9 flex-1 rounded-lg border border-sand bg-white px-2.5 text-sm text-charcoal outline-none focus:border-clay"
+                  />
+                  <button
+                    onClick={withdrawBase}
+                    disabled={busy || baseConfirmName.trim() !== displayName}
+                    className="text-xs font-semibold text-rose-dark hover:underline disabled:opacity-50"
+                  >
+                    {t("guestsConfirmDelete", lang)}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirmBase(false);
+                      setBaseConfirmName("");
+                    }}
+                    className="text-xs text-slate-light hover:underline"
+                  >
+                    {t("guestsCancel", lang)}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmBase(true)}
+                  className="text-xs font-medium text-rose-dark hover:underline"
+                >
+                  {t("consentDeskWithdraw", lang)}
+                </button>
+              )}
+            </div>
+            {confirmBase && (
+              <p className="text-xs text-rose-dark">
+                {tf("guestsForgetConfirm", lang, { name: displayName })}
+              </p>
+            )}
+            {tierRow("health", t("guestsConsentHealth", lang), result.consent.health)}
+            {tierRow("marketing", t("guestsConsentMarketing", lang), result.consent.marketing)}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

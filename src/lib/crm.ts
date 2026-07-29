@@ -226,3 +226,45 @@ export async function forgetCrmGuest(accountId: string, guestId: string): Promis
 export async function exportCrmGuest(accountId: string, guestId: string): Promise<unknown> {
   return postCrm({ action: "export", accountId, guestId });
 }
+
+// ---------------------------------------------------------------------------
+// Consent desk — receptionist-and-up. A narrower door than everything above:
+// find a guest by the phone they're calling from, see only their three
+// consent tiers, and withdraw one. No name history, visits, notes, or spend
+// reach this path — see api/_crmCore.ts's authorizeStaff for the boundary.
+// ---------------------------------------------------------------------------
+
+export interface CrmConsentLookup {
+  found: boolean;
+  guestId?: string;
+  name?: string | null;
+  consent?: {
+    base: CrmConsentStamp;
+    health: CrmConsentStamp;
+    marketing: CrmConsentStamp;
+  };
+}
+
+export async function lookupCrmConsentByPhone(accountId: string, phone: string): Promise<CrmConsentLookup> {
+  return postCrm<CrmConsentLookup>({ action: "lookupConsentByPhone", accountId, phone });
+}
+
+// Withdrawal only — there is no matching "grant" call. Granting a tier
+// requires the guest having seen the disclosure copy, which only the kiosk
+// and /checkin show; this desk has no such moment, so it can only turn tiers
+// off. `base: true` erases the whole profile, same as `forgetCrmGuest`.
+export async function withdrawCrmConsent(
+  accountId: string,
+  guestId: string,
+  tiers: { base?: boolean; health?: boolean; marketing?: boolean },
+): Promise<{ ok: boolean; erased: boolean }> {
+  const json = await postCrm<{ ok?: boolean; erased?: boolean }>({
+    action: "withdrawConsent",
+    accountId,
+    guestId,
+    withdrawBase: tiers.base,
+    withdrawHealth: tiers.health,
+    withdrawMarketing: tiers.marketing,
+  });
+  return { ok: json.ok === true, erased: json.erased === true };
+}

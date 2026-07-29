@@ -49,6 +49,10 @@ interface CrmBody {
   consents?: unknown;
   limit?: unknown;
   offset?: unknown;
+  phone?: unknown;
+  withdrawBase?: unknown;
+  withdrawHealth?: unknown;
+  withdrawMarketing?: unknown;
 }
 
 type Headers = Record<string, string>;
@@ -81,6 +85,19 @@ export async function handleCrm(
   }
   const base = env.url.replace(/\/$/, "");
   const svc: Headers = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
+
+  // Two actions run under a lighter bar than everything else here: a guest
+  // calling in to withdraw consent doesn't need a receptionist to see their
+  // visit history, notes, spend, or tags — just enough to find the row by
+  // phone and turn a tier off. Keep this pair authorized separately rather
+  // than widening authorizeManager, so every other action stays manager-only.
+  if (body?.action === "lookupConsentByPhone" || body?.action === "withdrawConsent") {
+    const staffAuth = await authorizeStaff(authorization, body.accountId, base, svc);
+    if (!staffAuth.ok) return staffAuth.result;
+    return body.action === "lookupConsentByPhone"
+      ? lookupConsentByPhone(body, staffAuth.accountId, base, svc, env)
+      : withdrawConsent(body, staffAuth.accountId, base, svc);
+  }
 
   const auth = await authorizeManager(authorization, body?.accountId, base, svc, env);
   if (!auth.ok) return auth.result;
@@ -167,6 +184,53 @@ async function authorizeManager(
     return { ok: false, result: { status: 403, json: { error: "Not authorized for this account's guests." } } };
   }
   return { ok: true, accountId, callerId, callerName };
+}
+
+// ---------------------------------------------------------------------------
+// Authorization — receptionist-and-up, for consent lookup/withdrawal only.
+// ---------------------------------------------------------------------------
+
+type StaffAuth = { ok: true; accountId: string } | { ok: false; result: CrmResult };
+
+async function authorizeStaff(
+  authorization: string | undefined,
+  accountIdRaw: string | undefined,
+  base: string,
+  svc: Headers,
+): Promise<StaffAuth> {
+  const token = (authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return { ok: false, result: { status: 401, json: { error: "Missing authorization." } } };
+
+  const accountId = typeof accountIdRaw === "string" && /^[0-9a-f-]{36}$/i.test(accountIdRaw) ? accountIdRaw : null;
+  if (!accountId) return { ok: false, result: { status: 400, json: { error: "Missing accountId." } } };
+
+  const caller = await getJson(`${base}/auth/v1/user`, {
+    apikey: svc.apikey,
+    Authorization: `Bearer ${token}`,
+  });
+  const callerId = asRecord(caller.body)?.id;
+  if (!caller.ok || typeof callerId !== "string") {
+    return { ok: false, result: { status: 401, json: { error: "Invalid or expired session." } } };
+  }
+
+  const profRows = asArray(
+    (await getJson(`${base}/rest/v1/profiles?select=is_platform_admin&user_id=eq.${callerId}`, svc)).body,
+  );
+  if (profRows[0]?.is_platform_admin) return { ok: true, accountId };
+
+  // "Receptionist and above": owner, manager, or front desk. Deliberately
+  // excludes therapist — nothing about a guest's consent state is a
+  // therapist's task, and widening this list widens who can erase a guest's
+  // entire profile (a base-tier withdrawal), not just who can view it.
+  const mem = await getJson(
+    `${base}/rest/v1/memberships?select=id&user_id=eq.${callerId}` +
+      `&account_id=eq.${accountId}&role=in.(owner,manager,frontdesk)`,
+    svc,
+  );
+  if (asArray(mem.body).length === 0) {
+    return { ok: false, result: { status: 403, json: { error: "Not authorized for this account's guests." } } };
+  }
+  return { ok: true, accountId };
 }
 
 // Every per-guest action re-checks the guest belongs to the authorized account
@@ -653,6 +717,117 @@ async function exportGuest(body: CrmBody, accountId: string, base: string, svc: 
   const full = await getGuest(body, accountId, base, svc);
   if (full.status !== 200) return full;
   return { status: 200, json: { export: full.json, exportedAt: new Date().toISOString() } };
+}
+
+// ---------------------------------------------------------------------------
+// Consent lookup/withdrawal — receptionist-and-up, for a phoned-in request.
+// Deliberately the ONLY narrow window into guest_profiles this endpoint
+// opens below manager level: phone in, consent state and a withdrawal
+// button out, nothing else (no name history, no visits, no notes, no spend).
+// ---------------------------------------------------------------------------
+
+async function lookupConsentByPhone(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
+  if (!env.hashSecret) {
+    return { status: 500, json: { error: "Server not configured: GUEST_HASH_SECRET is missing." } };
+  }
+  const phone = normalizePhone(typeof body.phone === "string" ? body.phone : undefined);
+  if (!phone) return { status: 400, json: { error: "Invalid phone number." } };
+
+  const hash = phoneHash(phone, accountId, env.hashSecret);
+  const rows = asArray(
+    (
+      await getJson(
+        `${base}/rest/v1/guest_profiles?select=id,display_name,consent_version,consent_at,` +
+          `health_consent_version,health_consent_at,marketing_consent_version,marketing_consent_at` +
+          `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        svc,
+      )
+    ).body,
+  );
+  const row = rows[0];
+  if (!row) return { status: 200, json: { found: false } };
+
+  return {
+    status: 200,
+    json: {
+      found: true,
+      guestId: String(row.id),
+      name: typeof row.display_name === "string" ? row.display_name : null,
+      consent: {
+        base: { version: row.consent_version ?? null, at: row.consent_at ?? null },
+        health: { version: row.health_consent_version ?? null, at: row.health_consent_at ?? null },
+        marketing: { version: row.marketing_consent_version ?? null, at: row.marketing_consent_at ?? null },
+      },
+    },
+  };
+}
+
+async function withdrawConsent(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+): Promise<CrmResult> {
+  const guest = await guestInAccount(body.guestId, accountId, base, svc);
+  if (!guest) return { status: 404, json: { error: "Guest not found." } };
+  const guestId = String(guest.id);
+
+  // This action can only WITHDRAW, never grant. Granting a tier requires
+  // showing the guest the disclosure copy first, which only the kiosk and
+  // /checkin do — nothing has been disclosed over a phone call, so there is
+  // no lawful basis to turn a tier ON from here.
+  const withdrawBase = body.withdrawBase === true;
+  const withdrawHealth = body.withdrawHealth === true;
+  const withdrawMarketing = body.withdrawMarketing === true;
+  if (!withdrawBase && !withdrawHealth && !withdrawMarketing) {
+    return { status: 400, json: { error: "Nothing to withdraw." } };
+  }
+
+  if (withdrawBase) {
+    // Base withdrawn is the same act as "Zapomnij gościa" — nothing about the
+    // guest survives without it, so health/marketing flags are moot; FKs
+    // cascade visits/notes/tag assignments the same as forgetGuestById.
+    const del = await fetch(`${base}/rest/v1/guest_profiles?id=eq.${guestId}&account_id=eq.${accountId}`, {
+      method: "DELETE",
+      headers: { ...svc, Prefer: "return=minimal" },
+    });
+    if (!del.ok) return { status: 502, json: { error: `Could not withdraw consent (${del.status}).` } };
+    return { status: 200, json: { ok: true, erased: true } };
+  }
+
+  const patch: JsonRecord = {};
+  if (withdrawHealth) {
+    patch.health_consent_version = null;
+    patch.health_consent_at = null;
+    // Same strip as saveGuest's withdrawal path: the marks/notes cannot
+    // outlive the consent that justified storing them.
+    const prefs = asRecord(guest.preferences);
+    if (prefs) {
+      const { zones: _z, zoneNotes: _zn, generalNote: _gn, ...rest } = prefs;
+      patch.preferences = rest;
+    }
+  }
+  if (withdrawMarketing) {
+    patch.marketing_consent_version = null;
+    patch.marketing_consent_at = null;
+    patch.contact_phone = null;
+    patch.contact_email = null;
+    patch.birthday = null;
+  }
+
+  const res = await fetch(`${base}/rest/v1/guest_profiles?id=eq.${guestId}&account_id=eq.${accountId}`, {
+    method: "PATCH",
+    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) return { status: 502, json: { error: `Could not withdraw consent (${res.status}).` } };
+  return { status: 200, json: { ok: true, erased: false } };
 }
 
 // ---------------------------------------------------------------------------
