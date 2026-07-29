@@ -226,6 +226,7 @@ function AccountRow({ account, onSaved }: { account: Account; onSaved: () => voi
             <span className="font-serif text-lg text-charcoal">{account.name}</span>
             {/* Reflects the saved date, not the edit box above it. */}
             <SubscriptionChip end={account.subscription_end} />
+            <CopyId id={account.id} />
           </div>
           <div className="text-xs text-slate-light">{account.plan ?? "no plan"}</div>
         </div>
