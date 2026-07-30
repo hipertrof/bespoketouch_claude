@@ -28,6 +28,8 @@ import { SurveyReport } from "./components/manage/SurveyReport";
 import { GuestCrmDashboard } from "./components/crm/GuestCrmDashboard";
 import { DesignLab } from "./components/designlab/DesignLab";
 import { CheckinPage } from "./components/checkin/CheckinPage";
+import { PrevisitPage } from "./components/previsit/PrevisitPage";
+import { PrevisitDashboard } from "./components/previsit/PrevisitDashboard";
 
 // Device-pairing gate for the kiosk route. An unpaired tablet gets the
 // activation screen; a paired one runs on the location its token resolves to.
@@ -115,6 +117,12 @@ function App() {
               the code the kiosk shows. Anonymous, no device/auth provider: its
               only credential is the short-lived `c` code in the URL. */}
           <Route path="/checkin" element={<CheckinPage />} />
+          {/* Pre-visit intake link — reached by the GUEST'S OWN device from a
+              link the spa sent them before the appointment. Anonymous like
+              /checkin, but its credential has two parts: the `c` code in the URL
+              and the phone the spa recorded at booking, because unlike a QR on a
+              kiosk screen this link can be forwarded. */}
+          <Route path="/previsit" element={<PrevisitPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/welcome" element={<AcceptInvite />} />
           <Route path="/admin" element={<PlatformAdminDashboard />} />
@@ -125,6 +133,9 @@ function App() {
           <Route path="/reports" element={<SurveyReport />} />
           {/* Guest 360 CRM — manager-and-up; all data flows through /api/crm. */}
           <Route path="/guests" element={<GuestCrmDashboard />} />
+          {/* Planned visits + pre-visit links — front desk and up, all data
+              through /api/previsit. */}
+          <Route path="/upcoming" element={<PrevisitDashboard />} />
           {/* Internal visual lab — static mockups, no data access. */}
           <Route path="/design-lab" element={<DesignLab />} />
         </Routes>

@@ -240,7 +240,10 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
 // null (= all four, the column's own "no restriction" value) as soon as any
 // active service is unrestricted, and also when the location has no services
 // yet — the same permissive default the kiosk falls back to.
-async function fetchOfferedPressureLevels(
+// Exported for api/_previsitCore.ts, which faces the same problem: a pre-visit
+// link is minted before the guest picks anything, so it too can only offer the
+// union across the location.
+export async function fetchOfferedPressureLevels(
   base: string,
   svc: Record<string, string>,
   locationId: string,
@@ -266,7 +269,7 @@ async function fetchOfferedPressureLevels(
 
 // location_settings.comfort for a location, or {} when unset/unreadable — the
 // same "no config = built-in menu" default the client normalizer applies.
-async function fetchComfortConfig(
+export async function fetchComfortConfig(
   base: string,
   svc: Record<string, string>,
   locationId: string,
@@ -287,7 +290,7 @@ async function fetchComfortConfig(
 // each id-valued one. Mirrors stripDisabled()/comfortLabelsFor() in
 // src/lib/comfort.ts — kept dependency-free here rather than shared, like every
 // other duplication between api/ and src/.
-function comfortGate(comfort: JsonRecord): {
+export function comfortGate(comfort: JsonRecord): {
   offers: (key: "oil" | "music" | "pillow" | "tableWarming" | "communication") => boolean;
   labelOf: (key: "oil" | "music" | "pillow", id: string | undefined) => string | undefined;
 } {
@@ -536,7 +539,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
 // the guest set it on a previous visit, falling back to "female" like a fresh
 // kiosk guest; reception corrects it when completing the intake if needed, same
 // as any other field on an incomplete row.
-function toPersonalizationState(
+export function toPersonalizationState(
   prefs: StoredPreferencesV1,
   gate: ReturnType<typeof comfortGate>,
 ): JsonRecord {
@@ -582,7 +585,7 @@ function checkConfig(env: CheckinEnv): CheckinResult | null {
   return null;
 }
 
-function sha256(input: string): string {
+export function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 

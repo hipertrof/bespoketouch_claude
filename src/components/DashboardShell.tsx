@@ -20,6 +20,7 @@ import { Button } from "./Button";
 
 const NAV_ITEMS = [
   { to: "/queue", labelKey: "queueNav" },
+  { to: "/upcoming", labelKey: "upcomingNav" },
   { to: "/manage", labelKey: "offer" },
   { to: "/staff", labelKey: "staffNav" },
   { to: "/kiosks", labelKey: "kiosksNav" },
@@ -43,13 +44,19 @@ export function DashboardShell({
 
   // Managers/owners/platform-admins get the full account nav; a pure therapist
   // only has the queue. Front desk additionally gets /guests, cut down to the
-  // consent desk there (GuestCrmDashboard branches on canManage) — this is
-  // the only nav item that isn't all-or-nothing with canManage. Platform
-  // admins additionally get a link back to /admin, which otherwise has no
-  // inbound route from the account screens.
+  // consent desk there (GuestCrmDashboard branches on canManage), and
+  // /upcoming, since the receptionist taking a booking is the person who needs
+  // to create a pre-visit link — these are the only nav items that aren't
+  // all-or-nothing with canManage. Platform admins additionally get a link back
+  // to /admin, which otherwise has no inbound route from the account screens.
   const navItems = canManage
     ? NAV_ITEMS
-    : NAV_ITEMS.filter((i) => i.to === "/queue" || (i.to === "/guests" && isFrontDesk));
+    : NAV_ITEMS.filter(
+        (i) =>
+          i.to === "/queue" ||
+          (i.to === "/guests" && isFrontDesk) ||
+          (i.to === "/upcoming" && isFrontDesk),
+      );
   const items = isPlatformAdmin
     ? [...navItems, { to: "/admin", labelKey: "adminNav" as const }]
     : navItems;

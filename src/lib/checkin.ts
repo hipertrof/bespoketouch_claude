@@ -1,7 +1,45 @@
 import type { StoredPreferences } from "./guestProfile";
-import { normalizeComfort, type ComfortConfig } from "./comfort";
-import { ALL_PRESSURE_LEVELS } from "./catalog";
+import {
+  clampComfortId,
+  normalizeComfort,
+  COMFORT_LIST_SECTIONS,
+  type ComfortConfig,
+} from "./comfort";
+import { ALL_PRESSURE_LEVELS, nearestPressure } from "./catalog";
 import type { PressureLevel } from "../types";
+
+// ---------------------------------------------------------------------------
+// Shared by both guest-facing link pages (/checkin and /previsit)
+// ---------------------------------------------------------------------------
+
+// Snap the stored preferences onto what this location offers now — the
+// phone-side counterpart of the kiosk's clamps in PreferencesStep. Comfort
+// fields for disabled sections are left as-is; the server drops them on save.
+export function clampStoredToOffer(
+  prefs: StoredPreferences,
+  comfort: ComfortConfig,
+  pressureLevels: PressureLevel[],
+): StoredPreferences {
+  const field = { oil: "oilId", music: "music", pillow: "headrestPillow" } as const;
+  const next = { ...prefs };
+  for (const key of COMFORT_LIST_SECTIONS) {
+    const current = next[field[key]];
+    const fix = clampComfortId(comfort[key], current ?? "");
+    if (fix) next[field[key]] = fix;
+  }
+  const pressureFix = nearestPressure(next.pressure ?? "Średni", pressureLevels);
+  if (pressureFix) next.pressure = pressureFix;
+  return next;
+}
+
+// A credential error surfaces as a fixed set of server strings (resolveCode in
+// api/_checkinCore.ts, resolveLink in api/_previsitCore.ts) — never localized
+// copy of its own, since they only ever reach an anonymous guest through these
+// two screens. Map them onto a single "the link no longer works" state rather
+// than showing raw English.
+export function isCodeError(message: string): boolean {
+  return /code/i.test(message) || /link/i.test(message) || /attempts/i.test(message);
+}
 
 // ---------------------------------------------------------------------------
 // Client wrappers for /api/checkin — the QR self-check-in flow. mintCheckinCode

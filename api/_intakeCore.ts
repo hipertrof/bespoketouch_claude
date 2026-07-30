@@ -242,7 +242,10 @@ async function writeGuestVisits(
 // TreatmentSnapshot carries nameI18n (all languages); fall back to a plain
 // name field if a future shape simplifies. Polish first — it is the product's
 // home locale and the dashboard default.
-function pickTreatmentName(sel: Record<string, unknown> | null): string | null {
+// Exported for api/_previsitCore.ts, the other writer of guest_visits rows:
+// both must resolve a treatment name the same way or the CRM's visit history
+// reads inconsistently depending on which path checked the guest in.
+export function pickTreatmentName(sel: Record<string, unknown> | null): string | null {
   if (!sel) return null;
   const i18n = asRecord(sel.nameI18n);
   if (i18n) {
