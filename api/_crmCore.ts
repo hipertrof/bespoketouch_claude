@@ -59,6 +59,9 @@ interface CrmBody {
   withdrawBase?: unknown;
   withdrawHealth?: unknown;
   withdrawMarketing?: unknown;
+  refusalGround?: unknown;
+  refusalReason?: unknown;
+  channel?: unknown;
 }
 
 type Headers = Record<string, string>;
@@ -92,17 +95,32 @@ export async function handleCrm(
   const base = env.url.replace(/\/$/, "");
   const svc: Headers = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` };
 
-  // Two actions run under a lighter bar than everything else here: a guest
+  // Three actions run under a lighter bar than everything else here: a guest
   // calling in to withdraw consent doesn't need a receptionist to see their
   // visit history, notes, spend, or tags — just enough to find the row by
-  // phone and turn a tier off. Keep this pair authorized separately rather
+  // phone and turn a tier off. Keep this group authorized separately rather
   // than widening authorizeManager, so every other action stays manager-only.
-  if (body?.action === "lookupConsentByPhone" || body?.action === "withdrawConsent") {
+  //
+  // recordRefusal joins them deliberately. Deciding to refuse an erasure is a
+  // controller call that in most spas a manager makes — but the ALTERNATIVE to
+  // letting front desk record it is that a refusal taken on a phone call goes
+  // unrecorded, which is the exact hole this feature closes. Recording is not
+  // deciding, and executed_by/executed_by_name capture who actually made the
+  // call either way.
+  if (
+    body?.action === "lookupConsentByPhone" ||
+    body?.action === "withdrawConsent" ||
+    body?.action === "recordRefusal"
+  ) {
     const staffAuth = await authorizeStaff(authorization, body.accountId, base, svc);
     if (!staffAuth.ok) return staffAuth.result;
-    return body.action === "lookupConsentByPhone"
-      ? lookupConsentByPhone(body, staffAuth.accountId, base, svc, env)
-      : withdrawConsent(body, staffAuth.accountId, staffAuth.callerId, staffAuth.callerName, base, svc);
+    if (body.action === "lookupConsentByPhone") {
+      return lookupConsentByPhone(body, staffAuth.accountId, base, svc, env);
+    }
+    if (body.action === "recordRefusal") {
+      return recordRefusal(body, staffAuth.accountId, staffAuth.callerId, staffAuth.callerName, base, svc);
+    }
+    return withdrawConsent(body, staffAuth.accountId, staffAuth.callerId, staffAuth.callerName, base, svc);
   }
 
   const auth = await authorizeManager(authorization, body?.accountId, base, svc, env);
@@ -900,6 +918,86 @@ async function withdrawConsent(
   });
   if (withdrawMarketing) await suppressContact(base, svc, accountId, subjectRef, "marketing_withdrawal");
   return { status: 200, json: { ok: true, erased: false, logged } };
+}
+
+// ---------------------------------------------------------------------------
+// Refused erasure request (Art. 17(3))
+// ---------------------------------------------------------------------------
+// The one action in this file that changes NO guest data. A guest asked to be
+// erased, the spa lawfully declined, and without this the refusal left no trace
+// at all — the log only ever held things that DID happen.
+//
+// Only a whole-profile erasure can be refused. Withdrawing health or marketing
+// consent is Art. 7(3), which says withdrawal must be as easy as granting and
+// gives no ground to decline it; the Art. 17(3) exemptions apply to erasure of
+// the record itself. So there is deliberately no per-tier refusal here — that
+// would model something unlawful. A spa refusing the profile while honouring a
+// marketing withdrawal does both actions and gets two rows, which is the more
+// accurate account anyway.
+
+// Fixed prose for retained_under_exemption, same idiom as identityVerification:
+// the free text goes in refusal_reason, the legal ground stays a closed set so
+// a regulator reads the same sentence every time.
+const REFUSAL_GROUNDS: Record<string, string> = {
+  legal_obligation:
+    "Art. 17(3)(b) — retention required by law (e.g. Polish invoice retention, 5 years from the end of the tax year)",
+  legal_claims: "Art. 17(3)(e) — establishment, exercise or defence of legal claims",
+  contract: "Art. 17(1)(a) not met — data still necessary for an ongoing contract or booking",
+  other: "Controller decision — see refusal_reason",
+};
+
+async function recordRefusal(
+  body: CrmBody,
+  accountId: string,
+  callerId: string,
+  callerName: string,
+  base: string,
+  svc: Headers,
+): Promise<CrmResult> {
+  const ground = typeof body.refusalGround === "string" ? body.refusalGround : "";
+  const exemption = REFUSAL_GROUNDS[ground];
+  if (!exemption) return { status: 400, json: { error: "Unknown refusal ground." } };
+
+  const reason = typeof body.refusalReason === "string" ? body.refusalReason.trim() : "";
+  if (!reason) return { status: 400, json: { error: "A refusal needs a reason." } };
+  if (reason.length > MAX_NOTE_CHARS) {
+    return { status: 400, json: { error: `Reason is too long (max ${MAX_NOTE_CHARS}).` } };
+  }
+
+  // Which screen the staffer used. Descriptive metadata, not a security
+  // boundary — both callers are already through the same authorizeStaff gate.
+  const channel = body.channel === "consent_desk" ? "consent_desk" : "dashboard";
+
+  const guest = await guestInAccount(body.guestId, accountId, base, svc);
+  if (!guest) return { status: 404, json: { error: "Guest not found." } };
+  const subjectRef = typeof guest.phone_hash === "string" ? guest.phone_hash : "";
+
+  // NOTE: _erasureLog.ts's rule is "record AFTER the write succeeds", because a
+  // record must attest to something that happened rather than something
+  // intended. There is no write to sequence after here — the thing that
+  // happened is the controller's decision, and this call IS the whole
+  // operation. Hence `logged` is the real result, not a receipt on a completed
+  // act, and the caller surfaces a failure as a failure.
+  const logged = await recordErasure(base, svc, {
+    accountId,
+    subjectRef,
+    channel,
+    identityVerification:
+      channel === "consent_desk"
+        ? "Phone call to reception, guest identified by the number given and matched on phone_hash"
+        : "Staff-initiated in the guest dashboard against an identified guest record",
+    // What was ASKED for and not done.
+    scope: FULL_SCOPE,
+    outcome: "refused",
+    refusalReason: reason,
+    retainedUnderExemption: exemption,
+    executedBy: callerId,
+    executedByName: callerName,
+  });
+
+  // Deliberately no suppressContact: nothing was erased, and refusing an
+  // erasure is not an objection to being contacted.
+  return { status: 200, json: { ok: true, logged } };
 }
 
 // ---------------------------------------------------------------------------

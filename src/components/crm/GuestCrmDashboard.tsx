@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Download, Plus, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Download, FileText, Plus, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -17,6 +17,7 @@ import {
   listCrmGuests,
   listCrmTags,
   lookupCrmConsentByPhone,
+  recordCrmRefusal,
   unassignCrmTag,
   withdrawCrmConsent,
   type CrmConsent,
@@ -24,6 +25,7 @@ import {
   type CrmFilters,
   type CrmGuestDetail,
   type CrmGuestListItem,
+  type CrmRefusalGround,
   type CrmSegment,
   type CrmSort,
   type CrmTag,
@@ -874,9 +876,154 @@ function ConsentDesk({ accountId, lang }: { accountId: string; lang: Lang }) {
             {tierRow("health", t("guestsConsentHealth", lang), result.consent.health)}
             {tierRow("marketing", t("guestsConsentMarketing", lang), result.consent.marketing)}
           </div>
+          {/* Only a whole-profile erasure can be refused — a tier withdrawal is
+              Art. 7(3) and cannot be declined — so this sits below the rows
+              rather than inside one. */}
+          {result.guestId && (
+            <div className="mt-4 border-t border-sand pt-4">
+              <RefusalForm
+                accountId={accountId}
+                guestId={result.guestId}
+                displayName={displayName}
+                channel="consent_desk"
+                lang={lang}
+                onDone={(msg) => {
+                  setErrorMsg(null);
+                  setDone(msg);
+                }}
+                onError={setErrorMsg}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// Records a REFUSED erasure request (Art. 17(3)). Shared by both surfaces —
+// the manager's RODO card and the front desk's consent desk — so the copy,
+// the grounds list and the validation cannot drift between them; only the
+// `channel` differs, and the server decides what that means.
+//
+// This is the one control in the CRM that changes no guest data. It is
+// therefore styled neutral rather than rose: the RODO card groups its controls
+// by risk, and refusing is not a destructive act. What it writes is one
+// erasure_log row, which is also why a failed write is surfaced as a failure
+// rather than swallowed — there is no other outcome to fall back on.
+const REFUSAL_GROUNDS: { value: CrmRefusalGround; key: string }[] = [
+  { value: "legal_obligation", key: "erasureGroundLegalObligation" },
+  { value: "legal_claims", key: "erasureGroundLegalClaims" },
+  { value: "contract", key: "erasureGroundContract" },
+  { value: "other", key: "erasureGroundOther" },
+];
+
+function RefusalForm({
+  accountId,
+  guestId,
+  displayName,
+  channel,
+  lang,
+  onDone,
+  onError,
+}: {
+  accountId: string;
+  guestId: string;
+  displayName: string;
+  channel: "dashboard" | "consent_desk";
+  lang: Lang;
+  onDone: (msg: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [ground, setGround] = useState<CrmRefusalGround>("legal_obligation");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!reason.trim()) return;
+    setBusy(true);
+    try {
+      const { logged } = await recordCrmRefusal(accountId, guestId, {
+        ground,
+        reason: reason.trim(),
+        channel,
+      });
+      if (!logged) {
+        // The log write IS the operation here, so a failure leaves nothing
+        // behind and the staffer has to fall back to their own paperwork.
+        onError(t("erasureRefuseNotLogged", lang));
+        return;
+      }
+      setOpen(false);
+      setReason("");
+      onDone(tf("erasureRefuseDone", lang, { name: displayName }));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sand px-3 text-sm font-medium text-slate transition-colors hover:bg-oatmeal/40"
+      >
+        <FileText size={16} />
+        {t("erasureRefuse", lang)}
+      </button>
+      {open && (
+        <div className="mt-4 w-full rounded-xl border border-sand bg-oatmeal/30 p-4">
+          <h4 className="mb-1 text-sm font-semibold text-charcoal">{t("erasureRefuseTitle", lang)}</h4>
+          <p className="mb-4 text-xs text-slate">{t("erasureRefuseIntro", lang)}</p>
+
+          <label htmlFor="crmRefusalGround" className="mb-1.5 block text-xs font-semibold text-charcoal">
+            {t("erasureRefuseGround", lang)}
+          </label>
+          <select
+            id="crmRefusalGround"
+            value={ground}
+            onChange={(e) => setGround(e.target.value as CrmRefusalGround)}
+            className="mb-4 min-h-10 w-full rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
+          >
+            {REFUSAL_GROUNDS.map((g) => (
+              <option key={g.value} value={g.value}>
+                {t(g.key, lang)}
+              </option>
+            ))}
+          </select>
+
+          <label htmlFor="crmRefusalReason" className="mb-1.5 block text-xs font-semibold text-charcoal">
+            {t("erasureRefuseReason", lang)}
+          </label>
+          <textarea
+            id="crmRefusalReason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            placeholder={t("erasureRefusePlaceholder", lang)}
+            className="mb-3 w-full rounded-xl border border-sand bg-white p-3 text-sm text-charcoal outline-none focus:border-clay"
+          />
+
+          {/* The app cannot send anything, and Art. 12(4) still requires the
+              guest to be told. Saying so here beats a silent gap. */}
+          <p className="mb-4 text-xs text-slate-light">{t("erasureRefuseHint", lang)}</p>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={submit} disabled={busy || !reason.trim()}>
+              {t("erasureRefuseSubmit", lang)}
+            </Button>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              {t("guestsCancel", lang)}
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1353,6 +1500,17 @@ function GuestDetailPanel({
             <Trash2 size={16} />
             {t("guestsForget", lang)}
           </button>
+          {/* Neutral by design: refusing changes nothing, so it must not read
+              as destructive next to the erasure it declines. */}
+          <RefusalForm
+            accountId={accountId}
+            guestId={guestId}
+            displayName={displayName}
+            channel="dashboard"
+            lang={lang}
+            onDone={onFlash}
+            onError={setActionError}
+          />
         </div>
         {showForget && (
           <div className="mt-4 rounded-xl border border-rose-dark/40 bg-white p-4">

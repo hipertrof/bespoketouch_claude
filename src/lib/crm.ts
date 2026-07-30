@@ -269,3 +269,32 @@ export async function withdrawCrmConsent(
   });
   return { ok: json.ok === true, erased: json.erased === true };
 }
+
+// ---------------------------------------------------------------------------
+// Refused erasure request (Art. 17(3))
+// ---------------------------------------------------------------------------
+
+// The legal ground the spa is relying on. Closed set — the server maps each to
+// a fixed sentence in erasure_log.retained_under_exemption, so the free-text
+// reason carries the specifics and never the law.
+export type CrmRefusalGround = "legal_obligation" | "legal_claims" | "contract" | "other";
+
+// Changes NO guest data — it writes one erasure_log row and nothing else.
+// Unlike every other call here, `logged` is therefore the whole result rather
+// than a receipt on something already done: logged === false means the refusal
+// was NOT recorded and the staffer has to note it elsewhere.
+export async function recordCrmRefusal(
+  accountId: string,
+  guestId: string,
+  opts: { ground: CrmRefusalGround; reason: string; channel: "dashboard" | "consent_desk" },
+): Promise<{ ok: boolean; logged: boolean }> {
+  const json = await postCrm<{ ok?: boolean; logged?: boolean }>({
+    action: "recordRefusal",
+    accountId,
+    guestId,
+    refusalGround: opts.ground,
+    refusalReason: opts.reason,
+    channel: opts.channel,
+  });
+  return { ok: json.ok === true, logged: json.logged === true };
+}

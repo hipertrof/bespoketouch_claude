@@ -54,18 +54,29 @@ export interface ErasureEntry {
   subjectRef: string;
   channel: ErasureChannel;
   identityVerification: string;
+  // For a refusal this is what was REQUESTED and not done, not what was erased.
   scope: ErasureScope[];
-  outcome?: "completed" | "partial";
+  outcome?: "completed" | "partial" | "refused";
   executedBy?: string | null;
   executedByName?: string | null;
   executedBySystem?: string | null;
   retainedUnderExemption?: string | null;
+  // Only meaningful with outcome 'refused': why the controller turned the
+  // request down. Regulators scrutinise refusals harder than clean erasures,
+  // so "declined under Art. 17(3)(b), invoice 2026/114 unpaid" is the answer
+  // this column exists to be able to give.
+  refusalReason?: string | null;
 }
 
 // Best effort. Never throws. Returns false when the record could not be
 // written — the caller may surface that, but must not undo the erasure.
 export async function recordErasure(base: string, svc: Headers, entry: ErasureEntry): Promise<boolean> {
   if (!entry.accountId || !entry.subjectRef) return false;
+  const outcome = entry.outcome ?? "completed";
+  // A refused request erased nothing, so two fields that are honest for every
+  // other outcome would be lies here: nothing was COMPLETED, and no recipient
+  // was notified under Art. 19 because there was nothing to notify them of.
+  const refused = outcome === "refused";
   const now = new Date().toISOString();
   try {
     const res = await fetch(`${base}/rest/v1/erasure_log`, {
@@ -77,15 +88,16 @@ export async function recordErasure(base: string, svc: Headers, entry: ErasureEn
         request_channel: entry.channel,
         identity_verification_method: entry.identityVerification,
         scope: entry.scope,
-        outcome: entry.outcome ?? "completed",
+        outcome,
+        refusal_reason: entry.refusalReason ?? null,
         retained_under_exemption: entry.retainedUnderExemption ?? null,
         // Stamped server-side, like every consent version — a caller cannot
         // backdate its own compliance.
-        completed_at: now,
+        completed_at: refused ? null : now,
         executed_by: entry.executedBy ?? null,
         executed_by_name: entry.executedByName ?? null,
         executed_by_system: entry.executedBySystem ?? null,
-        recipients_notified: ERASURE_RECIPIENTS,
+        recipients_notified: refused ? null : ERASURE_RECIPIENTS,
       }),
     });
     return res.ok;

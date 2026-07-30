@@ -40,6 +40,9 @@ Six paths delete or cut back a guest record. All six now write to `erasure_log`.
 | QR page on the guest's own phone | The guest, using a one-time code | Whole profile, or one tier | `channel='checkin'` |
 | 540 days without a visit | Nobody — automatic | The whole profile | `channel='retention'` |
 
+A seventh route erases nothing: a request the spa **refuses** (section 7) is recorded from the guest panel
+or the consent desk as `outcome='refused'`, leaving the guest's data untouched.
+
 Deleting the profile deletes everything hanging off it: visit history, staff notes and tag assignments all
 cascade. Survey answers survive but lose their link to the person, so they revert to anonymous rather than
 being destroyed.
@@ -170,9 +173,29 @@ the spa's call as controller. When the spa makes that call, it is recorded in
 Regulators pay more attention to these than to clean ones. "We declined it on 4 March under Art. 17(3)(b)
 because of an outstanding invoice" is a far better answer than "we have no record of that request".
 
-The `outcome` column already allows `refused`, and `refusal_reason` is there to hold the explanation, but
-**nothing writes them yet** — there is no form for recording a request that was turned down. Until that
-ships, the spa must keep refusals in its own paperwork. This is a known gap, not an oversight.
+A refusal is recorded from the same two screens the erasure itself runs from: the guest panel on `/guests`
+for a manager, and the consent desk for reception. Nothing about the guest changes — the form writes one
+`erasure_log` row with `outcome='refused'`, the free-text explanation in `refusal_reason`, and the legal
+ground in `retained_under_exemption`, chosen from a closed list:
+
+| Ground | Recorded as |
+|---|---|
+| An invoice or other legal retention duty | Art. 17(3)(b) |
+| A claim being brought or defended | Art. 17(3)(e) |
+| An ongoing contract or booking | Art. 17(1)(a) not met |
+| Anything else | Controller decision, see `refusal_reason` |
+
+Because nothing was erased, two fields are deliberately left empty on these rows: `completed_at` (nothing
+completed) and `recipients_notified` (no processor was told, because there was nothing to tell them). The
+`scope` records what was **asked for** and not done.
+
+**Only a full erasure can be refused.** Withdrawing health or marketing consent is Art. 7(3) — withdrawal
+must be as easy as granting it, and there is no ground to decline — so the form has no per-tier option. A
+spa refusing the profile while honouring a marketing withdrawal does both, and gets two records.
+
+**One thing the app still cannot do: tell the guest.** Art. 12(4) requires informing them within a month
+that the request was refused, and of their right to complain to UODO and to go to court. BespokeTouch sends
+no messages, so this is on the spa. The form says so on screen rather than leaving it implied.
 
 ---
 
@@ -218,6 +241,9 @@ Stated plainly so none of it reads as an oversight:
 
 - **No screen for the spa to read or download the erasure record.** It is written, indexed and correct, but
   reaching it today means a database query. Until the export ships, producing the record for UODO needs
-  BespokeTouch's help — which is the opposite of what section 1 says should be true.
-- **No form for recording a refused or partial request** (section 7).
+  BespokeTouch's help — which is the opposite of what section 1 says should be true. This is now the last
+  thing standing between the log and being genuinely tenant-facing: refusals are captured (section 7), but
+  nobody at the spa can read back anything the log holds.
+- **No outbound message to the guest.** Neither an erasure confirmation nor a refusal notice is sent from
+  the product; both are the spa's job today (sections 4 and 7).
 - **The Fully Kiosk cache has not been audited** (section 6).
