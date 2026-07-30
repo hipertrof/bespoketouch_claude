@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Download, FileText, Plus, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Download, FileText, Plus, ScrollText, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -10,10 +10,12 @@ import {
   createCrmTag,
   deleteCrmNote,
   deleteCrmTag,
+  exportCrmErasures,
   exportCrmGuest,
   exportCrmGuestList,
   forgetCrmGuest,
   getCrmGuest,
+  listCrmErasures,
   listCrmGuests,
   listCrmTags,
   lookupCrmConsentByPhone,
@@ -22,6 +24,8 @@ import {
   withdrawCrmConsent,
   type CrmConsent,
   type CrmConsentLookup,
+  type CrmErasureEntry,
+  type CrmErasureFilters,
   type CrmFilters,
   type CrmGuestDetail,
   type CrmGuestListItem,
@@ -426,6 +430,12 @@ export function GuestCrmDashboard() {
         />
       ) : (
         <>
+          {/* Sits ABOVE the guest list, not inside it: the register is about
+              people who are gone, and burying a compliance record a manager
+              reaches for under regulator pressure behind the browsing UI is
+              exactly how it fails to be found. */}
+          <ErasureRegister accountId={accountId} lang={lang} />
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -1024,6 +1034,318 @@ function RefusalForm({
         </div>
       )}
     </>
+  );
+}
+
+// The spa's own Art. 5(2) accountability record, readable at last. 0030 wrote
+// erasure_log with no way to read it back, which meant producing the register
+// for UODO needed OUR help — the opposite of the controller/processor split
+// the policy document asserts.
+//
+// Stays pseudonymous on purpose: `reference` is a truncated one-way hash, and
+// finding one person's entry means SEARCHING their phone, which is hashed
+// server-side. That is not a limitation worked around — Art. 5(1)(c) and
+// Art. 32 both favour it, and Art. 5(2) asks for proof the process ran, not a
+// readable list of who asked.
+const ERASURE_CHANNEL_KEYS: Record<string, string> = {
+  dashboard: "erasureChannelDashboard",
+  consent_desk: "erasureChannelConsentDesk",
+  kiosk: "erasureChannelKiosk",
+  checkin: "erasureChannelCheckin",
+  retention: "erasureChannelRetention",
+  previsit: "erasureChannelPrevisit",
+};
+
+const ERASURE_OUTCOME_KEYS: Record<string, string> = {
+  completed: "erasureOutcomeCompleted",
+  partial: "erasureOutcomePartial",
+  refused: "erasureOutcomeRefused",
+};
+
+const ERASURE_OUTCOMES = ["completed", "partial", "refused"] as const;
+
+function erasureChannelLabel(v: string | null, lang: Lang): string {
+  const key = v ? ERASURE_CHANNEL_KEYS[v] : undefined;
+  return key ? t(key, lang) : (v ?? "—");
+}
+
+function erasureOutcomeLabel(v: string | null, lang: Lang): string {
+  const key = v ? ERASURE_OUTCOME_KEYS[v] : undefined;
+  return key ? t(key, lang) : (v ?? "—");
+}
+
+// A full erasure gets one readable phrase; anything narrower prints the raw
+// scope tokens, which are the column names an auditor would be reconciling
+// against anyway.
+function erasureScopeLabel(scope: string[], lang: Lang): string {
+  if (scope.length === 0) return "—";
+  if (scope.length >= 7) return t("erasureScopeAll", lang);
+  return scope.join(", ");
+}
+
+function ErasureRegister({ accountId, lang }: { accountId: string; lang: Lang }) {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [phone, setPhone] = useState("");
+  const [entries, setEntries] = useState<CrmErasureEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [capped, setCapped] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const filters = useCallback(
+    (): CrmErasureFilters => ({
+      from: from || undefined,
+      to: to || undefined,
+      outcome: outcome || undefined,
+      phone: phone.trim() || undefined,
+    }),
+    [from, to, outcome, phone],
+  );
+
+  const load = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await listCrmErasures(accountId, filters(), 200, 0);
+      setEntries(res.entries);
+      setTotal(res.total);
+      setCapped(res.capped);
+      setLoaded(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openPanel = () => {
+    setOpen((v) => !v);
+    if (!loaded) void load();
+  };
+
+  const handleExport = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { entries: rows } = await exportCrmErasures(accountId, filters());
+      const header = [
+        t("erasureColDate", lang),
+        t("erasureColReference", lang),
+        t("erasureColChannel", lang),
+        t("erasureRegisterOutcome", lang),
+        t("erasureColScope", lang),
+        t("erasureColVerification", lang),
+        t("erasureColExecutedBy", lang),
+        t("erasureColCompletedAt", lang),
+        t("erasureColExemption", lang),
+        t("erasureRefuseReason", lang),
+        t("erasureColRecipients", lang),
+      ];
+      const body = rows.map((r) => [
+        r.receivedAt ?? "",
+        r.reference,
+        erasureChannelLabel(r.channel, lang),
+        erasureOutcomeLabel(r.outcome, lang),
+        r.scope.join(", "),
+        r.identityVerification ?? "",
+        r.executedBy ?? (r.executedBySystem ? `${t("erasureSystemActor", lang)} (${r.executedBySystem})` : ""),
+        r.completedAt ?? "",
+        r.retainedUnderExemption ?? "",
+        r.refusalReason ?? "",
+        (r.recipientsNotified ?? []).join(", "),
+      ]);
+      const url = URL.createObjectURL(
+        new Blob([toCsv([header, ...body])], { type: "text/csv;charset=utf-8" }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `rejestr-usuniec-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-5">
+      <button
+        onClick={openPanel}
+        aria-expanded={open}
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sand bg-white px-3 text-sm font-medium text-charcoal transition-colors hover:border-clay"
+      >
+        <ScrollText size={16} className="text-slate-light" />
+        {t("erasureRegister", lang)}
+      </button>
+
+      {open && (
+        <div className="mt-3 rounded-2xl border border-sand bg-white p-5 shadow-soft">
+          <p className="mb-4 max-w-3xl text-xs text-slate">{t("erasureRegisterIntro", lang)}</p>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load();
+            }}
+            className="mb-4 flex flex-wrap items-end gap-2"
+          >
+            <div>
+              <label htmlFor="eraseFrom" className="mb-1.5 block text-xs font-semibold text-slate">
+                {t("erasureRegisterFrom", lang)}
+              </label>
+              <input
+                id="eraseFrom"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="min-h-10 rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
+              />
+            </div>
+            <div>
+              <label htmlFor="eraseTo" className="mb-1.5 block text-xs font-semibold text-slate">
+                {t("erasureRegisterTo", lang)}
+              </label>
+              <input
+                id="eraseTo"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="min-h-10 rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
+              />
+            </div>
+            <div>
+              <label htmlFor="eraseOutcome" className="mb-1.5 block text-xs font-semibold text-slate">
+                {t("erasureRegisterOutcome", lang)}
+              </label>
+              <select
+                id="eraseOutcome"
+                value={outcome}
+                onChange={(e) => setOutcome(e.target.value)}
+                className="min-h-10 rounded-xl border border-sand bg-white px-3 text-sm text-charcoal"
+              >
+                <option value="">{t("erasureRegisterAllOutcomes", lang)}</option>
+                {ERASURE_OUTCOMES.map((o) => (
+                  <option key={o} value={o}>
+                    {t(ERASURE_OUTCOME_KEYS[o], lang)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="erasePhone" className="mb-1.5 block text-xs font-semibold text-slate">
+                {t("erasureRegisterPhone", lang)}
+              </label>
+              <input
+                id="erasePhone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="min-h-10 w-48 rounded-xl border border-sand bg-white px-3 text-sm text-charcoal outline-none focus:border-clay"
+              />
+            </div>
+            <Button type="submit" variant="secondary" disabled={busy}>
+              {t("erasureRegisterApply", lang)}
+            </Button>
+            {(from || to || outcome || phone) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFrom("");
+                  setTo("");
+                  setOutcome("");
+                  setPhone("");
+                }}
+                className="min-h-10 text-xs text-slate-light hover:underline"
+              >
+                {t("erasureRegisterClear", lang)}
+              </button>
+            )}
+          </form>
+
+          {error && (
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-dark/40 bg-white px-4 py-3">
+              <p className="text-sm text-rose-dark">{error}</p>
+              <button onClick={() => setError(null)} className="text-xs text-rose-dark hover:underline">
+                {t("guestsDismiss", lang)}
+              </button>
+            </div>
+          )}
+
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sand/60 pb-3">
+            <p className="text-sm text-slate">{tf("erasureRegisterCount", lang, { count: String(total) })}</p>
+            {capped && <p className="text-xs text-slate-light">{t("erasureRegisterCapped", lang)}</p>}
+            {total > 0 && (
+              <button
+                onClick={handleExport}
+                disabled={busy}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-sand bg-white px-3 py-1.5 text-sm text-charcoal transition-colors hover:border-clay disabled:opacity-50"
+              >
+                <Download size={14} />
+                {t("erasureRegisterExport", lang)}
+              </button>
+            )}
+          </div>
+
+          {busy && entries.length === 0 ? (
+            <p className="text-slate">{t("loading", lang)}</p>
+          ) : entries.length === 0 ? (
+            <p className="text-slate">{t("erasureRegisterEmpty", lang)}</p>
+          ) : (
+            // Horizontally scrollable rather than wrapped: a register is read
+            // column-by-column, and reflowing it into cards loses that.
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[54rem] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-sand text-left text-xs font-semibold uppercase tracking-wide text-slate-light">
+                    <th className="py-2 pr-3 font-semibold">{t("erasureColDate", lang)}</th>
+                    <th className="py-2 pr-3 font-semibold">{t("erasureColReference", lang)}</th>
+                    <th className="py-2 pr-3 font-semibold">{t("erasureColChannel", lang)}</th>
+                    <th className="py-2 pr-3 font-semibold">{t("erasureRegisterOutcome", lang)}</th>
+                    <th className="py-2 pr-3 font-semibold">{t("erasureColScope", lang)}</th>
+                    <th className="py-2 font-semibold">{t("erasureColExecutedBy", lang)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((e, i) => (
+                    <tr key={`${e.reference}-${e.receivedAt}-${i}`} className="border-b border-sand/50 align-top">
+                      <td className="py-2.5 pr-3 whitespace-nowrap text-charcoal">{fmtDate(e.receivedAt, lang)}</td>
+                      <td className="py-2.5 pr-3 font-mono text-xs text-slate-light">{e.reference}</td>
+                      <td className="py-2.5 pr-3 text-slate">{erasureChannelLabel(e.channel, lang)}</td>
+                      <td className="py-2.5 pr-3">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            e.outcome === "refused"
+                              ? "bg-rose-dark/10 text-rose-dark"
+                              : e.outcome === "partial"
+                                ? "bg-oatmeal text-slate"
+                                : "bg-sage-tint text-sage-dark"
+                          }`}
+                        >
+                          {erasureOutcomeLabel(e.outcome, lang)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3 text-slate">{erasureScopeLabel(e.scope, lang)}</td>
+                      <td className="py-2.5 text-slate">
+                        {e.executedBy ??
+                          (e.executedBySystem
+                            ? `${t("erasureSystemActor", lang)} (${e.executedBySystem})`
+                            : "—")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

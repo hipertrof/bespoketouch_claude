@@ -62,6 +62,9 @@ interface CrmBody {
   refusalGround?: unknown;
   refusalReason?: unknown;
   channel?: unknown;
+  from?: unknown;
+  to?: unknown;
+  outcome?: unknown;
 }
 
 type Headers = Record<string, string>;
@@ -83,6 +86,18 @@ const MAX_SCAN = 1000;
 const REGULAR_MIN_VISITS = 3;
 const NEW_MAX_VISITS = 1;
 const LAPSED_DAYS = 90;
+
+// The erasure register is small by nature — a spa erases a handful of guests a
+// year, and the log self-purges at 3 years — but the cap keeps a pathological
+// account from timing the function out, and `capped` tells the UI to say so
+// rather than under-report silently (the listGuests idiom).
+const MAX_ERASURE_SCAN = 2000;
+// How much of the phone_hash is shown. Enough to tell rows apart and to see at
+// a glance that two records concern the same person; short enough that the
+// export is not a file of full pseudonyms. The full value never leaves here —
+// matching a record to a person is done by SEARCHING a phone, which hashes
+// server-side, not by reading the reference.
+const SUBJECT_REF_PREVIEW = 16;
 
 export async function handleCrm(
   authorization: string | undefined,
@@ -154,6 +169,10 @@ export async function handleCrm(
       return forgetGuestById(body, accountId, callerId, callerName, base, svc);
     case "export":
       return exportGuest(body, accountId, base, svc);
+    case "listErasures":
+      return listErasures(body, accountId, base, svc, env);
+    case "exportErasures":
+      return exportErasures(body, accountId, base, svc, env);
     default:
       return { status: 400, json: { error: "Unknown or missing action." } };
   }
@@ -998,6 +1017,161 @@ async function recordRefusal(
   // Deliberately no suppressContact: nothing was erased, and refusing an
   // erasure is not an objection to being contacted.
   return { status: 200, json: { ok: true, logged } };
+}
+
+// ---------------------------------------------------------------------------
+// Erasure register — the tenant-facing read path (Art. 5(2))
+// ---------------------------------------------------------------------------
+// 0030 shipped erasure_log write-only on purpose. That left the spa unable to
+// produce its own accountability record without asking US to run a query —
+// the exact inversion of the controller/processor split in
+// docs/erasure-policy.md §1. This is that read path.
+//
+// It stays PSEUDONYMOUS end to end. Article 5(2) asks the controller to show
+// the PROCESS ran, not to keep a readable list of who asked; Art. 5(1)(c)
+// minimisation and Art. 32 pseudonymisation both push the other way. So the
+// register never resolves a hash back to a person: to answer "was THIS person's
+// request handled", the spa searches the phone they were given, and the hashing
+// happens here, server-side. The same mechanism the policy doc already promises
+// for a guest asking "was I deleted?".
+//
+// Manager-and-up, NOT authorizeStaff. The consent desk exists so a receptionist
+// can act on one caller without seeing the account; the register is the whole
+// account's compliance history and answers to the regulator, which is the
+// owner's job, not the front desk's.
+
+interface ErasureFilters {
+  from?: string;
+  to?: string;
+  outcome?: string;
+  phone?: string;
+}
+
+function erasureFilters(body: CrmBody): ErasureFilters {
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  return {
+    from: str(body.from),
+    to: str(body.to),
+    outcome: str(body.outcome),
+    phone: str(body.phone),
+  };
+}
+
+// ONE pipeline behind both the screen and the file, the same guarantee
+// listGuests/exportGuestList give: the CSV is exactly the filtered register on
+// screen, never a second query that can drift from it.
+async function scanErasures(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<{ ok: true; rows: JsonRecord[]; capped: boolean } | { ok: false; result: CrmResult }> {
+  const f = erasureFilters(body);
+  const parts = [`account_id=eq.${accountId}`];
+
+  // Dates are plain YYYY-MM-DD against a date column — reject anything else
+  // rather than letting a malformed value become a PostgREST syntax error.
+  const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (f.from) {
+    if (!isDate(f.from)) return { ok: false, result: { status: 400, json: { error: "Invalid 'from' date." } } };
+    parts.push(`request_received_at=gte.${f.from}`);
+  }
+  if (f.to) {
+    if (!isDate(f.to)) return { ok: false, result: { status: 400, json: { error: "Invalid 'to' date." } } };
+    parts.push(`request_received_at=lte.${f.to}`);
+  }
+  if (f.outcome) {
+    if (!["completed", "partial", "refused"].includes(f.outcome)) {
+      return { ok: false, result: { status: 400, json: { error: "Unknown outcome." } } };
+    }
+    parts.push(`outcome=eq.${f.outcome}`);
+  }
+  if (f.phone) {
+    if (!env.hashSecret) {
+      return { ok: false, result: { status: 500, json: { error: "Server not configured: GUEST_HASH_SECRET is missing." } } };
+    }
+    const phone = normalizePhone(f.phone);
+    if (!phone) return { ok: false, result: { status: 400, json: { error: "Invalid phone number." } } };
+    // The one place a readable number touches this feature, and it never
+    // leaves the function — it becomes a hash before it becomes a query.
+    parts.push(`subject_ref=eq.${phoneHash(phone, accountId, env.hashSecret)}`);
+  }
+
+  const res = await getJson(
+    `${base}/rest/v1/erasure_log?select=subject_ref,request_received_at,request_channel,` +
+      `identity_verification_method,scope,outcome,refusal_reason,retained_under_exemption,` +
+      `completed_at,executed_by_name,executed_by_system,recipients_notified,created_at&` +
+      `${parts.join("&")}&order=request_received_at.desc,created_at.desc&limit=${MAX_ERASURE_SCAN + 1}`,
+    svc,
+  );
+  if (!res.ok) return { ok: false, result: { status: 502, json: { error: `Could not read the register (${res.status}).` } } };
+
+  const all = asArray(res.body);
+  const capped = all.length > MAX_ERASURE_SCAN;
+  return { ok: true, rows: capped ? all.slice(0, MAX_ERASURE_SCAN) : all, capped };
+}
+
+function toErasureRow(r: JsonRecord): JsonRecord {
+  const ref = typeof r.subject_ref === "string" ? r.subject_ref : "";
+  return {
+    // Truncated on the way out — see SUBJECT_REF_PREVIEW.
+    reference: ref.slice(0, SUBJECT_REF_PREVIEW),
+    receivedAt: r.request_received_at ?? null,
+    channel: r.request_channel ?? null,
+    identityVerification: r.identity_verification_method ?? null,
+    scope: Array.isArray(r.scope) ? r.scope : [],
+    outcome: r.outcome ?? null,
+    refusalReason: r.refusal_reason ?? null,
+    retainedUnderExemption: r.retained_under_exemption ?? null,
+    completedAt: r.completed_at ?? null,
+    // One field for the UI: a human's name snapshot, or the automatic process
+    // that acted. Exactly one of the two is ever set.
+    executedBy: r.executed_by_name ?? null,
+    executedBySystem: r.executed_by_system ?? null,
+    recipientsNotified: Array.isArray(r.recipients_notified) ? r.recipients_notified : null,
+  };
+}
+
+async function listErasures(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
+  const scan = await scanErasures(body, accountId, base, svc, env);
+  if (!scan.ok) return scan.result;
+  const limit = Math.min(Math.max(intOr(body.limit, DEFAULT_PAGE), 1), 200);
+  const offset = Math.max(intOr(body.offset, 0), 0);
+  return {
+    status: 200,
+    json: {
+      entries: scan.rows.slice(offset, offset + limit).map(toErasureRow),
+      total: scan.rows.length,
+      capped: scan.capped,
+    },
+  };
+}
+
+async function exportErasures(
+  body: CrmBody,
+  accountId: string,
+  base: string,
+  svc: Headers,
+  env: CrmEnv,
+): Promise<CrmResult> {
+  const scan = await scanErasures(body, accountId, base, svc, env);
+  if (!scan.ok) return scan.result;
+  return {
+    status: 200,
+    json: {
+      entries: scan.rows.map(toErasureRow),
+      total: scan.rows.length,
+      capped: scan.capped,
+      exportedAt: new Date().toISOString(),
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

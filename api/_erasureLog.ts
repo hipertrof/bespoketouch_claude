@@ -24,7 +24,17 @@
 
 type Headers = Record<string, string>;
 
-export type ErasureChannel = "dashboard" | "consent_desk" | "kiosk" | "checkin" | "retention";
+export type ErasureChannel =
+  | "dashboard"
+  | "consent_desk"
+  | "kiosk"
+  | "checkin"
+  | "retention"
+  // A pre-visit intake link (api/_previsitCore.ts). Its own channel rather than
+  // borrowing 'checkin': the identity verification is genuinely different — a
+  // link that travelled over e-mail plus the phone recorded at booking, versus
+  // a code shown on a screen to someone standing in the room.
+  | "previsit";
 
 // What was actually erased. "profile" implies the whole CRM footprint, since
 // guest_visits / guest_notes / guest_tag_assignments cascade off the row.

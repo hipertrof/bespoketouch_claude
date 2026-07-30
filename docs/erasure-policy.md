@@ -81,6 +81,30 @@ The table is **append-only**: a database rule blocks any edit to a row once writ
 altered afterwards proves nothing. Rows can still be deleted, by exactly two things — the retention job
 below, and removing the spa's whole account.
 
+### Reading it back: the register on `/guests`
+
+The record is only useful if the spa can produce it without asking us. "Rejestr usunięć" at the top of
+`/guests` (managers and owners only) opens the whole account's history, filterable by date range, by
+outcome, and by one person's phone number, with a CSV download of exactly what is on screen.
+
+**The register stays pseudonymous, and that is the point.** Each row identifies the person only by a
+shortened form of the same one-way scramble the product uses everywhere. No name, no number, no address —
+nothing that can be read back into a person. Article 5(2) asks the spa to show the *process* ran; it does
+not ask for a readable list of everyone who asked to be deleted, and Art. 5(1)(c) minimisation and Art. 32
+pseudonymisation both point the other way. A "deletion log" that quietly rebuilt the guest list would be
+the failure mode, not the goal.
+
+So the register answers the two questions that actually get asked:
+
+- *"Show us how you handled erasure requests last quarter."* Set the dates, download the CSV.
+- *"This person says you ignored their request."* Type their number into the register. It is scrambled on
+  the server and matched against the record. Nothing readable is stored, and nothing readable is needed.
+
+The search is the same mechanism promised in section 3 for a returning guest asking whether they were
+deleted. Front desk cannot reach the register — the consent desk exists so a receptionist can act on one
+caller, whereas the register is the whole account's compliance history and answers to the regulator, which
+is the owner's responsibility.
+
 ### Why the record itself is lawful, and for how long
 
 The scrambled number is still personal data, so the record needs its own justification and its own end
@@ -239,11 +263,9 @@ mandatory, and that check is the reason the list exists now rather than later.
 
 Stated plainly so none of it reads as an oversight:
 
-- **No screen for the spa to read or download the erasure record.** It is written, indexed and correct, but
-  reaching it today means a database query. Until the export ships, producing the record for UODO needs
-  BespokeTouch's help — which is the opposite of what section 1 says should be true. This is now the last
-  thing standing between the log and being genuinely tenant-facing: refusals are captured (section 7), but
-  nobody at the spa can read back anything the log holds.
 - **No outbound message to the guest.** Neither an erasure confirmation nor a refusal notice is sent from
   the product; both are the spa's job today (sections 4 and 7).
+- **No per-recipient notification record.** `recipients_notified` names the sub-processors, but if the spa
+  ever adds one of its own (a mailing tool, an accounting integration), nothing tracks whether *it* was
+  told. Not a gap today, because there are no such recipients.
 - **The Fully Kiosk cache has not been audited** (section 6).

@@ -298,3 +298,62 @@ export async function recordCrmRefusal(
   });
   return { ok: json.ok === true, logged: json.logged === true };
 }
+
+// ---------------------------------------------------------------------------
+// Erasure register — the spa's own Art. 5(2) record, manager-and-up
+// ---------------------------------------------------------------------------
+// Stays pseudonymous: `reference` is a truncated phone_hash, never a name or a
+// number. To find one person's record you SEARCH their phone — the hashing
+// happens on the server and the raw number never reaches the database.
+
+export interface CrmErasureEntry {
+  reference: string;
+  receivedAt: string | null;
+  channel: string | null;
+  identityVerification: string | null;
+  scope: string[];
+  outcome: string | null;
+  refusalReason: string | null;
+  retainedUnderExemption: string | null;
+  completedAt: string | null;
+  executedBy: string | null;
+  executedBySystem: string | null;
+  recipientsNotified: string[] | null;
+}
+
+export interface CrmErasureFilters {
+  from?: string;
+  to?: string;
+  outcome?: string;
+  phone?: string;
+}
+
+export async function listCrmErasures(
+  accountId: string,
+  filters: CrmErasureFilters,
+  limit: number,
+  offset: number,
+): Promise<{ entries: CrmErasureEntry[]; total: number; capped: boolean }> {
+  const json = await postCrm<{ entries?: CrmErasureEntry[]; total?: number; capped?: boolean }>({
+    action: "listErasures",
+    accountId,
+    ...filters,
+    limit,
+    offset,
+  });
+  return { entries: json.entries ?? [], total: json.total ?? 0, capped: json.capped === true };
+}
+
+// Same filters, same pipeline, no pagination — what the regulator gets is
+// exactly the register on screen.
+export async function exportCrmErasures(
+  accountId: string,
+  filters: CrmErasureFilters,
+): Promise<{ entries: CrmErasureEntry[]; capped: boolean }> {
+  const json = await postCrm<{ entries?: CrmErasureEntry[]; capped?: boolean }>({
+    action: "exportErasures",
+    accountId,
+    ...filters,
+  });
+  return { entries: json.entries ?? [], capped: json.capped === true };
+}
