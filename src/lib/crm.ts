@@ -142,6 +142,31 @@ async function postCrm<T>(payload: Record<string, unknown>): Promise<T> {
   return json as T;
 }
 
+// One phone number carrying more than one profile. Legitimate since 0032 —
+// that is what stopped a second guest overwriting the first — so this is the
+// screen that lets a manager see where it happened and judge whether the
+// records are one person. The grouping key (the hashed phone) never leaves the
+// server; each entry carries the guest id the detail panel already opens on.
+export type CrmDuplicateGroup = {
+  guests: Array<{
+    id: string;
+    name: string | null;
+    visitCount: number;
+    lastVisitAt: string | null;
+    lastSeenAt: string | null;
+  }>;
+};
+
+export async function listCrmDuplicates(
+  accountId: string,
+): Promise<{ groups: CrmDuplicateGroup[]; capped: boolean }> {
+  const json = await postCrm<{ groups?: CrmDuplicateGroup[]; capped?: boolean }>({
+    action: "listDuplicates",
+    accountId,
+  });
+  return { groups: json.groups ?? [], capped: json.capped === true };
+}
+
 export async function listCrmGuests(
   accountId: string,
   opts: CrmFilters & { limit?: number; offset?: number } = {},
