@@ -111,6 +111,11 @@ export async function saveIntake(input: {
   // (null = no visit-history write for that guest). Hashed server-side to key
   // the guest_visits timeline; never stored raw.
   guestPhones?: (string | null)[];
+  // Index-aligned with guestPhones: the name each guest's profile was saved
+  // under. Since 0032 a profile is identified by phone AND name, so without
+  // this the visit-history write cannot tell which of several people sharing a
+  // number the visit belongs to.
+  guestCrmNames?: string[];
 }): Promise<void> {
   const res = await fetch("/api/intake", {
     method: "POST",
@@ -124,6 +129,7 @@ export async function saveIntake(input: {
       therapists: input.therapists,
       roomAssignments: input.roomAssignments,
       guestPhones: input.guestPhones,
+      guestCrmNames: input.guestCrmNames,
     }),
   });
   if (!res.ok) {

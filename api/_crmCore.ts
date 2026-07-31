@@ -169,6 +169,11 @@ export async function handleCrm(
       return forgetGuestById(body, accountId, callerId, callerName, base, svc);
     case "export":
       return exportGuest(body, accountId, base, svc);
+    // Manager-only, like the erasure register and for the same reason: one
+    // guest's own record is front-desk work, but the account's data hygiene as
+    // a whole is not.
+    case "listDuplicates":
+      return listDuplicates(accountId, base, svc);
     case "listErasures":
       return listErasures(body, accountId, base, svc, env);
     case "exportErasures":
@@ -337,6 +342,75 @@ type ScanResult =
 // is what guarantees the exported file is EXACTLY the list the manager was
 // looking at — a second implementation would drift from it the first time
 // either changed.
+// Step 2 of the duplicate-phone work. Since 0032 a phone number can carry
+// several profiles — that is what stopped one guest overwriting another — so
+// the account needs a place to SEE where that has happened and decide whether
+// two records are one person. Same shape every comparable product ships
+// (Phorest's Duplicate Clients report, Mindbody's and Mangomint's merge tools):
+// tolerate the duplicates, surface them, let a human judge.
+//
+// Deliberately NOT built on scanGuests. That pipeline is shared by list and
+// exportList precisely so the CSV cannot drift from the screen, and the only
+// thing this needs from a profile is its phone group — pushing phone_hash into
+// that select would carry it into the export path for no reason.
+//
+// Grouping happens in memory for the same reason listGuests aggregates in
+// memory: PostgREST cannot GROUP BY, and a group is only interesting once it
+// has two members, which no per-row filter can express.
+async function listDuplicates(
+  accountId: string,
+  base: string,
+  svc: Headers,
+): Promise<CrmResult> {
+  const res = await getJson(
+    `${base}/rest/v1/guest_profiles?select=id,display_name,last_seen_at,phone_hash,` +
+      `guest_visits(id,visited_at)` +
+      `&account_id=eq.${accountId}&order=last_seen_at.desc.nullslast&limit=${MAX_SCAN}`,
+    svc,
+  );
+  if (!res.ok) {
+    return { status: 502, json: { error: `Could not load duplicates (${res.status}).` } };
+  }
+
+  const rows = asArray(res.body);
+  const byPhone = new Map<string, Array<Record<string, unknown>>>();
+  for (const r of rows) {
+    const hash = typeof r.phone_hash === "string" ? r.phone_hash : "";
+    if (!hash) continue;
+    const bucket = byPhone.get(hash);
+    if (bucket) bucket.push(r);
+    else byPhone.set(hash, [r]);
+  }
+
+  const groups = [...byPhone.values()]
+    .filter((bucket) => bucket.length > 1)
+    .map((bucket) => ({
+      // phone_hash is the group key and stays SERVER-SIDE. It is the one
+      // identifier this table is queried by, and the manager does not need it
+      // to act — every row already carries the guest id the panel opens on.
+      guests: bucket.map((r) => {
+        const visitDates = asArray(r.guest_visits)
+          .map((v) => (typeof v.visited_at === "string" ? v.visited_at : null))
+          .filter((d): d is string => d !== null)
+          .sort();
+        return {
+          id: String(r.id),
+          name: typeof r.display_name === "string" ? r.display_name : null,
+          visitCount: visitDates.length,
+          lastVisitAt: visitDates.length > 0 ? visitDates[visitDates.length - 1] : null,
+          lastSeenAt: typeof r.last_seen_at === "string" ? r.last_seen_at : null,
+        };
+      }),
+    }))
+    // Biggest tangles first — a number carrying four profiles is the one worth
+    // a manager's attention before a pair that may well be a couple.
+    .sort((a, b) => b.guests.length - a.guests.length);
+
+  // Same honesty as listGuests: past MAX_SCAN the count is a floor, not a
+  // total, and the UI says so rather than quietly under-reporting.
+  return { status: 200, json: { groups, capped: rows.length >= MAX_SCAN } };
+}
+
 async function scanGuests(
   body: CrmBody,
   accountId: string,

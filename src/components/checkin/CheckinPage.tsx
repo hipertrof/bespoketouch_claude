@@ -184,7 +184,14 @@ export function CheckinPage() {
               comfort={comfort}
               pressureLevels={pressureLevels}
             />
-            <Button onClick={handleSave} disabled={stage === "saving"} className="w-full sm:w-auto sm:self-end">
+            {/* A name is half the profile identity since 0032, and the server
+                refuses a nameless save — hold the button rather than let the
+                guest fill the whole form and hit an error at the end. */}
+            <Button
+              onClick={handleSave}
+              disabled={stage === "saving" || (consent && !crmName.trim())}
+              className="w-full sm:w-auto sm:self-end"
+            >
               {t("checkinSave", lang)}
               <ArrowRight size={18} />
             </Button>

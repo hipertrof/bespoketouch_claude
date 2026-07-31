@@ -188,61 +188,80 @@ async function lookupGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
       )
     ).body,
   );
-  const row = rows[0];
-  if (!row) return { status: 200, json: { found: false } };
-
-  // Lazy expiry: a stale profile is deleted and reported as a miss.
-  const seen = row.last_seen_at ?? row.updated_at;
-  if (isExpired(typeof seen === "string" ? seen : null)) {
-    await deleteById(base, svc, String(row.id));
-    // An erasure the spa never asked for still has to be demonstrable — this
-    // is the storage-limitation promise being kept, and it is exactly the kind
-    // of deletion a guest later asks about ("why is my profile gone?").
-    // No suppression entry: the guest never objected, the clock simply ran out.
-    await recordErasure(base, svc, {
-      accountId,
-      subjectRef: hash,
-      channel: "retention",
-      identityVerification: "n/a — automatic, no request received",
-      scope: FULL_SCOPE,
-      executedBySystem: `retention-${EXPIRY_DAYS}d`,
-    });
-    return { status: 200, json: { found: false } };
+  // Since 0032 a number can legitimately carry several profiles, so this
+  // returns EVERY match and lets the front desk pick. It must not choose for
+  // them: these preferences include the zones a guest wants avoided, so
+  // silently loading the wrong person's could put a therapist to work on an
+  // injured area. `rows[0]` was safe only while the phone was the whole key.
+  const live: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    // Lazy expiry: a stale profile is deleted and left out of the matches.
+    const seen = row.last_seen_at ?? row.updated_at;
+    if (isExpired(typeof seen === "string" ? seen : null)) {
+      await deleteById(base, svc, String(row.id));
+      // An erasure the spa never asked for still has to be demonstrable — this
+      // is the storage-limitation promise being kept, and it is exactly the kind
+      // of deletion a guest later asks about ("why is my profile gone?").
+      // No suppression entry: the guest never objected, the clock simply ran out.
+      await recordErasure(base, svc, {
+        accountId,
+        subjectRef: hash,
+        channel: "retention",
+        identityVerification: "n/a — automatic, no request received",
+        scope: FULL_SCOPE,
+        executedBySystem: `retention-${EXPIRY_DAYS}d`,
+      });
+      continue;
+    }
+    live.push(row);
   }
+  if (live.length === 0) return { status: 200, json: { found: false, matches: [] } };
 
   // Touch last_seen_at so an active guest's row keeps living. AWAITED, not
   // fire-and-forget: this timestamp is the only thing holding the row inside the
   // 540-day retention window, and on a serverless host an unawaited PATCH can be
   // dropped when the instance suspends after responding — which would quietly age
   // out and delete a still-active consented profile. A failed touch is non-fatal.
-  await fetch(`${base}/rest/v1/guest_profiles?id=eq.${String(row.id)}`, {
-    method: "PATCH",
-    headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
-  }).catch(() => {});
-
-  // Defense in depth: without health consent the zones/notes must not exist in
-  // the blob at all (save strips them), but strip again on the way out so a
-  // row that somehow carries them without the stamp can't leak them.
-  const healthConsent = typeof row.health_consent_version === "string";
-  let preferences = row.preferences ?? null;
-  if (!healthConsent && preferences && typeof preferences === "object") {
-    const { zones: _z, zoneNotes: _zn, generalNote: _gn, ...rest } = preferences as Record<string, unknown>;
-    preferences = rest;
+  //
+  // Only when the number resolves to ONE person. With several, we don't yet
+  // know which of them is standing at the desk, and touching all of them would
+  // renew the retention clock of someone who never came in — the storage
+  // limitation the expiry above exists to honour. Whoever is picked gets their
+  // row touched by the save that follows.
+  if (live.length === 1) {
+    await fetch(`${base}/rest/v1/guest_profiles?id=eq.${String(live[0].id)}`, {
+      method: "PATCH",
+      headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
+    }).catch(() => {});
   }
 
-  // The name is base-tier since v4, so it comes back whenever the row does —
-  // the kiosk needs it to greet a returning guest and to prefill the consent
-  // card. Contact data (e-mail/phone/birthday) is still manager-only: it never
-  // leaves /api/crm, so the kiosk gets the marketing flag but not its payload.
-  const marketingConsent = typeof row.marketing_consent_version === "string";
-  const name = typeof row.display_name === "string" ? row.display_name : null;
+  const matches = live.map((row) => {
+    // Defense in depth: without health consent the zones/notes must not exist in
+    // the blob at all (save strips them), but strip again on the way out so a
+    // row that somehow carries them without the stamp can't leak them.
+    const healthConsent = typeof row.health_consent_version === "string";
+    let preferences = row.preferences ?? null;
+    if (!healthConsent && preferences && typeof preferences === "object") {
+      const { zones: _z, zoneNotes: _zn, generalNote: _gn, ...rest } = preferences as Record<string, unknown>;
+      preferences = rest;
+    }
+    // The name is base-tier since v4, so it comes back whenever the row does —
+    // the kiosk needs it to greet a returning guest and to prefill the consent
+    // card. Contact data (e-mail/phone/birthday) is still manager-only: it never
+    // leaves /api/crm, so the kiosk gets the marketing flag but not its payload.
+    const marketingConsent = typeof row.marketing_consent_version === "string";
+    const name = typeof row.display_name === "string" ? row.display_name : null;
+    // Dates the picker labels each candidate with ("last visit 12 Jul"), so the
+    // receptionist has something besides the name to tell two guests apart.
+    const lastSeen = typeof row.last_seen_at === "string" ? row.last_seen_at : null;
+    // Still no identifier: the client picks a match and sends its NAME back,
+    // and (phone, name) is the key the save lands on. Nothing here needs a row
+    // id, so none leaves the server.
+    return { preferences, healthConsent, marketingConsent, name, lastSeen };
+  });
 
-  // Return preferences only — never the hash or any identifier.
-  return {
-    status: 200,
-    json: { found: true, preferences, healthConsent, marketingConsent, name },
-  };
+  return { status: 200, json: { found: true, matches } };
 }
 
 async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
@@ -252,6 +271,15 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   }
   const phone = normalizePhone(body.phone);
   if (!phone) return { status: 400, json: { error: "Invalid phone number." } };
+  // Refuse to key a profile on an obvious placeholder. The client blocks these
+  // at the field so a guest sees it immediately; this is the backstop, and the
+  // distinct code lets the kiosk say why rather than showing a generic failure.
+  if (isImplausiblePhone(phone)) {
+    return {
+      status: 400,
+      json: { error: "That phone number looks invalid.", code: "implausible_phone" },
+    };
+  }
 
   const preferences = sanitizePreferences(body.preferences);
   if (!preferences) return { status: 400, json: { error: "Invalid preferences payload." } };
@@ -279,6 +307,18 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   // the spa can find the row when that guest exercises Art. 15/17. Null only
   // when no name was captured at all.
   const displayName = sanitizeDisplayName(body.name);
+  // Required since the 0032 identity change. The name is half of what tells two
+  // people on one number apart, so an unnamed profile is the one case that can
+  // still be overwritten — its key is the empty string, which every other
+  // unnamed guest on that number also matches. Refusing here also keeps the
+  // base-tier promise the CRM already makes: a profile the spa cannot identify
+  // is one it cannot search, and cannot honour an Art. 15/17 request against.
+  if (!displayName) {
+    return {
+      status: 400,
+      json: { error: "A name is required to save preferences.", code: "name_required" },
+    };
+  }
 
   // Marketing is the third opt-in (requires base, checked above) and now
   // covers only outreach: the raw contact phone/e-mail, optional birthday,
@@ -296,11 +336,16 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   // (the guest un-ticks a box at handoff). Without this read the write cannot
   // tell a brand-new guest from someone withdrawing, and the erasure would go
   // unrecorded. One extra request on the kiosk save path, deliberately paid.
+  // Since 0032 the identity is (account, phone, name), so this must read the
+  // row belonging to THIS person — not merely the first row on the number.
+  // Derived from `displayName`, the post-sanitize value that actually gets
+  // stored, because the 0032 trigger computes name_key from the stored column.
+  const key = nameKey(displayName);
   const priorRows = asArray(
     (
       await getJson(
         `${base}/rest/v1/guest_profiles?select=health_consent_version,marketing_consent_version` +
-          `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+          `&account_id=eq.${accountId}&phone_hash=eq.${hash}&name_key=eq.${encodeURIComponent(key)}`,
         svc,
       )
     ).body,
@@ -311,7 +356,11 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
 
   const now = new Date().toISOString();
   const upsert = await fetch(
-    `${base}/rest/v1/guest_profiles?on_conflict=account_id,phone_hash`,
+    // Three-column conflict target since 0032. The payload never mentions
+    // name_key — the BEFORE-ROW trigger fills it in ahead of conflict
+    // arbitration — so a same-name save updates that person's row and a
+    // different-name save inserts a new one instead of overwriting a stranger.
+    `${base}/rest/v1/guest_profiles?on_conflict=account_id,phone_hash,name_key`,
     {
       method: "POST",
       headers: {
@@ -379,8 +428,16 @@ async function forgetGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult>
   const accountId = auth.accountId;
 
   const hash = phoneHash(phone, accountId, env.hashSecret);
+  // Narrowed to one person since 0032. Deleting on the phone alone would now
+  // erase every profile sharing the number — a guest withdrawing consent would
+  // take a stranger's record with them, which is a data loss far worse than the
+  // one this endpoint exists to perform. The caller sends the name it withdrew
+  // for; with none, this matches only unnamed rows rather than falling back to
+  // the whole number.
+  const key = nameKey(sanitizeDisplayName(body.name));
   const del = await fetch(
-    `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+    `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}` +
+      `&name_key=eq.${encodeURIComponent(key)}`,
     { method: "DELETE", headers: { ...svc, Prefer: "return=minimal" } },
   );
   if (!del.ok) {
@@ -488,6 +545,56 @@ export function normalizePhone(raw: string | undefined): string | null {
 
 export function phoneHash(phone: string, accountId: string, secret: string): string {
   return createHmac("sha256", secret + accountId).update(phone).digest("hex");
+}
+
+// The second half of a guest's identity, since 0032. A profile is keyed on
+// (account_id, phone_hash, name_key): the same number under the same name is
+// the same person returning, the same number under a different name is a
+// different person who gets their own profile. Before 0032 the phone alone was
+// the key, so the second person to use a number silently overwrote the first.
+//
+// MUST stay character-for-character identical to guest_profiles_name_key() in
+// migration 0032 — the trigger computes the stored value, this computes the
+// value we search and upsert against, and any disagreement splits one
+// returning guest into two profiles. Note what it does NOT do: no NFD, no
+// general accent stripping. JS's NFD cannot decompose 'ł', and Postgres would
+// need the unaccent extension to match, so both sides fold exactly these nine
+// Polish characters and leave every other accent alone.
+const NAME_KEY_FROM = "ąćęłńóśźż";
+const NAME_KEY_TO = "acelnoszz";
+export function nameKey(raw: string | null | undefined): string {
+  const collapsed = (raw ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  let out = "";
+  for (const ch of collapsed) {
+    const i = NAME_KEY_FROM.indexOf(ch);
+    out += i === -1 ? ch : NAME_KEY_TO[i];
+  }
+  return out;
+}
+
+// Cheap junk filter for the numbers guests invent when they would rather not
+// give a real one — the case that produced the prod collision behind 0032.
+// Runs on the ALREADY-normalized value and inspects the subscriber part (the
+// trailing 9 digits of a Polish number), so a country code can't hide a run.
+//
+// Deliberately narrow: it rejects only patterns nobody is issued (one digit
+// repeated, or a strict ascending/descending run). It cannot catch a plausible
+// typo — one wrong digit still looks like a real number — which is exactly why
+// blocking alone was never enough and the profile identity had to change too.
+// Applied on SAVE only: lookup and forget must keep working for numbers that
+// were stored before this existed, or a bad row could never be erased.
+export function isImplausiblePhone(normalized: string): boolean {
+  const digits = normalized.replace(/\D/g, "");
+  const local = digits.length > 9 ? digits.slice(-9) : digits;
+  if (local.length < 6) return true;
+  if (/^(\d)\1+$/.test(local)) return true;
+  const run = (step: number) => {
+    for (let i = 1; i < local.length; i += 1) {
+      if (Number(local[i]) - Number(local[i - 1]) !== step) return false;
+    }
+    return true;
+  };
+  return run(1) || run(-1);
 }
 
 // Server-side whitelist. Drops any key not in the known set and any zone value

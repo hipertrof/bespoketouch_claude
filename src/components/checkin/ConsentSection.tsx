@@ -70,6 +70,16 @@ export function ConsentSection({
             onChange={(e) => onNameChange(e.target.value)}
             className="min-h-11 w-full rounded-xl border border-sand bg-white px-3 text-base text-charcoal outline-none transition-all duration-300 focus:border-clay focus:ring-4 focus:ring-clay/15"
           />
+          {/* Required since 0032, where (phone, name) identifies a profile: an
+              unnamed one shares the empty key with every other unnamed guest on
+              the number, so it is the one kind still open to being overwritten.
+              Lives here rather than in each page so /checkin and /previsit keep
+              saying it identically, like the rest of this card's copy. */}
+          {!name.trim() && (
+            <p className="mt-2 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentNameRequiredHint", lang)}
+            </p>
+          )}
         </div>
       )}
       {consent && (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Download, FileText, Plus, ScrollText, Search, Star, Tag as TagIcon, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Download, FileText, Plus, ScrollText, Search, Star, Tag as TagIcon, Trash2, UserRound, Users } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { supabase } from "../../lib/supabase";
@@ -15,6 +15,7 @@ import {
   exportCrmGuestList,
   forgetCrmGuest,
   getCrmGuest,
+  listCrmDuplicates,
   listCrmErasures,
   listCrmGuests,
   listCrmTags,
@@ -24,6 +25,7 @@ import {
   withdrawCrmConsent,
   type CrmConsent,
   type CrmConsentLookup,
+  type CrmDuplicateGroup,
   type CrmErasureEntry,
   type CrmErasureFilters,
   type CrmFilters,
@@ -435,6 +437,14 @@ export function GuestCrmDashboard() {
               reaches for under regulator pressure behind the browsing UI is
               exactly how it fails to be found. */}
           <ErasureRegister accountId={accountId} lang={lang} />
+          {/* Same altitude as the register, and for the same reason: this is a
+              fact about the account's data, not about whichever guest is
+              selected, so it must not be buried inside the browse UI. */}
+          <DuplicatesPanel
+            accountId={accountId}
+            lang={lang}
+            onSelectGuest={selectGuest}
+          />
 
           <form
             onSubmit={(e) => {
@@ -1081,6 +1091,124 @@ function erasureScopeLabel(scope: string[], lang: Lang): string {
   if (scope.length === 0) return "—";
   if (scope.length >= 7) return t("erasureScopeAll", lang);
   return scope.join(", ");
+}
+
+// Where a number carries more than one profile. Sits beside the erasure
+// register rather than inside the guest list, for the same reason: it is a
+// property of the ACCOUNT's data, not of whichever guest happens to be on
+// screen, and a manager comes looking for it deliberately.
+//
+// It only shows and links. Deciding two records are one person, and folding
+// them together, is the merge tool — a one-way, destructive operation that
+// belongs behind its own confirmation, not one click from a browse view.
+function DuplicatesPanel({
+  accountId,
+  lang,
+  onSelectGuest,
+}: {
+  accountId: string;
+  lang: Lang;
+  onSelectGuest: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState<CrmDuplicateGroup[]>([]);
+  const [capped, setCapped] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await listCrmDuplicates(accountId);
+      setGroups(res.groups);
+      setCapped(res.capped);
+      setLoaded(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((v) => !v);
+          if (!loaded) void load();
+        }}
+        aria-expanded={open}
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-sand bg-white px-3 text-sm font-medium text-charcoal transition-colors hover:border-clay"
+      >
+        <Users size={16} className="text-slate-light" />
+        {t("duplicatesPanel", lang)}
+        {loaded && groups.length > 0 && (
+          <span className="rounded-full bg-clay-tint px-2 py-0.5 text-xs font-semibold text-clay-dark">
+            {groups.length}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-3 rounded-2xl border border-sand bg-white p-5 shadow-soft">
+          <p className="mb-4 max-w-3xl text-xs text-slate">{t("duplicatesIntro", lang)}</p>
+
+          {error && (
+            <p className="mb-3 rounded-xl bg-rose-tint px-3 py-2 text-xs font-medium text-rose-dark">
+              {error}
+            </p>
+          )}
+          {busy && <p className="text-xs text-slate-light">…</p>}
+          {!busy && loaded && groups.length === 0 && (
+            <p className="text-sm text-slate-light">{t("duplicatesNone", lang)}</p>
+          )}
+
+          <div className="flex flex-col gap-3">
+            {groups.map((group, gi) => (
+              // Index key: the grouping value is the hashed phone and stays
+              // server-side, so there is no stable id to key on here — and the
+              // list is replaced wholesale on every load, never reordered.
+              <div key={gi} className="rounded-xl border border-sand bg-oatmeal/30 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate">
+                  {t("duplicatesSharedNumber", lang)}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {group.guests.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => onSelectGuest(g.id)}
+                      className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-lg border border-sand bg-white px-3 py-2 text-left transition-colors hover:border-clay"
+                    >
+                      <span className="text-sm font-semibold text-charcoal">
+                        {g.name ??
+                          tf("guestsAnonymousHandle", lang, {
+                            code: g.id.slice(0, 4).toUpperCase(),
+                          })}
+                      </span>
+                      <span className="text-xs text-slate-light">
+                        {g.visitCount} {t("duplicatesVisits", lang)}
+                        {g.lastVisitAt
+                          ? ` · ${new Date(g.lastVisitAt).toLocaleDateString(lang === "pl" ? "pl-PL" : lang)}`
+                          : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {capped && (
+            <p className="mt-3 text-xs text-slate-light">{t("duplicatesCapped", lang)}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ErasureRegister({ accountId, lang }: { accountId: string; lang: Lang }) {

@@ -49,6 +49,7 @@ import {
   BASE_CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
   MARKETING_CONSENT_VERSION,
+  nameKey,
   normalizePhone,
   phoneHash,
   sanitizeContact,
@@ -470,6 +471,7 @@ async function convertLink(
     locationId,
     intakeId,
     subjectRef: String(row.subject_ref ?? ""),
+    guestName: typeof row.guest_name === "string" ? row.guest_name : null,
     treatmentSelection: asRecord(asArray(row.treatment_selections)[0]),
     therapist: asRecord(asArray(row.therapists)[0]),
     room: asRecord(asArray(row.room_assignments)[0]),
@@ -486,6 +488,7 @@ async function writeVisit(
     locationId: string;
     intakeId: string | null;
     subjectRef: string;
+    guestName: string | null;
     treatmentSelection: JsonRecord | null;
     therapist: JsonRecord | null;
     room: JsonRecord | null;
@@ -495,12 +498,20 @@ async function writeVisit(
   const profRows = asArray(
     (
       await getJson(
-        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${args.accountId}&phone_hash=eq.${args.subjectRef}`,
+        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${args.accountId}` +
+          `&phone_hash=eq.${args.subjectRef}` +
+          `&name_key=eq.${encodeURIComponent(nameKey(sanitizeDisplayName(args.guestName)))}`,
         svc,
       )
     ).body,
   );
-  const guestId = typeof profRows[0]?.id === "string" ? profRows[0].id : null;
+  // Narrowed by the booking name since 0032, and required to be unambiguous:
+  // profRows[0] would file this treatment and its price against whichever of
+  // several people on the number came back first. Keyed on the name reception
+  // recorded at booking, which is also what the pre-visit page prefills, so it
+  // matches unless the guest renamed themselves on the link.
+  const guestId =
+    profRows.length === 1 && typeof profRows[0]?.id === "string" ? profRows[0].id : null;
   // No consented profile means no visit history to write — and this path must
   // never originate one, exactly like _intakeCore's writeGuestVisits.
   if (!guestId) return;
@@ -672,11 +683,27 @@ async function saveByLink(
   // so a save with a tier switched off silently erases that tier's data. Without
   // this read the write cannot tell a brand-new guest from a withdrawal, and the
   // erasure would go unrecorded. Same deliberate extra request as saveGuest.
+  // (phone, name) is the identity since 0032, so both the read below and every
+  // write in this function are narrowed to this one person. Hoisted above the
+  // consent branch because the withdrawal path needs the same key: deleting on
+  // the phone alone would erase every profile sharing the number, taking a
+  // stranger's record along with the guest's own.
+  const displayName = sanitizeDisplayName(body.name);
+  // Required since 0032, as on the other two save paths. In practice always
+  // present here — reception recorded a name at booking and the page prefills
+  // it — so this only fires if the guest clears the field.
+  if (!displayName) {
+    return {
+      status: 400,
+      json: { error: "A name is required.", code: "name_required" },
+    };
+  }
+  const key = nameKey(displayName);
   const priorRows = asArray(
     (
       await getJson(
         `${base}/rest/v1/guest_profiles?select=id,health_consent_version,marketing_consent_version` +
-          `&account_id=eq.${accountId}&phone_hash=eq.${subjectRef}`,
+          `&account_id=eq.${accountId}&phone_hash=eq.${subjectRef}&name_key=eq.${encodeURIComponent(key)}`,
         svc,
       )
     ).body,
@@ -694,7 +721,8 @@ async function saveByLink(
     // Withdrawal. Deleting a row that never existed is a harmless no-op, and
     // the erasure is still recorded — it attests to a request that was made.
     const del = await fetch(
-      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${subjectRef}`,
+      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${subjectRef}` +
+        `&name_key=eq.${encodeURIComponent(key)}`,
       { method: "DELETE", headers: { ...svc, Prefer: "return=minimal" } },
     );
     if (!del.ok) {
@@ -712,14 +740,15 @@ async function saveByLink(
       await suppressContact(base, svc, accountId, subjectRef, "erasure");
     }
   } else {
-    const displayName = sanitizeDisplayName(body.name);
     const contact = body.marketingConsent === true ? sanitizeContact(body) : null;
 
     // saveGuest's own upsert, verbatim: this is what lets the pre-visit path
     // CREATE a profile for a first-time guest, and it makes reopening the link
-    // twice harmless — (account_id, phone_hash) is the conflict target, not a
-    // race to lose.
-    const upsert = await fetch(`${base}/rest/v1/guest_profiles?on_conflict=account_id,phone_hash`, {
+    // twice harmless — (account_id, phone_hash, name_key) is the conflict
+    // target since 0032, not a race to lose. Reopening under the same name
+    // still updates the one row; a different name on a shared household number
+    // now adds a profile instead of overwriting whoever was there first.
+    const upsert = await fetch(`${base}/rest/v1/guest_profiles?on_conflict=account_id,phone_hash,name_key`, {
       method: "POST",
       headers: {
         ...svc,
