@@ -189,7 +189,15 @@ export function PrevisitPage() {
               comfort={comfort}
               pressureLevels={pressureLevels}
             />
-            <Button onClick={handleSave} disabled={stage === "saving"} className="w-full sm:w-auto sm:self-end">
+            {/* Same gate as /checkin: a name is half the profile identity since
+                0032 and the server refuses a nameless save. Rarely seen here —
+                reception named the booking and the field is prefilled — unless
+                the guest clears it. */}
+            <Button
+              onClick={handleSave}
+              disabled={stage === "saving" || (consent && !crmName.trim())}
+              className="w-full sm:w-auto sm:self-end"
+            >
               {t("checkinSave", lang)}
               <ArrowRight size={18} />
             </Button>

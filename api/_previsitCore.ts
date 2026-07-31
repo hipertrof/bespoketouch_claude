@@ -689,6 +689,15 @@ async function saveByLink(
   // the phone alone would erase every profile sharing the number, taking a
   // stranger's record along with the guest's own.
   const displayName = sanitizeDisplayName(body.name);
+  // Required since 0032, as on the other two save paths. In practice always
+  // present here — reception recorded a name at booking and the page prefills
+  // it — so this only fires if the guest clears the field.
+  if (!displayName) {
+    return {
+      status: 400,
+      json: { error: "A name is required.", code: "name_required" },
+    };
+  }
   const key = nameKey(displayName);
   const priorRows = asArray(
     (

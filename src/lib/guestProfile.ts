@@ -294,8 +294,11 @@ export async function saveGuestProfile(
     phone,
     consent: true,
     healthConsent,
-    // Base tier: omitted only when no name was captured at all, which leaves
-    // the profile unnamed rather than refusing to save it.
+    // Base tier, and REQUIRED since 0032 — the server rejects a nameless save.
+    // The name is half of what distinguishes two people on one number, so an
+    // unnamed profile is the one kind that can still be overwritten. Callers
+    // gate on it before getting here; sending undefined yields a clear
+    // name_required error rather than a silently unnamed row.
     name: name.trim() || undefined,
     // Marketing tier: the contact e-mail and permission to use it.
     marketingConsent: contact !== undefined,

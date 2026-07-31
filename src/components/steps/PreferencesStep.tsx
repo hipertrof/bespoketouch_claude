@@ -78,7 +78,13 @@ export function PreferencesStep() {
   // Saving under a number we already know is wrong would either be refused by
   // the server or land on the wrong person, so hold the step rather than let
   // the guest discover it at the very end.
-  const phoneBlocked = crm.consent && (!phoneValid || phoneImplausible || phoneClashesWithOtherGuest);
+  // Required since 0032: the name is half the identity, and an unnamed profile
+  // is the one kind two guests on a number can still overwrite. Normally
+  // already filled — switching base consent on copies reception's intake name
+  // in — so this only bites if the guest clears it.
+  const nameMissing = crm.consent && !crm.name.trim();
+  const saveBlocked =
+    (crm.consent && (!phoneValid || phoneImplausible || phoneClashesWithOtherGuest)) || nameMissing;
 
   const setPref = <K extends keyof typeof preferences>(
     key: K,
@@ -456,6 +462,11 @@ export function PreferencesStep() {
               />
             </div>
           )}
+          {nameMissing && (
+            <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
+              {t("consentNameRequiredHint", lang)}
+            </p>
+          )}
           {crm.consent && !phoneValid && (
             <p className="mt-3 text-xs font-medium leading-relaxed text-rose-dark">
               {t("consentPhoneRequiredHint", lang)}
@@ -484,7 +495,7 @@ export function PreferencesStep() {
         </Button>
         <Button
           onClick={() => dispatch({ type: "COMPLETE_GUEST_PREFERENCES" })}
-          disabled={phoneBlocked}
+          disabled={saveBlocked}
         >
           {t("confirmLock", lang)}
           <ArrowRight size={18} />

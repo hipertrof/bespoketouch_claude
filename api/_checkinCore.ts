@@ -386,6 +386,17 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   // precisely the guess that loses someone's record. An unmatched name means
   // there is nothing here to edit, and the guest goes through reception.
   const nameForKey = sanitizeDisplayName(body.name);
+  // Required on BOTH branches, same as saveGuest. Half the identity since 0032:
+  // without it the key is the empty string, which matches every other unnamed
+  // profile on the number — so an edit could land on a stranger and a
+  // withdrawal could delete one. Refusing and saying so beats a save or an
+  // erasure that silently reaches nothing.
+  if (!nameForKey) {
+    return {
+      status: 400,
+      json: { error: "A name is required.", code: "name_required" },
+    };
+  }
   const key = nameKey(nameForKey);
   const existing = asArray(
     (

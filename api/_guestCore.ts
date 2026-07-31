@@ -307,6 +307,18 @@ async function saveGuest(body: GuestBody, env: GuestEnv): Promise<GuestResult> {
   // the spa can find the row when that guest exercises Art. 15/17. Null only
   // when no name was captured at all.
   const displayName = sanitizeDisplayName(body.name);
+  // Required since the 0032 identity change. The name is half of what tells two
+  // people on one number apart, so an unnamed profile is the one case that can
+  // still be overwritten — its key is the empty string, which every other
+  // unnamed guest on that number also matches. Refusing here also keeps the
+  // base-tier promise the CRM already makes: a profile the spa cannot identify
+  // is one it cannot search, and cannot honour an Art. 15/17 request against.
+  if (!displayName) {
+    return {
+      status: 400,
+      json: { error: "A name is required to save preferences.", code: "name_required" },
+    };
+  }
 
   // Marketing is the third opt-in (requires base, checked above) and now
   // covers only outreach: the raw contact phone/e-mail, optional birthday,
