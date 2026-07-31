@@ -7,7 +7,7 @@ import { toMassageTypes } from "../../lib/catalog";
 import { t, tf } from "../../i18n/translations";
 import { guestDisplayName } from "../../utils/guestName";
 import { buildTreatmentSnapshots, saveIntake } from "../../lib/intakes";
-import { forgetGuestProfile, saveGuestProfile } from "../../lib/guestProfile";
+import { forgetGuestProfile, samePhone, saveGuestProfile } from "../../lib/guestProfile";
 import { comfortLabelsFor, stripDisabled } from "../../lib/comfort";
 
 export function HandoffStep() {
@@ -50,8 +50,15 @@ export function HandoffStep() {
     savedRef.current = true;
     const size = state.partySize;
 
+    // Last line of defence for two guests on one number. Both screens that take
+    // a phone already stop it, but if one ever gets through, these writes run
+    // concurrently against a single identity and whichever landed last decided
+    // whose preferences survived. First guest wins, deterministically.
+    const claimedPhones: string[] = [];
     const crmOps = state.guestCrm.slice(0, size).flatMap((crm, i) => {
       if (crm.phone.replace(/\D/g, "").length < 6) return [];
+      if (claimedPhones.some((p) => samePhone(p, crm.phone))) return [];
+      claimedPhones.push(crm.phone);
       if (crm.consent) {
         // The name is base-tier, so it saves with the profile; only the
         // contact e-mail waits on the marketing opt-in.
@@ -70,7 +77,9 @@ export function HandoffStep() {
           ),
         ];
       }
-      if (crm.prefilled) return [forgetGuestProfile(token, crm.phone)];
+      // The name says WHICH profile on this number to erase (0032). Without it
+      // the server matches nothing, rather than erasing everyone sharing it.
+      if (crm.prefilled) return [forgetGuestProfile(token, crm.phone, crm.name)];
       return [];
     });
 
@@ -105,6 +114,11 @@ export function HandoffStep() {
             .map((crm) =>
               crm.consent && crm.phone.replace(/\D/g, "").length >= 6 ? crm.phone : null,
             ),
+          // Index-aligned with guestPhones. Since 0032 the phone alone no
+          // longer identifies a profile, so the server needs the name the
+          // profile was saved under to file this visit against the right
+          // person instead of whoever it happened to find first.
+          guestCrmNames: state.guestCrm.slice(0, size).map((crm) => crm.name.trim()),
         }).then(() => {
           setSaved(true);
           // A failed attempt clears savedRef so a later render retries; if that

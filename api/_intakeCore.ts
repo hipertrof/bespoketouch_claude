@@ -30,7 +30,7 @@ import {
   touchLastSeen,
   type DeviceAuthEnv,
 } from "./_deviceAuth.js";
-import { normalizePhone, phoneHash } from "./_guestCore.js";
+import { nameKey, normalizePhone, phoneHash } from "./_guestCore.js";
 
 export interface IntakeEnv extends DeviceAuthEnv {
   // Needed to hash guestPhones for the guest_visits write (0025). Optional so
@@ -55,6 +55,7 @@ interface IntakeBody {
   // session (base consent). Used to key the guest_visits history write —
   // hashed immediately, never stored raw here.
   guestPhones?: unknown;
+  guestCrmNames?: unknown;
 }
 
 // How long a locked intake stays in the queue before the retention job may purge
@@ -125,6 +126,13 @@ export async function handleIntake(
     .map(sanitizeRoomAssignment);
 
   const guestPhones = asArray(body.guestPhones).slice(0, partySize);
+  // Index-aligned with guestPhones: the name each guest's CRM profile was saved
+  // under. Needed since 0032, where (phone, name) — not the phone alone —
+  // identifies a profile, so the visit-history write below can tell which of
+  // several people on a shared number this visit belongs to. Distinct from
+  // guestNames: that is the name reception typed on the intake, which the guest
+  // can edit on the consent card before saving.
+  const guestCrmNames = asArray(body.guestCrmNames).slice(0, partySize);
 
   // return=representation: the new intake's id keys the guest_visits history
   // rows (0025) and the later survey linkage.
@@ -160,6 +168,7 @@ export async function handleIntake(
       locationId: device.locationId,
       intakeId,
       guestPhones,
+      guestCrmNames,
       treatmentSelections,
       therapists,
       roomAssignments,
@@ -181,6 +190,7 @@ async function writeGuestVisits(
     locationId: string;
     intakeId: string | null;
     guestPhones: unknown[];
+    guestCrmNames: unknown[];
     treatmentSelections: unknown[];
     therapists: unknown[];
     roomAssignments: Array<ReturnType<typeof sanitizeRoomAssignment>>;
@@ -203,13 +213,23 @@ async function writeGuestVisits(
     const phone = typeof raw === "string" ? normalizePhone(raw) : null;
     if (!phone || !env.hashSecret) continue;
     const hash = phoneHash(phone, accountId, env.hashSecret);
+    // Narrowed by name since 0032: a number can carry several profiles, and
+    // `profRows[0]` would file this visit — treatment, price, therapist —
+    // against whichever of them the database happened to return first.
+    const rawName = args.guestCrmNames[i];
+    const key = nameKey(typeof rawName === "string" ? rawName : null);
     const profRows = (await (
       await fetch(
-        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+        `${base}/rest/v1/guest_profiles?select=id&account_id=eq.${accountId}&phone_hash=eq.${hash}` +
+          `&name_key=eq.${encodeURIComponent(key)}`,
         { headers: svc },
       )
     ).json().catch(() => null)) as Array<{ id?: unknown }> | null;
-    const guestId = typeof profRows?.[0]?.id === "string" ? profRows[0].id : null;
+    // Exactly one, or none. Anything else means the narrowing failed and we
+    // cannot say whose visit this is — dropping the history row is the
+    // recoverable outcome; attributing a treatment to the wrong guest is not.
+    const guestId =
+      profRows?.length === 1 && typeof profRows[0]?.id === "string" ? profRows[0].id : null;
     if (!guestId) continue;
 
     const sel = asRecord(args.treatmentSelections[i]);

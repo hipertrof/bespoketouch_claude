@@ -184,6 +184,42 @@ function isOneOf<T extends string>(value: unknown, allowed: T[]): value is T {
 // unavailable in the bundled demo by design.
 // ---------------------------------------------------------------------------
 
+// Client mirrors of api/_guestCore.ts's normalizePhone/isImplausiblePhone. The
+// server stays the authority — these exist so a guest sees the problem under
+// the field as they type instead of after the whole flow, and so two guests in
+// one check-in can be compared without a round trip.
+function phoneDigits(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 9) digits = `48${digits}`; // bare Polish number
+  return digits;
+}
+
+// Whether two typed numbers are the same number, so "888 888 888" and
+// "+48888888888" compare equal.
+export function samePhone(a: string, b: string): boolean {
+  const x = phoneDigits(a);
+  return x.length >= 6 && x === phoneDigits(b);
+}
+
+// Placeholder numbers guests invent when they'd rather not give a real one:
+// one digit repeated, or a strict run up or down. Deliberately narrow — a
+// plausible typo is indistinguishable from a real number, which is why the
+// profile identity had to change as well as this check existing.
+export function isImplausiblePhone(raw: string): boolean {
+  const digits = phoneDigits(raw);
+  const local = digits.length > 9 ? digits.slice(-9) : digits;
+  if (local.length < 6) return false; // too short to judge; the field's own check covers it
+  if (/^(\d)\1+$/.test(local)) return true;
+  const run = (step: number) => {
+    for (let i = 1; i < local.length; i += 1) {
+      if (Number(local[i]) - Number(local[i - 1]) !== step) return false;
+    }
+    return true;
+  };
+  return run(1) || run(-1);
+}
+
 async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
   const res = await fetch("/api/guest", {
     method: "POST",
@@ -202,29 +238,38 @@ async function postGuest(payload: Record<string, unknown>): Promise<unknown> {
 // health consent for the zone marks + free-text notes) if a profile exists
 // for this phone at the kiosk's account, else null. Raw phone is sent over
 // HTTPS and hashed server-side; it is never stored.
-export async function lookupGuestProfile(
-  deviceToken: string,
-  phone: string,
-): Promise<{
+export type GuestProfileMatch = {
   preferences: StoredPreferences;
   healthConsent: boolean;
   marketingConsent: boolean;
   name: string | null;
-} | null> {
+  lastSeen: string | null;
+};
+
+// Returns EVERY profile stored under this phone at the kiosk's account — since
+// 0032 a number can carry several people, so this is a list and the caller
+// must not assume one. Front desk picks; nothing here chooses for them,
+// because these preferences include the zones a guest wants avoided and
+// loading the wrong person's is a treatment-safety problem, not a tidiness one.
+// Raw phone is sent over HTTPS and hashed server-side; it is never stored.
+export async function lookupGuestProfile(
+  deviceToken: string,
+  phone: string,
+): Promise<GuestProfileMatch[]> {
   const json = (await postGuest({ action: "lookup", deviceToken, phone })) as {
     found?: boolean;
-    preferences?: unknown;
-    healthConsent?: boolean;
-    marketingConsent?: boolean;
-    name?: unknown;
+    matches?: unknown;
   } | null;
-  if (!json?.found || !json.preferences) return null;
-  return {
-    preferences: json.preferences as StoredPreferences,
-    healthConsent: json.healthConsent === true,
-    marketingConsent: json.marketingConsent === true,
-    name: typeof json.name === "string" ? json.name : null,
-  };
+  if (!json?.found || !Array.isArray(json.matches)) return [];
+  return (json.matches as Array<Record<string, unknown>>)
+    .filter((m) => m && m.preferences)
+    .map((m) => ({
+      preferences: m.preferences as StoredPreferences,
+      healthConsent: m.healthConsent === true,
+      marketingConsent: m.marketingConsent === true,
+      name: typeof m.name === "string" ? m.name : null,
+      lastSeen: typeof m.lastSeen === "string" ? m.lastSeen : null,
+    }));
 }
 
 // Upsert the reusable preference subset under the phone pseudonym. Requires
@@ -260,6 +305,14 @@ export async function saveGuestProfile(
 }
 
 // Right-to-erasure: delete this guest's stored profile at this account.
-export async function forgetGuestProfile(deviceToken: string, phone: string): Promise<void> {
-  await postGuest({ action: "forget", deviceToken, phone });
+// `name` is REQUIRED to identify which profile, because since 0032 a number can
+// carry several people and the server narrows the delete by it. Omitting it
+// erases nothing rather than erasing everyone on the number — the caller must
+// pass the name the profile was saved under (the consent card's name).
+export async function forgetGuestProfile(
+  deviceToken: string,
+  phone: string,
+  name: string,
+): Promise<void> {
+  await postGuest({ action: "forget", deviceToken, phone, name: name.trim() || undefined });
 }

@@ -7,7 +7,10 @@ import { useDevice } from "../../context/DeviceContext";
 import {
   applyStoredPreferences,
   forgetGuestProfile,
+  isImplausiblePhone,
   lookupGuestProfile,
+  samePhone,
+  type GuestProfileMatch,
 } from "../../lib/guestProfile";
 import { t, tf } from "../../i18n/translations";
 import { Button } from "../Button";
@@ -319,7 +322,10 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
       email: "",
       prefilled: false,
     };
-  const [status, setStatus] = useState<"idle" | "looking" | "found" | "missing" | "failed">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "looking" | "found" | "missing" | "failed" | "choosing"
+  >("idle");
+  const [matches, setMatches] = useState<GuestProfileMatch[]>([]);
   const [confirmForget, setConfirmForget] = useState(false);
   const [forgotten, setForgotten] = useState(false);
   // The QR alternative: the receptionist hands the guest their own phone
@@ -329,41 +335,69 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
   const [showQr, setShowQr] = useState(false);
 
   const phoneValid = crm.phone.replace(/\D/g, "").length >= 6;
+  // Junk numbers are the reason one profile ends up shared, so say so here —
+  // the desk can correct it while the guest is standing there. A warning, not a
+  // block: the lookup must still reach a number already stored this way, or a
+  // bad profile could never be found and erased.
+  const phoneImplausible = phoneValid && isImplausiblePhone(crm.phone);
+  // The other guest of a two-person check-in. Same number twice would fire two
+  // saves at once against one identity, and which of them landed last decided
+  // whose preferences survived.
+  const phoneClashesWithOtherGuest =
+    phoneValid &&
+    state.guestCrm.some((other, i) => i !== index && other.phone && samePhone(other.phone, crm.phone));
+
+  const applyMatch = (stored: GuestProfileMatch) => {
+    const applied = applyStoredPreferences(stored.preferences, comfort);
+    if (!applied) {
+      setStatus("missing");
+      setMatches([]);
+      return;
+    }
+    dispatch({
+      type: "APPLY_GUEST_PROFILE",
+      index,
+      preferences: applied.preferences,
+      bodyGender: applied.bodyGender,
+      zones: applied.zones,
+      zoneNotes: applied.zoneNotes,
+      generalNote: applied.generalNote,
+      healthConsent: stored.healthConsent,
+      marketingConsent: stored.marketingConsent,
+      name: stored.name,
+    });
+    // Greeting bonus: a returning guest's stored name (base tier since v4,
+    // so it comes back on every hit) can prefill the still-editable intake
+    // name field if it's empty. It is also what identifies the profile on
+    // save since 0032, so picking a person here is what makes the save land
+    // on their row rather than creating another.
+    if (stored.name && !(state.guestNames[index] ?? "").trim()) {
+      dispatch({ type: "SET_GUEST_NAME", index, name: stored.name });
+    }
+    setMatches([]);
+    setStatus("found");
+  };
 
   const handleLookup = async () => {
     if (!phoneValid) return;
     setStatus("looking");
     setForgotten(false);
+    setMatches([]);
     try {
-      const stored = await lookupGuestProfile(deviceToken, crm.phone);
-      if (!stored) {
+      const found = await lookupGuestProfile(deviceToken, crm.phone);
+      if (found.length === 0) {
         setStatus("missing");
         return;
       }
-      const applied = applyStoredPreferences(stored.preferences, comfort);
-      if (!applied) {
-        setStatus("missing");
+      if (found.length === 1) {
+        applyMatch(found[0]);
         return;
       }
-      dispatch({
-        type: "APPLY_GUEST_PROFILE",
-        index,
-        preferences: applied.preferences,
-        bodyGender: applied.bodyGender,
-        zones: applied.zones,
-        zoneNotes: applied.zoneNotes,
-        generalNote: applied.generalNote,
-        healthConsent: stored.healthConsent,
-        marketingConsent: stored.marketingConsent,
-        name: stored.name,
-      });
-      // Greeting bonus: a returning guest's stored name (base tier since v4,
-      // so it comes back on every hit) can prefill the still-editable intake
-      // name field if it's empty.
-      if (stored.name && !(state.guestNames[index] ?? "").trim()) {
-        dispatch({ type: "SET_GUEST_NAME", index, name: stored.name });
-      }
-      setStatus("found");
+      // Several people are stored under this number. Reception picks — the app
+      // must not, because these preferences carry the zones a guest wants left
+      // alone, and loading the wrong person's is a treatment-safety problem.
+      setMatches(found);
+      setStatus("choosing");
     } catch (err) {
       console.error("[crm] lookup failed:", err);
       setStatus("failed");
@@ -376,7 +410,9 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
       return;
     }
     try {
-      await forgetGuestProfile(deviceToken, crm.phone);
+      // The name identifies WHICH profile on this number since 0032 — without
+      // it the server matches nothing rather than erasing everyone sharing it.
+      await forgetGuestProfile(deviceToken, crm.phone, crm.name);
       dispatch({ type: "CLEAR_GUEST_PROFILE", index });
       setStatus("idle");
       setConfirmForget(false);
@@ -404,6 +440,7 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
           onChange={(e) => {
             dispatch({ type: "SET_GUEST_PHONE", index, phone: e.target.value });
             setStatus("idle");
+            setMatches([]);
             setConfirmForget(false);
             setForgotten(false);
           }}
@@ -432,6 +469,55 @@ function ReturningGuestBlock({ index, deviceToken }: { index: number; deviceToke
       </div>
       {showQr && (
         <CheckinQrModal deviceToken={deviceToken} lang={lang} onClose={() => setShowQr(false)} />
+      )}
+      {phoneClashesWithOtherGuest && (
+        <p className="mt-2 text-xs font-medium leading-relaxed text-rose-dark">
+          {t("guestPhoneSameAsOther", lang)}
+        </p>
+      )}
+      {phoneImplausible && !phoneClashesWithOtherGuest && (
+        <p className="mt-2 text-xs font-medium leading-relaxed text-rose-dark">
+          {t("guestPhoneImplausible", lang)}
+        </p>
+      )}
+      {status === "choosing" && (
+        // Name plus last visit is the whole of it: enough for the desk to ask
+        // "Anna or Jan?", and nothing about anyone's treatments or contact
+        // details. Reception-operated screen — the guest's own phone (/checkin)
+        // never gets this list.
+        <div className="mt-3 rounded-xl border border-clay/40 bg-white p-3">
+          <p className="mb-2 text-xs font-semibold text-charcoal">{t("guestPickTitle", lang)}</p>
+          <div className="flex flex-col gap-1.5">
+            {matches.map((m, i) => (
+              <button
+                key={`${m.name ?? "?"}-${i}`}
+                type="button"
+                onClick={() => applyMatch(m)}
+                className="flex min-h-11 flex-col items-start rounded-lg border border-sand bg-white px-3 py-2 text-left transition-all duration-200 hover:border-clay/60 hover:bg-oatmeal/50"
+              >
+                <span className="text-sm font-semibold text-charcoal">
+                  {m.name || t("guestPickUnnamed", lang)}
+                </span>
+                {m.lastSeen && (
+                  <span className="text-xs text-slate-light">
+                    {t("guestPickLastVisit", lang)}{" "}
+                    {new Date(m.lastSeen).toLocaleDateString(lang === "pl" ? "pl-PL" : lang)}
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMatches([]);
+                setStatus("missing");
+              }}
+              className="min-h-11 rounded-lg px-3 py-2 text-left text-xs font-medium text-slate-light hover:underline"
+            >
+              {t("guestPickNone", lang)}
+            </button>
+          </div>
+        </div>
       )}
       {status === "found" && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-sage-dark">

@@ -45,6 +45,7 @@ import {
   BASE_CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
   MARKETING_CONSENT_VERSION,
+  nameKey,
   normalizePhone,
   phoneHash,
   resolveAccount,
@@ -194,6 +195,14 @@ async function lookupByCode(body: CheckinBody, env: CheckinEnv): Promise<Checkin
       )
     ).body,
   );
+  // Since 0032 a number can legitimately carry several profiles. Unlike the
+  // kiosk lookup this one CANNOT offer a chooser: the caller is an anonymous
+  // phone, and listing the candidates would tell whoever typed the number which
+  // guests are registered under it. Taking rows[0] is worse still — it would
+  // hand a stranger's preferences, health data included, to whoever guessed the
+  // number. So an ambiguous number counts as no match, and the guest is sent to
+  // the front desk, the one place a person can actually be identified.
+  if (rows.length > 1) return { status: 200, json: { found: false, ambiguous: true } };
   const row = rows[0];
   if (!row) return { status: 200, json: { found: false } };
 
@@ -369,11 +378,20 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
   // The consent stamps come back alongside the id so a tier being switched off
   // below can be recognised as the withdrawal it is (see _erasureLog.ts) —
   // widening this read rather than adding a second query.
+  // Narrowed by name since 0032, where (phone, name) identifies a profile.
+  // Matching on the phone alone would let whoever holds a check-in code
+  // overwrite the profile of anyone else registered under that number — the
+  // exact takeover 0032 exists to stop. The match is strict: no "there is only
+  // one row on this number, so it must be them" fallback, because that is
+  // precisely the guess that loses someone's record. An unmatched name means
+  // there is nothing here to edit, and the guest goes through reception.
+  const nameForKey = sanitizeDisplayName(body.name);
+  const key = nameKey(nameForKey);
   const existing = asArray(
     (
       await getJson(
         `${base}/rest/v1/guest_profiles?select=id,health_consent_version,marketing_consent_version` +
-          `&account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+          `&account_id=eq.${accountId}&phone_hash=eq.${hash}&name_key=eq.${encodeURIComponent(key)}`,
         svc,
       )
     ).body,
@@ -383,6 +401,11 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     // kiosk flow instead.
     return { status: 200, json: { found: false } };
   }
+  // Every write below targets this one row by id. The old
+  // `account_id=eq.X&phone_hash=eq.Y` filters would now touch every profile on
+  // the number — and on the withdrawal branch that means deleting strangers'
+  // records alongside the guest's own.
+  const profileId = String(existing[0].id);
 
   const now = new Date().toISOString();
   const hadHealth = typeof existing[0]?.health_consent_version === "string";
@@ -397,7 +420,7 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     // was already stripped above since healthConsent can't stand without
     // base).
     const del = await fetch(
-      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+      `${base}/rest/v1/guest_profiles?id=eq.${profileId}&account_id=eq.${accountId}`,
       { method: "DELETE", headers: { ...svc, Prefer: "return=minimal" } },
     );
     if (!del.ok) {
@@ -417,10 +440,10 @@ async function saveByCode(body: CheckinBody, env: CheckinEnv): Promise<CheckinRe
     // it survives a marketing withdrawal), the contact columns ride on the
     // marketing tier and are nulled without it. The phone always sends the
     // name field, so blanking it here is a deliberate edit, not an omission.
-    const displayName = sanitizeDisplayName(body.name);
+    const displayName = nameForKey;
     const contact = body.marketingConsent === true ? sanitizeContact(body) : null;
     const patch = await fetch(
-      `${base}/rest/v1/guest_profiles?account_id=eq.${accountId}&phone_hash=eq.${hash}`,
+      `${base}/rest/v1/guest_profiles?id=eq.${profileId}&account_id=eq.${accountId}`,
       {
         method: "PATCH",
         headers: { ...svc, "Content-Type": "application/json", Prefer: "return=minimal" },
